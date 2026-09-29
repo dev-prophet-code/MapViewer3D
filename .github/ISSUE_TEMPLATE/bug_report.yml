@@ -1,0 +1,21 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes: { label: Viewer version, placeholder: Beta.3 }
+    validations: { required: true }
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows, macOS, Linux, Other]
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes: { label: What happened?, description: Steps to reproduce and what you expected }
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes: { label: Logs / screenshots, description: "Remove tokens and server addresses before pasting!" }

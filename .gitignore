@@ -1,0 +1,18 @@
+# Large/generated – shipped via GitHub Releases
+/bin/
+/data/
+*.zip
+
+# Never commit credentials or caches
+state/
+paks/
+*.enc
+master.key
+config.json
+instance-names.json
+mapimage.png
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
