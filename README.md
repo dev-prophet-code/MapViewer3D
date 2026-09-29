@@ -64,7 +64,6 @@ Browser (three.js)  ⇄  local viewer server (Go, 127.0.0.1)  ⇄  your server's
 | `data/` | Pre-built terrain and building catalog *(in release ZIP only – see below)* |
 | `bin/` | Pre-built binaries per OS/CPU *(in release ZIP only)* |
 | `start.*` | Launch scripts |
-| `build-release.sh`, `check-clean.sh` | Developer tooling |
 
 > [!IMPORTANT]
 > Terrain data (~350 MB) and binaries are too large for git. They are shipped in the **release ZIP**, not in the repository. A plain `git clone` contains the source code only.
@@ -74,10 +73,12 @@ Browser (three.js)  ⇄  local viewer server (Go, 127.0.0.1)  ⇄  your server's
 Requires Go ≥ 1.26 (no C compiler needed for the viewer).
 
 ```bash
-./build-release.sh          # all platforms → bin/
-./build-release.sh --zip    # additionally ../MapViewer3D.zip (after ./check-clean.sh)
-./start.sh --build          # build & run for your own system only
+cd backend
+go build -trimpath -o ../bin/mapviewer ./cmd/mapviewer   # your own system
+GOOS=windows GOARCH=amd64 go build -o ../bin/mapviewer-windows-amd64.exe ./cmd/mapviewer   # cross-compile
 ```
+
+`./start.sh --build` builds and starts the viewer for your own system in one step.
 
 Rebuilding the maps after a game update (`backend/cmd/extract`) needs the game's pak files and Go with a C compiler (Oodle via cgo). See the German README for the full procedure.
 

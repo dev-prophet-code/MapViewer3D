@@ -17,3 +17,5 @@ mapimage.png
 .idea/
 .vscode/
 /Beschreibung-DE.md
+/build-release.sh
+/check-clean.sh

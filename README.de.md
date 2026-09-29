@@ -85,14 +85,11 @@ WantedBy=multi-user.target
 
 ### Selbst bauen (nur für Entwickler)
 
-`build-release.sh` und `check-clean.sh` liegen nur im Projektordner und sind nicht
-Teil des Verteilpakets.
-
 ```bash
-./build-release.sh          # alle Systeme nach bin/ (braucht Go ≥ 1.26, kein C-Compiler)
-./build-release.sh --zip    # zusätzlich ../MapViewer3D.zip zum Weitergeben (nach ./check-clean.sh)
-./check-clean.sh            # prüft: keine Zugangsdaten/Zwischenspeicher im Projektordner
-./start.sh --build          # nur für das eigene System bauen und starten
+cd backend
+go build -trimpath -o ../bin/mapviewer ./cmd/mapviewer   # eigenes System
+GOOS=windows GOARCH=amd64 go build -o ../bin/mapviewer-windows-amd64.exe ./cmd/mapviewer   # Cross-Compile
+./start.sh --build                                       # bauen und starten
 ```
 
 Zum Neubauen der Karten (`cmd/extract`, siehe unten) braucht es weiterhin Go mit
@@ -140,8 +137,6 @@ Zugangsdaten löschen und die Serverinstanzen benennen.
     Wer ihn bekommt, muss Server und Token selbst eintragen. Ältere Versionen legten
     `state/` im Projektordner an; der Viewer verschiebt die Zugangsdaten beim Start
     in den Benutzerordner und löscht den alten Ordner.
-  - `./check-clean.sh` prüft das; `./build-release.sh --zip` baut nur ein Paket,
-    wenn die Prüfung besteht.
 - **In der Datei steht nichts im Klartext**, auch nicht die Server-Adresse.
 - **Im Browser:** Der Token erreicht den Browser nie. Alle Anfragen an den Server
   laufen über den lokalen Viewer-Server, der nur auf `127.0.0.1` lauscht und
