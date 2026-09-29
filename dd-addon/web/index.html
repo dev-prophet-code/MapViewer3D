@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en" data-addon-id="mapviewer3d">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MapViewer3D</title>
+    <link rel="stylesheet" href="./addon.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <strong class="title">MapViewer3D</strong>
+      <span id="status" class="status" aria-live="polite">Checking…</span>
+      <span class="spacer"></span>
+      <details class="advanced">
+        <summary>Advanced</summary>
+        <label class="url">
+          Viewer URL (only if it is not on this host, port 8795)
+          <input id="urlInput" type="text" spellcheck="false" autocomplete="off" />
+        </label>
+        <button id="saveUrl" type="button">Apply</button>
+      </details>
+      <a id="openTab" class="button" target="_blank" rel="noopener noreferrer">Open in new tab</a>
+    </header>
+
+    <main class="stage">
+      <iframe
+        id="viewer"
+        title="MapViewer3D"
+        allow="fullscreen"
+        referrerpolicy="no-referrer"
+      ></iframe>
+
+      <section id="help" class="help" hidden>
+        <h1>MapViewer3D is not reachable</h1>
+        <p id="helpReason" class="muted"></p>
+        <ol>
+          <li>
+            Install the companion container on the machine that runs the console
+            (one command, see <code>docker/README.md</code> in the addon package):
+            <pre>sh install.sh</pre>
+          </li>
+          <li>
+            The viewer listens on port <code id="portHint">8795</code>. Open that
+            port for the browsers that use the console.
+          </li>
+          <li>
+            If the console is served over <code>https://</code>, browsers block the
+            plain-http viewer inside this page. Use <em>Open in new tab</em> or put
+            the viewer behind the same TLS reverse proxy.
+          </li>
+          <li>
+            Different address or port? Open <em>Advanced</em> above, enter it and press <em>Apply</em>.
+          </li>
+        </ol>
+        <button id="retry" type="button">Check again</button>
+      </section>
+    </main>
+
+    <script src="./addon.js"></script>
+  </body>
+</html>

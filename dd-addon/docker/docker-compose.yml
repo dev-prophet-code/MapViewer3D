@@ -1,0 +1,25 @@
+# MapViewer3D companion for Dune Docker Console.
+# Start with:  sh install.sh   (or: docker compose up -d after creating config.json)
+services:
+  mapviewer3d:
+    image: alpine:3.20
+    container_name: mapviewer3d
+    restart: unless-stopped
+    # Host networking lets the viewer reach the console on 127.0.0.1:8088
+    # exactly like the console's own addons do.
+    network_mode: host
+    # Run as the installing user so the owner-only config.json stays readable.
+    user: "${MV_UID:-1000}:${MV_GID:-1000}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./app:/app:ro
+      - ./config.json:/config/config.json:ro
+      - ./entrypoint.sh:/entrypoint.sh:ro
+    environment:
+      MV_ADDR: "0.0.0.0:8795"
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
