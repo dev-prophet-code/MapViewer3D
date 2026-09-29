@@ -22,8 +22,8 @@
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-MV_URL="${MV_URL:-https://github.com/dev-prophet-code/MapViewer3D/releases/download/beta.5/MapViewer3D-Beta.5.zip}"
-MV_SHA256="${MV_SHA256:-b91f64343ef13fc3dfbdf215d26e9dda41e63033a3989829b39dacc1685d01e8}"
+MV_URL="${MV_URL:-https://github.com/dev-prophet-code/MapViewer3D/releases/download/beta.6/MapViewer3D-Beta.6.zip}"
+MV_SHA256="${MV_SHA256:-529ee65cbeae0e972deb21e9c5985a971700df032b4c9232b7b7416e6c6aa89e}"
 
 fail() { echo "✗ $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "'$1' is required."; }
