@@ -52,9 +52,14 @@ kopieren.
 ### Auf einem Server betreiben
 
 ```bash
-./start.sh -addr 0.0.0.0:8795          # Linux/macOS
-start.bat -addr 0.0.0.0:8795           # Windows
+./start.sh -addr 0.0.0.0:8795 -password <Passwort>   # Linux/macOS
+start.bat -addr 0.0.0.0:8795 -password <Passwort>    # Windows
 ```
+
+- **Seit Beta.7 startet der Viewer im Netz nur mit Passwort** (`-password`, Umgebungsvariable
+  `MV_PASSWORD` oder `viewerPassword` in `-config`). Der Browser fragt dann per HTTP-Login
+  (Benutzername egal). Ohne Passwort verweigert er den Start; ungeschützt im Netz nur mit
+  bewusstem `-allow-open`.
 
 - Zugangsdaten und Instanznamen lassen sich dann **nur im Browser auf dem Server
   selbst** ändern (z. B. per SSH-Tunnel: `ssh -L 8795:127.0.0.1:8795 <server>`).

@@ -144,3 +144,38 @@ func TestContentSecurityPolicy(t *testing.T) {
 		t.Error("missing file should give empty policy")
 	}
 }
+
+func TestViewerPassword(t *testing.T) {
+	s := New(t.TempDir(), t.TempDir(), t.TempDir(), nil)
+	get := func(user, pw string, auth bool) int {
+		r := httptest.NewRequest("GET", "http://x/api/version", nil)
+		if auth {
+			r.SetBasicAuth(user, pw)
+		}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		return w.Code
+	}
+	if got := get("", "", false); got != 200 {
+		t.Fatalf("ohne Passwort gesetzt: %d, erwartet 200", got)
+	}
+	s.SetPassword("geheim")
+	if !s.HasPassword() {
+		t.Fatal("HasPassword")
+	}
+	if got := get("", "", false); got != 401 {
+		t.Fatalf("ohne Login: %d, erwartet 401", got)
+	}
+	if got := get("x", "falsch", true); got != 401 {
+		t.Fatalf("falsches Passwort: %d, erwartet 401", got)
+	}
+	if got := get("irgendwer", "geheim", true); got != 200 {
+		t.Fatalf("richtiges Passwort: %d, erwartet 200", got)
+	}
+	r := httptest.NewRequest("GET", "http://x/", nil)
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	if w.Header().Get("WWW-Authenticate") == "" {
+		t.Fatal("WWW-Authenticate fehlt")
+	}
+}

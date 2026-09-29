@@ -23,6 +23,9 @@ type LiveConfig struct {
 	// Nur mit -config (feste Konfigurationsdatei statt Einrichtung im Browser):
 	Partitions map[string]string `json:"partitions"` // Anzeigenamen, z. B. "1": "PvE"
 	Public     *PublicConfig     `json:"public"`     // öffentlicher Betrieb, siehe public.go
+
+	// Zugangsschutz für den Viewer selbst (HTTP-Basic-Login, Benutzername egal).
+	ViewerPassword string `json:"viewerPassword"`
 }
 
 // LoadLiveConfig liest eine feste Konfigurationsdatei (-config). Zugangsdaten

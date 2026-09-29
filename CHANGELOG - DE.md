@@ -13,6 +13,14 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 
 ---
 
+## Beta.7 – 29.09.2026
+
+### Sicherheit
+
+- **Passwort für den Netzbetrieb.** Ein Viewer auf einer Adresse außerhalb von Loopback (z. B. `0.0.0.0:8795`) braucht jetzt ein Passwort (`-password`, `MV_PASSWORD` oder `viewerPassword` in der `-config`-Datei); der Browser fragt per HTTP-Login (Benutzername egal). Der Vergleich läuft in konstanter Zeit. Ohne Passwort verweigert das Programm den Start auf einer Netzadresse; ungeschützter Netzbetrieb geht nur mit bewusstem `-allow-open`. Der lokale Betrieb (Standard) ist unverändert. Anlass: Das Review des Dune-Docker-Addons bemängelte, dass der Viewer Spielernamen und Positionen ohne Login zeigte.
+
+---
+
 ## Beta.6 – 29.09.2026
 
 ### Neu

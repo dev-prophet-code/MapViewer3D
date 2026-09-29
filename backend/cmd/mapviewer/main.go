@@ -38,6 +38,8 @@ func main() {
 	state := flag.String("state", "", "Verzeichnis für Zugangsdaten, Instanznamen und Zwischenspeicher (Standard: Benutzer-Konfigordner/MapViewer3D)")
 	keyDir := flag.String("keydir", "", "Ablage des Hauptschlüssels (Standard: Benutzer-Konfigordner)")
 	addr := flag.String("addr", envOr("ADDR", "127.0.0.1:8795"), "Adresse; 0.0.0.0:8795 macht den Viewer im Netz erreichbar")
+	password := flag.String("password", os.Getenv("MV_PASSWORD"), "Passwort für den Viewer (HTTP-Login, Benutzername egal); alternativ MV_PASSWORD oder viewerPassword in -config")
+	allowOpen := flag.Bool("allow-open", false, "im Netz erreichbar OHNE Passwort erlauben (jeder mit der Adresse sieht Spielernamen und Positionen)")
 	remoteSetup := flag.Bool("remote-setup", false, "Einrichtung auch von anderen Rechnern erlauben (nur hinter Zugangsschutz!)")
 	noLocalAdmin := flag.Bool("no-local-admin", false, "Einrichtung im Browser nie zulassen, auch nicht vom Rechner selbst (z. B. hinter einem Reverse-Proxy; dann -config verwenden)")
 	config := flag.String("config", "", "feste Konfigurationsdatei (apiBase, token, partitions, public) statt Einrichtung im Browser")
@@ -83,6 +85,9 @@ func main() {
 		}
 		srv = server.New(*data, *web, *state, nil)
 		srv.UseConfig(cfg)
+		if *password == "" {
+			*password = cfg.ViewerPassword
+		}
 		log.Printf("Verbindung aus %s", *config)
 		if cfg.Public != nil {
 			log.Printf("Öffentlicher Betrieb: nur Partitionen %v, soweit %s sie als PvE meldet", cfg.Public.Partitions, cfg.Public.ModeSource)
@@ -116,6 +121,10 @@ func main() {
 		log.Printf("Deep Desert: Gelände für neue Coriolis-Layouts wird aus %s selbst gebaut", *paks)
 	}
 
+	srv.SetPassword(*password)
+	if host, _, _ := net.SplitHostPort(*addr); !isLoopback(host) && !srv.HasPassword() && !*allowOpen {
+		fatalf("%s ist im Netz erreichbar, aber ohne Passwort: das würde Spielernamen und Positionen für jeden mit der Adresse zeigen. Passwort setzen (-password, MV_PASSWORD oder viewerPassword in -config), nur lokal (127.0.0.1) starten oder bewusst -allow-open angeben.", *addr)
+	}
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
 		fatalf("%v", err)
@@ -128,7 +137,9 @@ func main() {
 		} else {
 			log.Printf("Im Netz erreichbar; Einrichtung nur im Browser auf diesem Rechner")
 		}
-		if !srv.HasPublicFilter() {
+		if srv.HasPassword() {
+			log.Printf("Zugriff nur mit Passwort (HTTP-Login)")
+		} else if !srv.HasPublicFilter() {
 			log.Printf("ACHTUNG: Der Viewer ist im Netz erreichbar und zeigt jedem mit der Adresse Spielernamen, Positionen, Basen und Fahrzeuge (Konten-Kennungen werden für Besucher entfernt). Nur in vertrauenswürdigen Netzen betreiben, per Firewall/Zugangsschutz absichern oder mit -public auf PvE-Partitionen beschränken.")
 		}
 	}

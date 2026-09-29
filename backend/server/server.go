@@ -32,7 +32,7 @@ import (
 
 // Version steht in der Oberfläche und in CHANGELOG.md; beim Bauen per
 // -ldflags "-X mapviewer3d/server.Version=…" überschreibbar.
-var Version = "Beta.6"
+var Version = "Beta.7"
 
 // PatchQuads ist die Kantenlänge eines Geländestücks in Quads.
 const PatchQuads = 128
@@ -71,6 +71,7 @@ type terrain struct {
 
 type Server struct {
 	dataDir string
+	pwHash  []byte // SHA-256 des Viewer-Passworts; nil = kein Login
 	mux     *http.ServeMux
 	mu      sync.Mutex
 	maps    map[string]*terrain
@@ -167,6 +168,11 @@ func New(dataDir, webDir, stateDir string, store *secure.Store) *Server {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="MapViewer3D", charset="UTF-8"`)
+		http.Error(w, "Anmeldung erforderlich", http.StatusUnauthorized)
+		return
+	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	s.mux.ServeHTTP(w, r)
