@@ -39,12 +39,16 @@ the same machine, and addons get no direct API access. Only an admin can create 
    ```
 
    Everything except the key is detected automatically (stack folder, console port from
-   `.env`, console address). The installer asks for the key once, **checks it against the
-   Console** and refuses to start if it is missing, wrong or lacks `maps: Read`. It is stored
+   `.env`, including `ADMIN_BIND_HOST=auto` and `ADMIN_WEB_PORT`). The installer asks for the key once,
+   **checks it against the Console** and refuses to start if it is missing, wrong or lacks `maps: Read` or
+   `bases: Read`. The key is never put on a command line. It is stored
    and reused on re-runs.
 4. Open **3D Map** in the console. The page finds the viewer on port `8795` of the same host by itself.
 
-Open TCP port `8795` for the browsers that use the console.
+By default the viewer is **private** (`127.0.0.1:8795`, only browsers on the server itself).
+For other computers opt in with `MV_ADDR=0.0.0.0:8795` when running the installer: it then sets a
+**viewer password** (browser login, shown once) and you open TCP port `8795` for those browsers.
+Details: [`docker/README.md`](docker/README.md).
 
 ## Update / remove
 
@@ -56,7 +60,7 @@ Open TCP port `8795` for the browsers that use the console.
 
 ```
 Console → addon page (iframe) → viewer :8795 (companion container, host network)
-                                       └──→ console API 127.0.0.1:<console port>
+                                       └──→ console API (address detected by the installer)
 ```
 
 The API key stays inside the companion container (`config.json`, owner-only). The browser
@@ -64,12 +68,13 @@ never sees it. The container runs as your user, read-only, without capabilities.
 
 ## Security
 
-- **Port `8795` is open to everyone who can reach it.** The viewer has no login: anyone with the
-  address sees player names, positions, bases and vehicles. Account IDs (`account_id`, `funcom_id`, …)
-  are removed for visitors, but the map itself is visible. Restrict the port with a firewall to the
-  networks that need it, or bind it to a single interface, e.g.
-  `MV_ADDR=192.168.1.5:8795 sh runtime/addons/installed/mapviewer3d/docker/install.sh`
-  (the installer writes it to `runtime/mapviewer3d/.env`).
+- **Private by default.** The viewer listens on `127.0.0.1:8795`; nothing is reachable from the
+  network. Serving it to other computers is an explicit opt-in (`MV_ADDR=0.0.0.0:8795` or one
+  interface, e.g. `MV_ADDR=192.168.1.5:8795`) and then requires a **viewer password** (the installer
+  generates one and stores it in `runtime/mapviewer3d/config.json`; browsers show a login box).
+  Without a password the viewer refuses to start on a network address unless you set
+  `MV_ALLOW_OPEN=1` - not recommended: anyone with the address then sees player names, positions,
+  bases and vehicles. Add a firewall on top where you can.
 - **Least privilege:** the API key only needs `maps: Read` and `bases: Read`. It is stored in
   `runtime/mapviewer3d/config.json` (owner-only, plain text, like other console secrets). Revoke it
   under *Settings → API Keys* if the server is ever compromised.
@@ -95,7 +100,7 @@ Found a problem? See the viewer's [SECURITY.md](https://github.com/dev-prophet-c
 |---|---|
 | `addon.json` | Addon manifest (no permissions) |
 | `web/` | The addon page (embeds the viewer, shows setup help if it is unreachable) |
-| `docker/` | Installer and Compose file of the companion container |
+| `docker/` | Installer, Compose file and `README.md` of the companion container |
 | `scripts/validate.js`, `scripts/package.sh` | Validation and release packaging (from the addon template) |
 
 ## Source of the viewer

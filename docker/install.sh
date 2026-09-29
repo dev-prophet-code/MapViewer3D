@@ -3,8 +3,9 @@
 #
 #   sh install.sh
 #
-# Everything is detected automatically: the console stack folder, the console
-# port (ADMIN_BIND_PORT from the stack's .env) and its address. The only thing
+# Everything is detected automatically: the console stack folder and the
+# console address (ADMIN_BIND_HOST / ADMIN_BIND_PORT / ADMIN_WEB_PORT from the
+# stack's .env, including ADMIN_BIND_HOST=auto). The only thing
 # that cannot be automated is the API key, and MapViewer3D does not work without
 # it: only a console admin can create keys (Settings -> API Keys). Create one
 # with scope maps = Read and bases = Read, all other scopes None.
@@ -13,17 +14,22 @@
 # Optional environment variables:
 #   STACK_DIR   folder of dune-awakening-selfhost-docker (auto-detected)
 #   DATA_DIR    where files live (default: <stack>/runtime/mapviewer3d)
-#   API_BASE    console API address (default: http://127.0.0.1:<console port>)
+#   API_BASE    console API address (default: detected, see step 2)
 #   API_TOKEN   console API token (asked for if not stored yet)
 #   MV_URL / MV_SHA256   release ZIP and checksum (default: pinned release below)
 #   MV_ZIP      use an already downloaded ZIP instead of downloading
-#   MV_ADDR     address the viewer listens on (default 0.0.0.0:8795; use e.g.
-#               192.168.1.5:8795 to expose it on one interface only)
+#   MV_ADDR     address the viewer listens on. Default 127.0.0.1:8795 (private:
+#               only browsers on this machine). A network address such as
+#               0.0.0.0:8795 or 192.168.1.5:8795 is an explicit opt-in; the
+#               installer then sets a viewer password (login in the browser).
+#   MV_PASSWORD viewer password for network operation (default: generated,
+#               stored in config.json, shown once)
+#   MV_ALLOW_OPEN=1  network address WITHOUT any password (not recommended)
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-MV_URL="${MV_URL:-https://github.com/dev-prophet-code/MapViewer3D/releases/download/beta.6/MapViewer3D-Beta.6.zip}"
-MV_SHA256="${MV_SHA256:-529ee65cbeae0e972deb21e9c5985a971700df032b4c9232b7b7416e6c6aa89e}"
+MV_URL="${MV_URL:-https://github.com/dev-prophet-code/MapViewer3D/releases/download/beta.7/MapViewer3D-Beta.7.zip}"
+MV_SHA256="${MV_SHA256:-985d749d654ca832627e55338d4735165dee40a5ff3263a20f9e15dcd8ea7289}"
 
 fail() { echo "✗ $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "'$1' is required."; }
@@ -57,13 +63,46 @@ else
   echo "→ Console stack not found; using defaults (set STACK_DIR to override)"
 fi
 
-# 2. Console address: port comes from the stack's .env -------------------------
-port=8088
-if [ -n "${STACK_DIR:-}" ] && [ -f "$STACK_DIR/.env" ]; then
-  p="$(sed -n 's/^ADMIN_BIND_PORT=\([0-9][0-9]*\).*/\1/p' "$STACK_DIR/.env" | tail -n 1)"
-  [ -n "$p" ] && port="$p"
+# 2. Console address ------------------------------------------------------------
+# The stack's .env decides where the console listens: ADMIN_BIND_HOST is an
+# address, 0.0.0.0, or "auto" (= the machine's LAN address, NOT 127.0.0.1);
+# ADMIN_WEB_PORT, if set, overrides ADMIN_BIND_PORT. Environment wins over .env.
+env_get() { # env_get NAME -> value from the environment, else the stack's .env
+  eval "v=\${$1:-}"
+  if [ -z "$v" ] && [ -n "${STACK_DIR:-}" ] && [ -f "$STACK_DIR/.env" ]; then
+    v="$(sed -n "s/^$1=[\"']*\([^\"' #]*\).*/\1/p" "$STACK_DIR/.env" | tail -n 1)"
+  fi
+  printf '%s' "$v"
+}
+lan_addrs() { # this machine's IPv4 addresses, most likely first
+  {
+    ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p'
+    hostname -I 2>/dev/null | tr ' ' '\n'
+    ifconfig 2>/dev/null | sed -n 's/.*inet \([0-9.]*\) .*/\1/p'
+  } | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | grep -v '^127\.' | awk '!seen[$0]++'
+}
+# http code of an unauthenticated request: any answer (401 too) means "console is there"
+probe() { curl -s -o /dev/null -w '%{http_code}' --max-time 4 "$1/api/map/partitions" 2>/dev/null || true; }
+
+if [ -z "${API_BASE:-}" ]; then
+  bind_host="$(env_get ADMIN_BIND_HOST)"
+  port="$(env_get ADMIN_WEB_PORT)"
+  [ -n "$port" ] || port="$(env_get ADMIN_BIND_PORT)"
+  case "$port" in ''|*[!0-9]*) port=8088 ;; esac
+  case "$bind_host" in
+    ''|auto|0.0.0.0|::|'[::]') candidates="127.0.0.1 $(lan_addrs)" ;;
+    localhost) candidates="127.0.0.1" ;;
+    *) candidates="$bind_host" ;;
+  esac
+  echo "→ Looking for the console (ADMIN_BIND_HOST=${bind_host:-unset}, port $port)"
+  for h in $candidates; do
+    c="$(probe "http://$h:$port")"
+    if [ -n "$c" ] && [ "$c" != 000 ]; then API_BASE="http://$h:$port"; break; fi
+  done
+  if [ -z "${API_BASE:-}" ]; then
+    fail "Console not reachable on port $port (tried: $candidates). Is it running? Set API_BASE=http://<address>:<port> to use another address."
+  fi
 fi
-API_BASE="${API_BASE:-http://127.0.0.1:$port}"
 echo "→ Console API: $API_BASE"
 
 # 3. Data folder (outside the addon folder: addon updates replace that one) ----
@@ -105,15 +144,55 @@ case "$API_TOKEN$API_BASE" in
   *\"*|*\\*) fail "Key and address must not contain quotes or backslashes." ;;
 esac
 
-# Check the key before starting anything
-code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
-  -H "Authorization: Bearer $API_TOKEN" "$API_BASE/api/map/partitions" || true)"
+# The key never goes into a command line (visible to other users in `ps`):
+# curl reads the header from a config on stdin.
+api_code() { # api_code PATH -> HTTP status with the key
+  printf 'header = "Authorization: Bearer %s"\n' "$API_TOKEN" |
+    curl -s -o /dev/null -w '%{http_code}' --max-time 10 -K - "$API_BASE$1" 2>/dev/null || true
+}
+
+# Check the key and BOTH scopes before starting anything
+code="$(api_code /api/map/partitions)"
 case "$code" in
-  200) echo "✓ Console accepted the key" ;;
-  401|403) fail "The console rejected the key (HTTP $code). Check the key and that it has maps = Read and bases = Read." ;;
-  000) fail "Console not reachable at $API_BASE. Is it running? Set API_BASE if it uses another address." ;;
+  200) echo "✓ Console accepted the key (maps: Read)" ;;
+  401) fail "The console rejected the key (HTTP 401). Check that you pasted the whole dak_... key." ;;
+  403) fail "The key lacks the scope maps = Read (HTTP 403). Edit it under Settings -> API Keys." ;;
+  000|'') fail "Console not reachable at $API_BASE. Is it running? Set API_BASE if it uses another address." ;;
   *) fail "Unexpected answer from the console (HTTP $code) at $API_BASE/api/map/partitions." ;;
 esac
+# bases: Read needed for the 3D buildings. An unknown base id answers 404/400
+# when the scope is present and 403 when it is missing.
+code="$(api_code /api/bases/0/export)"
+case "$code" in
+  403) fail "The key lacks the scope bases = Read (HTTP 403). Edit it under Settings -> API Keys (maps = Read AND bases = Read)." ;;
+  401) fail "The console rejected the key for /api/bases (HTTP 401)." ;;
+  000|'') fail "Console did not answer the bases check at $API_BASE." ;;
+  *) echo "✓ Key has bases: Read" ;;
+esac
+
+# Viewer address and password ---------------------------------------------------
+# Default is private: only browsers on this machine can open the viewer.
+# A network address is an explicit opt-in and needs a viewer password.
+MV_ADDR="${MV_ADDR:-127.0.0.1:8795}"
+case "${MV_ADDR%:*}" in
+  127.*|localhost|'[::1]'|::1) private=1 ;;
+  *) private=0 ;;
+esac
+stored_pw=""
+[ -f config.json ] && stored_pw="$(sed -n 's/.*"viewerPassword": *"\([^"]*\)".*/\1/p' config.json | head -n 1)"
+VIEWER_PW=""; new_pw=0
+if [ "$private" = 0 ]; then
+  if [ "${MV_ALLOW_OPEN:-}" = 1 ]; then
+    echo "! MV_ALLOW_OPEN=1: the viewer will be open WITHOUT a password on $MV_ADDR."
+  else
+    VIEWER_PW="${MV_PASSWORD:-$stored_pw}"
+    if [ -z "$VIEWER_PW" ]; then
+      VIEWER_PW="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)"
+      new_pw=1
+    fi
+    case "$VIEWER_PW" in *[!A-Za-z0-9._@%+=-]*|'') fail "MV_PASSWORD may only contain letters, digits and . _ @ % + = -" ;; esac
+  fi
+fi
 
 # 5. Program and terrain data --------------------------------------------------
 if [ -d app/bin ] && [ -d app/data ]; then
@@ -141,13 +220,22 @@ else
   rm -rf app.tmp
 fi
 
-# 6. Config (private: contains the key) and start ------------------------------
+# 6. Config (private: contains the key and password) and start ----------------
 umask 077
-printf '{\n  "apiBase": "%s",\n  "token": "%s"\n}\n' "$API_BASE" "$API_TOKEN" > config.json
-printf 'MV_UID=%s\nMV_GID=%s\nMV_ADDR=%s\n' "$(id -u)" "$(id -g)" "${MV_ADDR:-0.0.0.0:8795}" > .env
+{
+  printf '{\n  "apiBase": "%s",\n  "token": "%s"' "$API_BASE" "$API_TOKEN"
+  [ -n "$VIEWER_PW" ] && printf ',\n  "viewerPassword": "%s"' "$VIEWER_PW"
+  printf '\n}\n'
+} > config.json
+printf 'MV_UID=%s\nMV_GID=%s\nMV_ADDR=%s\nMV_ALLOW_OPEN=%s\n' "$(id -u)" "$(id -g)" "$MV_ADDR" "${MV_ALLOW_OPEN:-}" > .env
 docker compose up -d
 echo
-echo "✓ MapViewer3D is running on ${MV_ADDR:-0.0.0.0:8795}."
-echo "  Anyone who can reach that port sees player names and positions: restrict it"
-echo "  with a firewall or MV_ADDR (see README, section Security)."
-echo "  Open the '3D Map' entry in Dune Docker Console (or http://<server>:8795)."
+echo "✓ MapViewer3D is running on $MV_ADDR."
+if [ "$private" = 1 ]; then
+  echo "  Private: only browsers on this machine can open it. To let other computers use it,"
+  echo "  re-run with MV_ADDR=0.0.0.0:8795 (a viewer password is then set)."
+elif [ -n "$VIEWER_PW" ]; then
+  echo "  Login: any user name, password stored in $DATA_DIR/config.json"
+  [ "$new_pw" = 1 ] && echo "  New password: $VIEWER_PW  (shown once; keep it safe)"
+  echo "  Browsers ask for it when they open http://<server>:${MV_ADDR##*:}."
+fi

@@ -5,8 +5,8 @@ services:
     image: alpine:3.20
     container_name: mapviewer3d
     restart: unless-stopped
-    # Host networking lets the viewer reach the console on 127.0.0.1:8088
-    # exactly like the console's own addons do.
+    # Host networking lets the viewer reach the console on its host address
+    # (the installer detects it; it may be the LAN address, not 127.0.0.1).
     network_mode: host
     # Run as the installing user so the owner-only config.json stays readable.
     user: "${MV_UID:-1000}:${MV_GID:-1000}"
@@ -21,5 +21,6 @@ services:
       - ./config.json:/config/config.json:ro
       - ./entrypoint.sh:/entrypoint.sh:ro
     environment:
-      MV_ADDR: "${MV_ADDR:-0.0.0.0:8795}"
+      MV_ADDR: "${MV_ADDR:-127.0.0.1:8795}"
+      MV_ALLOW_OPEN: "${MV_ALLOW_OPEN:-}"
     entrypoint: ["/bin/sh", "/entrypoint.sh"]

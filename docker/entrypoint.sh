@@ -12,8 +12,14 @@ esac
 bin="/app/bin/mapviewer-linux-$arch"
 [ -x "$bin" ] || { echo "Missing or not executable: $bin" >&2; exit 1; }
 
-exec "$bin" \
-  -addr "${MV_ADDR:-0.0.0.0:8795}" \
+# Password comes from config.json (viewerPassword). Without one the viewer only
+# starts on a network address when MV_ALLOW_OPEN=1.
+allow=""
+[ "${MV_ALLOW_OPEN:-}" = 1 ] && allow="-allow-open"
+
+# shellcheck disable=SC2086
+exec "$bin" $allow \
+  -addr "${MV_ADDR:-127.0.0.1:8795}" \
   -data /app/data \
   -web /app/viewer \
   -config /config/config.json \

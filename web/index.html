@@ -51,8 +51,10 @@
             <pre>sh install.sh</pre>
           </li>
           <li>
-            The viewer listens on port <code id="portHint">8795</code>. Open that
-            port for the browsers that use the console.
+            The viewer listens on port <code id="portHint">8795</code>. By default it is
+            <strong>private</strong> (only a browser on the server itself can open it). For other
+            computers run the installer with <code>MV_ADDR=0.0.0.0:8795</code>: it sets a
+            viewer password and you open that port for those browsers.
           </li>
           <li>
             If the console is served over <code>https://</code>, browsers block the
