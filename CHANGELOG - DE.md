@@ -13,6 +13,25 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 
 ---
 
+## Beta.4 – 29.09.2026
+
+### Sicherheit
+
+Korrekturen aus einer externen Sicherheitsprüfung (danke!).
+
+- **Die Einrichtungssperre versagt hinter einem Reverse-Proxy nicht mehr.** Als lokaler Administrator gilt eine Anfrage nur noch, wenn sie von einer Loopback-Adresse kommt, keine Proxy-Kopfzeile trägt **und** an einen Loopback-Namen gerichtet ist (`localhost`, `127.0.0.1`, `[::1]`). Ein Proxy auf demselben Rechner, der den öffentlichen Host-Namen durchreicht (auch ohne `X-Forwarded-*`), gilt damit als Besucher; das blockiert auch DNS-Rebinding. Die neue Option **`-no-local-admin`** schaltet die Einrichtung im Browser ganz ab (stattdessen `-config` verwenden).
+- **Console-Prüfung gegen SSRF gehärtet.** Link-Local-Ziele (auch die Cloud-Metadaten `169.254.169.254`), Multicast und `0.0.0.0` werden schon beim Verbindungsaufbau abgelehnt (auch nach der DNS-Auflösung), Weiterleitungen werden nicht verfolgt und ein Proxy aus der Umgebung wird nicht benutzt. Genaue Fehlermeldungen bekommt nur der Browser auf dem Rechner selbst; mit `-remote-setup` läuft jeder Fehlschlag in ein einziges „nicht erreichbar“, damit die Prüfung nicht als Portscanner taugt.
+- **Konten-Kennungen gehen nicht mehr an Besucher.** `account_id`, `action_player_id`, `funcom_id` und `fls_id` werden aus den Live-Daten entfernt – für alle außer dem lokalen Administrator, auch ohne `-public`. Beim Start auf einer im Netz erreichbaren Adresse ohne `-public` erscheint eine deutliche Warnung.
+- **Kein CDN mehr.** three.js 0.170.0 liegt unverändert (MIT) in `viewer/vendor/`. Der Server sendet eine `Content-Security-Policy` (nur die eigene Herkunft; die Import-Map ist per Hash erlaubt), `X-Content-Type-Options: nosniff` und `Referrer-Policy: no-referrer`. Die Seite lässt sich weiter in einen iframe einbetten.
+- **Sicherheitsprüfung in der CI:** `gitleaks` und `govulncheck` laufen bei jedem Push und Pull-Request.
+
+### Behoben
+
+- Die Extraktionswerkzeuge stürzen bei abgeschnittenen oder unerwarteten Paketdaten nicht mehr ab (`zen.Properties`, `zen.StructArray`, Container-Header), sondern melden den Abschneidefehler. Regressionstests decken jede Kürzung ab.
+- Die Kartenliste wird pro Laden einmal statt zweimal aufgebaut.
+
+---
+
 ## Beta.3 – 29.09.2026
 
 ### Neu

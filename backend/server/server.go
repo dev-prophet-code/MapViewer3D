@@ -31,7 +31,7 @@ import (
 
 // Version steht in der Oberfläche und in CHANGELOG.md; beim Bauen per
 // -ldflags "-X mapviewer3d/server.Version=…" überschreibbar.
-var Version = "Beta.3"
+var Version = "Beta.4"
 
 // PatchQuads ist die Kantenlänge eines Geländestücks in Quads.
 const PatchQuads = 128
@@ -77,6 +77,12 @@ type Server struct {
 	// RemoteSetup erlaubt Einrichtung und Instanznamen auch von anderen Rechnern.
 	// Ohne diesen Schalter darf das nur ein Browser auf demselben Rechner.
 	RemoteSetup bool
+
+	// NoLocalAdmin: nie eine Anfrage als lokaler Administrator behandeln (-no-local-admin),
+	// z. B. hinter einem Reverse-Proxy auf demselben Rechner.
+	NoLocalAdmin bool
+
+	stripped sync.Map // Pfad → bereinigte Live-Antwort (privacy.go)
 }
 
 // lp liefert die aktuelle Verbindung zur Console oder nil.
@@ -133,12 +139,21 @@ func New(dataDir, webDir, stateDir string, store *secure.Store) *Server {
 		// Weboberfläche immer neu prüfen lassen (ETag/Last-Modified), sonst
 		// hält der Browser nach Updates alte Module fest.
 		w.Header().Set("Cache-Control", "no-cache")
+		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+			if csp := contentSecurityPolicy(filepath.Join(webDir, "index.html")); csp != "" {
+				w.Header().Set("Content-Security-Policy", csp)
+			}
+		}
 		static.ServeHTTP(w, r)
 	})
 	return s
 }
 
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	s.mux.ServeHTTP(w, r)
+}
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 

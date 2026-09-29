@@ -84,7 +84,7 @@ Rebuilding the maps after a game update (`backend/cmd/extract`) needs the game's
 
 ## 🔐 Security
 
-Only server address and API token are stored – encrypted with **AES-256-GCM + XChaCha20-Poly1305**, keys derived via **HKDF-SHA512** and bound to machine and user, integrity via **HMAC-SHA512**. The token never reaches the browser; the server listens on `127.0.0.1` only and protects state-changing calls against CSRF. Details and honest limits: [Description-EN.md](Description-EN.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
+Only server address and API token are stored – encrypted with **AES-256-GCM + XChaCha20-Poly1305**, keys derived via **HKDF-SHA512** and bound to machine and user, integrity via **HMAC-SHA512**. The token never reaches the browser; the server listens on `127.0.0.1` only and protects state-changing calls against CSRF. Details and honest limits: [Description-EN.md](Description-EN.md). The setup screen only accepts a browser on the machine itself (loopback address **and** loopback host name); use `-no-local-admin` behind a reverse proxy. Account IDs are stripped from live data for everyone but that local administrator, the server sends a strict Content-Security-Policy, and three.js is vendored (no CDN). Anything reachable on the network shows player names and positions to everyone with the address, so restrict the port (firewall or access protection) or use `-public`. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## 📜 Changelog
 

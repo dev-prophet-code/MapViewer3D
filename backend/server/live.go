@@ -174,6 +174,8 @@ func (s *Server) liveFeed(w http.ResponseWriter, r *http.Request) {
 	c := s.lp().get(path, f.ttl)
 	if s.public != nil {
 		c = s.public.filterFeed(path, r.PathValue("feed"), c)
+	} else if !s.adminAllowed(r) {
+		c = s.stripPrivate(path, c)
 	}
 	writeCached(w, c)
 }
@@ -195,5 +197,10 @@ func (s *Server) liveBase(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Basis nicht freigegeben", http.StatusNotFound)
 		return
 	}
-	writeCached(w, s.lp().get("/api/bases/"+id+"/export", 2*time.Minute))
+	path := "/api/bases/" + id + "/export"
+	c := s.lp().get(path, 2*time.Minute)
+	if s.public == nil && !s.adminAllowed(r) {
+		c = s.stripPrivate(path, c)
+	}
+	writeCached(w, c)
 }

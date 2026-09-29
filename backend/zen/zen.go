@@ -228,7 +228,18 @@ func (r *Reader) Properties() ([]Property, error) {
 		pr := Property{Name: name, Type: r.Name()}
 		size := int(r.I32())
 		pr.ArrayIdx = int(r.I32())
-		if r.P+9 > len(r.B) {
+		// Vor dem Lesen des typabhängigen Tag-Teils prüfen, dass alles da ist:
+		// Typname/Namen (je 8 Byte), StructGuid (16) und das Flag-Byte der Property-Guid.
+		need := 9 // Inner-Name + Flag
+		switch pr.Type {
+		case "StructProperty":
+			need = 8 + 16 + 1
+		case "BoolProperty":
+			need = 2
+		case "MapProperty":
+			need = 8 + 8 + 1
+		}
+		if r.P+need > len(r.B) {
 			return props, fmt.Errorf("props: %s abgeschnitten", name)
 		}
 		switch pr.Type {
@@ -246,6 +257,9 @@ func (r *Reader) Properties() ([]Property, error) {
 			pr.Value = r.Name()
 		}
 		if r.U8() != 0 {
+			if r.P+16 > len(r.B) {
+				return props, fmt.Errorf("props: %s abgeschnitten", name)
+			}
 			r.P += 16
 		}
 		if size < 0 || r.P+size > len(r.B) {
@@ -359,7 +373,9 @@ func (pk *Package) StructArray(pr Property) (structName string, tagged [][]Prope
 	}
 	r := pk.Sub(pr.Raw)
 	n := int(r.I32())
-	if n == 0 || r.P+8*2+8 > len(r.B) {
+	// Tag des Elementtyps: 2 Namen (16), Größe und Index (8), Strukturname (8),
+	// StructGuid (16) und das Flag-Byte der Property-Guid (1)
+	if n <= 0 || r.P+16+8+8+16+1 > len(r.B) {
 		return "", nil, nil
 	}
 	r.Name() // Name des inneren Tags
@@ -369,6 +385,9 @@ func (pk *Package) StructArray(pr Property) (structName string, tagged [][]Prope
 	structName = r.Name()
 	r.P += 16 // StructGuid
 	if r.U8() != 0 {
+		if r.P+16 > len(r.B) {
+			return "", nil, nil
+		}
 		r.P += 16
 	}
 	switch structName {

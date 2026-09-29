@@ -10,6 +10,25 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ---
 
+## Beta.4 – 09/29/2026
+
+### Security
+
+Fixes from an external security review (thanks!).
+
+- **Setup guard no longer fails open behind a reverse proxy.** A request now only counts as the local administrator if it comes from a loopback address, carries no proxy header **and** is addressed to a loopback name (`localhost`, `127.0.0.1`, `[::1]`). A proxy on the same machine that forwards the public host name (even without `X-Forwarded-*`) is therefore treated as a visitor, which also blocks DNS rebinding. New option **`-no-local-admin`** switches browser setup off completely (use `-config` instead).
+- **Console check hardened against SSRF.** Link-local targets (including cloud metadata `169.254.169.254`), multicast and `0.0.0.0` are refused when connecting (also after DNS resolution), redirects are not followed and no environment proxy is used. Only the browser on the machine itself gets detailed error messages; with `-remote-setup` all failures collapse into one generic "unreachable", so the check cannot be used as a port scanner.
+- **Account IDs are no longer sent to visitors.** `account_id`, `action_player_id`, `funcom_id` and `fls_id` are removed from live data for everyone except the local administrator, even without `-public`. Starting on a network-reachable address without `-public` now prints a prominent warning.
+- **No more CDN.** three.js 0.170.0 ships in `viewer/vendor/` (unmodified, MIT). The server sends a `Content-Security-Policy` (own origin only; the import map is allowed by hash), `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. The page can still be embedded in an iframe.
+- **CI security scanning:** `gitleaks` and `govulncheck` now run on every push and pull request.
+
+### Fixed
+
+- Extraction tools no longer panic on truncated or unexpected package data (`zen.Properties`, `zen.StructArray`, container header); they return the truncation error instead. Regression tests cover every truncation length.
+- The map list is built once per load instead of twice.
+
+---
+
 ## Beta.3 – 09/29/2026
 
 ### New

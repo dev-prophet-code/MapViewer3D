@@ -53,6 +53,9 @@ func LoadPublicConfig(file string) (*PublicConfig, error) {
 	return &c, nil
 }
 
+// HasPublicFilter meldet, ob der öffentliche Betrieb (Partitionsfilter) aktiv ist.
+func (s *Server) HasPublicFilter() bool { return s.public != nil }
+
 // SetPublic schaltet den öffentlichen Betrieb ein (vor dem ersten Aufruf).
 func (s *Server) SetPublic(cfg *PublicConfig) { s.public = newPublicGate(cfg) }
 

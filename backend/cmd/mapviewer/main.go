@@ -39,6 +39,7 @@ func main() {
 	keyDir := flag.String("keydir", "", "Ablage des Hauptschlüssels (Standard: Benutzer-Konfigordner)")
 	addr := flag.String("addr", envOr("ADDR", "127.0.0.1:8795"), "Adresse; 0.0.0.0:8795 macht den Viewer im Netz erreichbar")
 	remoteSetup := flag.Bool("remote-setup", false, "Einrichtung auch von anderen Rechnern erlauben (nur hinter Zugangsschutz!)")
+	noLocalAdmin := flag.Bool("no-local-admin", false, "Einrichtung im Browser nie zulassen, auch nicht vom Rechner selbst (z. B. hinter einem Reverse-Proxy; dann -config verwenden)")
 	config := flag.String("config", "", "feste Konfigurationsdatei (apiBase, token, partitions, public) statt Einrichtung im Browser")
 	public := flag.String("public", "", "öffentlicher Betrieb: JSON mit erlaubten Partitionen und PvE-Quelle (siehe server/public.go)")
 	// Ohne Argumente gestartet (Doppelklick im Explorer/Finder): Browser öffnen;
@@ -93,6 +94,7 @@ func main() {
 		srv = server.New(*data, *web, *state, store)
 	}
 	srv.RemoteSetup = *remoteSetup
+	srv.NoLocalAdmin = *noLocalAdmin
 	if *public != "" {
 		cfg, err := server.LoadPublicConfig(*public)
 		if err != nil {
@@ -113,6 +115,9 @@ func main() {
 			log.Printf("Im Netz erreichbar; Einrichtung von überall erlaubt (-remote-setup)")
 		} else {
 			log.Printf("Im Netz erreichbar; Einrichtung nur im Browser auf diesem Rechner")
+		}
+		if !srv.HasPublicFilter() {
+			log.Printf("ACHTUNG: Der Viewer ist im Netz erreichbar und zeigt jedem mit der Adresse Spielernamen, Positionen, Basen und Fahrzeuge (Konten-Kennungen werden für Besucher entfernt). Nur in vertrauenswürdigen Netzen betreiben, per Firewall/Zugangsschutz absichern oder mit -public auf PvE-Partitionen beschränken.")
 		}
 	}
 	if *open {

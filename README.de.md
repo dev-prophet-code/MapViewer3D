@@ -61,6 +61,15 @@ start.bat -addr 0.0.0.0:8795           # Windows
   Besucher sehen die Karte, aber weder Server-Adresse noch Token-Fingerabdruck.
 - Hinter einem Reverse-Proxy (nginx, Caddy …) gelten alle weitergeleiteten Anfragen
   als Besucher.
+  Zusätzlich gilt eine Anfrage nur dann als lokal, wenn sie an `localhost`, `127.0.0.1`
+  oder `[::1]` gerichtet ist. Wer den Viewer hinter einem Proxy auf demselben Rechner
+  betreibt, sollte dennoch **`-no-local-admin`** setzen (Einrichtung dann per `-config`).
+- **Im Netz erreichbar heißt: für jeden mit der Adresse sichtbar.** Spielernamen,
+  Positionen, Basen und Fahrzeuge sehen alle Besucher. Konten-Kennungen (`account_id`,
+  `funcom_id` …) werden für Besucher entfernt, nur der Browser auf dem Server selbst sieht
+  sie. Den Port per Firewall auf das eigene Netz beschränken, einen Zugangsschutz
+  davorsetzen oder mit `-public` auf PvE-Partitionen begrenzen. Beim Start warnt das
+  Programm, wenn es ohne `-public` im Netz erreichbar ist.
 - `-remote-setup` erlaubt die Einrichtung von überall. Das nur hinter eigenem
   Zugangsschutz verwenden.
 - Auf Servern ohne Benutzerordner Einstellungen und Schlüssel selbst ablegen,

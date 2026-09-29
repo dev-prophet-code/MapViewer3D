@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"mapviewer3d/secure"
@@ -64,13 +65,27 @@ func sameOrigin(r *http.Request) bool {
 // adminAllowed: Zugangsdaten und Instanznamen ändern darf nur ein Browser auf
 // demselben Rechner, außer der Server läuft mit -remote-setup. So kann ein
 // öffentlich betriebener Viewer nicht von Besuchern umgestellt werden.
+//
+// Verweigert wird standardmäßig: "lokal" ist nur, was ausdrücklich lokal aussieht
+// (siehe isLocalRequest). Mit -no-local-admin gilt nie eine Anfrage als lokal,
+// z. B. hinter einem Reverse-Proxy auf demselben Rechner.
 func (s *Server) adminAllowed(r *http.Request) bool {
 	if s.RemoteSetup {
 		return true
 	}
-	// Über einen Reverse-Proxy (nginx …) kommt alles von 127.0.0.1; solche
-	// Anfragen gelten immer als entfernt.
-	for _, h := range []string{"Forwarded", "X-Forwarded-For", "X-Real-Ip"} {
+	if s.NoLocalAdmin {
+		return false
+	}
+	return isLocalRequest(r)
+}
+
+// isLocalRequest: Die Anfrage kommt von einer Loopback-Adresse, trägt keine
+// Proxy-Kopfzeile und richtet sich an einen Loopback-Namen (localhost, 127.0.0.1,
+// [::1]). Ein Reverse-Proxy auf demselben Rechner reicht meist den öffentlichen
+// Host-Namen durch und gilt damit auch dann als entfernt, wenn er keine
+// X-Forwarded-Kopfzeile setzt; das schützt auch vor DNS-Rebinding.
+func isLocalRequest(r *http.Request) bool {
+	for _, h := range []string{"Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Real-Ip"} {
 		if r.Header.Get(h) != "" {
 			return false
 		}
@@ -79,7 +94,23 @@ func (s *Server) adminAllowed(r *http.Request) bool {
 	if err != nil {
 		return false
 	}
-	ip := net.ParseIP(host)
+	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+		return false
+	}
+	return hostIsLoopback(r.Host)
+}
+
+// hostIsLoopback prüft den Host-Teil eines Host-Headers.
+func hostIsLoopback(hostport string) bool {
+	h := hostport
+	if hh, _, err := net.SplitHostPort(hostport); err == nil {
+		h = hh
+	}
+	h = strings.Trim(h, "[]")
+	if strings.EqualFold(h, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(h)
 	return ip != nil && ip.IsLoopback()
 }
 
@@ -144,11 +175,48 @@ func normalizeServer(server string, port int) (base, display string, err error) 
 	return u.Scheme + "://" + hp, hp, nil
 }
 
+// consoleClient prüft die Console. Ziele, die nie eine Console sind, werden schon
+// beim Verbindungsaufbau abgelehnt (Link-Local inkl. Cloud-Metadaten 169.254.169.254,
+// Multicast, 0.0.0.0) – auch nach DNS-Auflösung. Weiterleitungen werden nicht
+// verfolgt und es wird kein Proxy aus der Umgebung benutzt.
+var consoleClient = &http.Client{
+	Timeout:       15 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	Transport: &http.Transport{
+		Proxy:       nil,
+		DialContext: (&net.Dialer{Timeout: 10 * time.Second, Control: blockSpecialTargets}).DialContext,
+	},
+}
+
+// blockSpecialTargets lehnt Zieladressen ab, die keine Console sein können.
+func blockSpecialTargets(network, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+		return errors.New("target not allowed")
+	}
+	return nil
+}
+
 // checkConsole prüft Erreichbarkeit und Token an der Kartenliste der Console.
-func checkConsole(base, token string) error {
+// Nur für den Browser auf dem Rechner selbst (detailed) gibt es genaue Fehler;
+// aus der Ferne (-remote-setup) bleibt es bei einem Sammelfehler, damit die
+// Prüfung nicht als Port-Scanner für das interne Netz taugt.
+func checkConsole(base, token string, detailed bool) error {
+	err := checkConsoleDetailed(base, token)
+	if err != nil && !detailed {
+		return &setupError{"unreachable", ""}
+	}
+	return err
+}
+
+func checkConsoleDetailed(base, token string) error {
 	req, _ := http.NewRequest(http.MethodGet, base+"/api/map/partitions", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	resp, err := consoleClient.Do(req)
 	if err != nil {
 		return &setupError{"unreachable", shortNetError(err)}
 	}
@@ -192,7 +260,7 @@ func (s *Server) setupSave(w http.ResponseWriter, r *http.Request) {
 		failErr(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := checkConsole(base, in.Token); err != nil {
+	if err := checkConsole(base, in.Token, isLocalRequest(r)); err != nil {
 		failErr(w, http.StatusBadGateway, err)
 		return
 	}

@@ -109,9 +109,9 @@ async function loadMaps() {
   const maps = await api.maps();
   if (!maps.length) { $('mapinfo').textContent = t('maps.none'); return; }
   const want = decodeURIComponent(location.hash.slice(1));
-  const probe = fillMaps(maps, want);
-  const start = probe.find((e) => e.id === want) ?? (START_MAP && byLive(probe, START_MAP)) ?? probe[0];
-  entries = fillMaps(maps, start.id);
+  entries = fillMaps(maps, want);
+  const start = entries.find((e) => e.id === want) ?? (START_MAP && byLive(entries, START_MAP)) ?? entries[0];
+  $('map').value = start.id;
   current = null;
   loadMap(start);
 }

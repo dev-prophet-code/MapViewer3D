@@ -90,8 +90,24 @@ func (db *DB) readContainerHeader(c *iostore.Container) error {
 	if err != nil {
 		return err
 	}
+	return db.parseContainerHeader(c.ContainerID, b)
+}
+
+// parseContainerHeader wertet den Container-Header (V2) aus; b sind die rohen Bytes.
+func (db *DB) parseContainerHeader(containerID uint64, b []byte) error {
 	le := binary.LittleEndian
+	// Feste Feldgrößen des V2-Layouts gegen die tatsächliche Länge prüfen, statt
+	// bei einem abgeschnittenen oder anders aufgebauten Header zu paniken.
+	bad := func(what string) error {
+		return fmt.Errorf("Container-Header %016x: %s außerhalb der Daten (%d Byte)", containerID, what, len(b))
+	}
+	if len(b) < 20 {
+		return bad("Kopf")
+	}
 	n := int(le.Uint32(b[16:]))
+	if n < 0 || n > len(b)/8 || 20+8*n+4 > len(b) {
+		return bad("Paketliste")
+	}
 	ids := make([]uint64, n)
 	for i := range ids {
 		ids[i] = le.Uint64(b[20+8*i:])
@@ -100,11 +116,17 @@ func (db *DB) readContainerHeader(c *iostore.Container) error {
 	const entrySize = 24
 	for i, pid := range ids {
 		e := p + i*entrySize
+		if e+entrySize > len(b) {
+			return bad("StoreEntry")
+		}
 		num := int(le.Uint32(b[e+8:]))
 		off := int(le.Uint32(b[e+12:]))
 		info := db.pkgs[pid]
 		if info == nil {
 			continue
+		}
+		if num < 0 || off < 0 || num > len(b)/8 || e+8+off+8*num > len(b) {
+			return bad("Importliste")
 		}
 		for k := 0; k < num; k++ {
 			info.imported = append(info.imported, le.Uint64(b[e+8+off+8*k:]))
