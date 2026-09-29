@@ -32,7 +32,7 @@ if [ "${1:-}" = "--zip" ]; then
   (cd .. && zip -qr "MapViewer3D.zip" \
     MapViewer3D/bin MapViewer3D/data MapViewer3D/viewer MapViewer3D/backend \
     MapViewer3D/start.sh MapViewer3D/start.command MapViewer3D/start.bat \
-    MapViewer3D/README.md MapViewer3D/README.de.md "MapViewer3D/CHANGELOG - DE.md" "MapViewer3D/CHANGELOG - EN.md" MapViewer3D/Beschreibung-DE.md MapViewer3D/Description-EN.md \
+    MapViewer3D/LICENSE MapViewer3D/README.md MapViewer3D/README.de.md "MapViewer3D/CHANGELOG - DE.md" "MapViewer3D/CHANGELOG - EN.md" MapViewer3D/Beschreibung-DE.md MapViewer3D/Description-EN.md \
     -x '*.DS_Store' -x '*/state/*' -x '*/paks/*' -x '*.enc' -x '*/mapimage.png')
   echo "→ $zip ($(du -h "$zip" | cut -f1), Version $VERSION)"
 fi

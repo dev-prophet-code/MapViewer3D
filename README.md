@@ -9,6 +9,7 @@ Explore Hagga Basin and Deep Desert with players, bases, vehicles, hazards and r
 [![CI](https://github.com/dev-prophet-code/MapViewer3D/actions/workflows/ci.yml/badge.svg)](https://github.com/dev-prophet-code/MapViewer3D/actions/workflows/ci.yml)
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-viewer-000000?logo=threedotjs&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
 **English** · [Deutsch](README.de.md)
@@ -19,6 +20,9 @@ Explore Hagga Basin and Deep Desert with players, bases, vehicles, hazards and r
 
 > [!NOTE]
 > Unofficial fan project. Not affiliated with or endorsed by Funcom. *Dune: Awakening* and all related names are trademarks of their respective owners.
+
+> [!WARNING]
+> **Requires the Red-Blink Docker stack.** MapViewer3D only works with servers running the [Red-Blink](https://github.com/Red-Blink) self-hosting stack (*dune-awakening-selfhost-docker*). It reads its data from that stack's console API (default port `8088`, API token `dak_…`). Other server setups are not supported.
 
 ## ✨ Features
 
@@ -84,6 +88,10 @@ Only server address and API token are stored – encrypted with **AES-256-GCM + 
 ## 📜 Changelog
 
 [CHANGELOG - EN.md](<CHANGELOG - EN.md>) · [CHANGELOG - DE.md](<CHANGELOG - DE.md>)
+
+## 📄 License
+
+Released under the [MIT License](LICENSE) – free to use, modify and share, also commercially. Forks and adaptations are welcome.
 
 ## 🤝 Contributing
 

@@ -5,6 +5,12 @@ Docker-Stack von Red-Blink (*dune-awakening-selfhost-docker*). Er zeigt Hagga Ba
 und Deep Desert je Serverinstanz (z. B. PvE, PvP, Creative) mit Spielern, Basen in 3D,
 Fahrzeugen, Orten, Gefahren und Ressourcen.
 
+> **Voraussetzung:** Der MapViewer3D funktioniert **nur mit dem Docker-Stack von
+> [Red-Blink](https://github.com/Red-Blink)** (*dune-awakening-selfhost-docker*).
+> Andere Server-Setups werden nicht unterstützt.
+>
+> **Lizenz:** [MIT](LICENSE) – frei nutzbar und anpassbar.
+
 ## Starten
 
 Go muss nicht installiert sein: Das Programm liegt für Windows, Linux und macOS
