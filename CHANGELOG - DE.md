@@ -20,6 +20,9 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 - **Deep Desert: Felsen, Ecolabs und Wracks des Layouts.** Beta.5 baute nur die Geländekacheln des wöchentlichen Layouts. Jetzt werden auch die *Content-Blöcke* gelesen, die die 162 Cluster des Layouts in die Wüste setzen (Felsformationen, Ecolab-Plätze, Schiffswracks, Sandfliegen-Lager: rund 720 Blöcke), gedreht und wie die festen Blöcke der Reihe A auf die Karte gesetzt und ins Gelände gerastert. Die Wüste hinter Reihe A zeigt damit die Objekte des aktuellen Kartenstands deines Servers, nicht nur den Boden.
 - Die Zahl der Blöcke und ihrer Netze steht im Protokoll von `extract` (z. B. *162 Cluster, 727 Content-Blöcke*).
 
+- **Folgt jedem Coriolis-Sturm von selbst.** Mit den Spieldateien (`mapviewer -paks <Ordner>`) fragt der Server die Console alle 5 Minuten nach dem aktuellen Layout; bringt ein Sturm ein neues, baut er das passende Deep-Desert-Gelände im Hintergrund (etwa 15 s), behält die neuesten drei Layouts und löscht ältere. Die Kartenliste wechselt selbständig auf das neue Gelände, und der offene Browser-Tab lädt die Deep Desert ohne Neuladen der Seite um (Kamera und Auswahl bleiben). Bis es fertig ist, meldet das Bedienfeld, dass das Gelände gebaut wird. Ohne Spieldateien zeigt der Viewer weiter das passende Gelände, falls vorhanden, sonst die Dünenvorlage, und warnt.
+- Live-Objekte (Spieler, Basen, Fahrzeuge, Spice, Erz, Schrott) kamen schon bisher laufend aus der Console; zusammen mit dem Layout-Gelände zeigt die Karte damit immer den aktuellen Stand des Servers.
+
 ### Hinweise
 
 - Die Blöcke liegen innerhalb der Kachelfelder ihrer Cluster; das bestätigt auch die Lage des Kachelrasters.

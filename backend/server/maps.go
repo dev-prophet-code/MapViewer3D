@@ -182,5 +182,5 @@ func (s *Server) coriolisFor(t *terrain) *Coriolis {
 		return nil
 	}
 	return &Coriolis{Layout: *doc.Layout, Seed: doc.Seed, NextCycle: doc.NextCycle,
-		Match: t.info.Layout == *doc.Layout}
+		Match: t.info.Layout == *doc.Layout, Building: s.building.Load() == int32(*doc.Layout)}
 }

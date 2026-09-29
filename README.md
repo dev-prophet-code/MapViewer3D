@@ -49,6 +49,8 @@ Explore Hagga Basin and Deep Desert with players, bases, vehicles, hazards and r
 
 3. Your browser opens <http://127.0.0.1:8795>. Enter your server address, console port (default `8088`) and a **read-only API token** (`dak_…`). The connection is verified immediately; a wrong token is rejected and not stored.
 
+On first start the viewer asks for your console's address and API token; nothing about any server is shipped in the package. To follow the weekly Deep Desert layout automatically, point a server-side viewer at the game files with `-paks <folder with .utoc/.ucas>`; it then builds the terrain of each new Coriolis layout itself.
+
 Detailed notes on Windows SmartScreen, macOS Gatekeeper and running on a server (systemd example, `-addr`, `-remote-setup`, `-state`, `-keydir`) are in the [German README](README.de.md#starten) and the [English description](Description-EN.md).
 
 ## 🧱 Architecture

@@ -66,17 +66,23 @@ function updateCursor() {
 
 // ---------- Karte laden ----------
 let current = null; // aktuell geladene Karte (Gelände)
+let currentVersion = 0; // Stand der Geländedaten
 
-// Eintrag = Karte + Serverinstanz; das Gelände wird nur bei Kartenwechsel neu geladen
-function loadMap(entry) {
+// Eintrag = Karte + Serverinstanz; das Gelände wird nur bei Kartenwechsel neu geladen.
+// keepView: Aktualisierung derselben Karte (neues Coriolis-Layout) – Kamera bleibt stehen.
+function loadMap(entry, keepView = false) {
   const m = entry.map;
-  if (current !== m.name) {
+  if (current !== m.name || m.version !== currentVersion) {
+    const switched = current !== m.name && !keepView;
     current = m.name;
+    currentVersion = m.version;
     terrain.setMap(m);
-    const ext = terrain.extent;
-    const [ox, oz] = terrain.origin;
-    controls.target.set(ox + ext / 2, 0, oz + ext / 2);
-    camera.position.set(ox + ext * 0.35, ext * 0.45, oz + ext * 1.05);
+    if (switched) {
+      const ext = terrain.extent;
+      const [ox, oz] = terrain.origin;
+      controls.target.set(ox + ext / 2, 0, oz + ext / 2);
+      camera.position.set(ox + ext * 0.35, ext * 0.45, oz + ext * 1.05);
+    }
   }
   grid.setMap(m);
   $('gridRow').hidden = !grid.enabled;
@@ -119,6 +125,29 @@ async function loadMaps() {
   current = null;
   loadMap(start);
 }
+
+// Nach einem Coriolis-Sturm wechselt die Deep Desert das Layout: Der Server baut das
+// Gelände dazu und meldet das neue Layout. Der Viewer fragt regelmäßig nach und lädt die
+// Karte um, ohne dass jemand die Seite neu laden muss (Kamera und Auswahl bleiben).
+async function refreshMaps() {
+  if (document.hidden || !running || !entries.length) return;
+  const cur = entries.find((e) => e.id === $('map').value);
+  if (!cur?.map.live) return;
+  let maps;
+  try { maps = await api.maps(); } catch { return; }
+  const fresh = maps.find((m) => m.live === cur.map.live);
+  if (!fresh) return;
+  const changed = fresh.name !== cur.map.name || fresh.version !== cur.map.version
+    || JSON.stringify(fresh.coriolis) !== JSON.stringify(cur.map.coriolis);
+  if (!changed) return;
+  const partition = cur.view?.partition;
+  const id = partition != null ? `${fresh.name}@${partition}` : fresh.name;
+  entries = fillMaps(maps, id);
+  const next = entries.find((e) => e.id === id) ?? byLive(entries, cur.map.live) ?? entries[0];
+  $('map').value = next.id;
+  loadMap(next, true);
+}
+setInterval(refreshMaps, 2 * 60 * 1000);
 
 // Erste Instanz einer Karte, gesucht über den Live-Namen (HaggaBasin, DeepDesert)
 const byLive = (list, name) => list.find((e) => e.map.live === name);

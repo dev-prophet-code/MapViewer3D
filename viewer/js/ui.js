@@ -120,9 +120,11 @@ function coriolisInfo(m) {
     text += ` · ${t('mapinfo.layout.next', { date: next.toLocaleString(), left })}`;
   }
   if (!c.match) {
-    text += `\n⚠ ${m.layout
-      ? t('mapinfo.layout.other', { have: m.layout, live: c.layout })
-      : t('mapinfo.layout.generic', { live: c.layout })}`;
+    text += `\n⚠ ${c.building
+      ? t('mapinfo.layout.building', { live: c.layout })
+      : m.layout
+        ? t('mapinfo.layout.other', { have: m.layout, live: c.layout })
+        : t('mapinfo.layout.generic', { live: c.layout })}`;
   }
   return text;
 }

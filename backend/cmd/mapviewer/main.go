@@ -42,6 +42,7 @@ func main() {
 	noLocalAdmin := flag.Bool("no-local-admin", false, "Einrichtung im Browser nie zulassen, auch nicht vom Rechner selbst (z. B. hinter einem Reverse-Proxy; dann -config verwenden)")
 	config := flag.String("config", "", "feste Konfigurationsdatei (apiBase, token, partitions, public) statt Einrichtung im Browser")
 	public := flag.String("public", "", "öffentlicher Betrieb: JSON mit erlaubten Partitionen und PvE-Quelle (siehe server/public.go)")
+	paks := flag.String("paks", "", "Ordner mit den Spieldateien (.utoc/.ucas): baut das Deep-Desert-Gelände nach jedem Coriolis-Sturm selbst für das neue Layout")
 	// Ohne Argumente gestartet (Doppelklick im Explorer/Finder): Browser öffnen;
 	// unter Windows zusätzlich das Fenster bei Fehlern offen halten.
 	noArgs := len(os.Args) == 1
@@ -102,6 +103,14 @@ func main() {
 		}
 		srv.SetPublic(cfg)
 		log.Printf("Öffentlicher Betrieb: nur Partitionen %v, soweit %s sie als PvE meldet", cfg.Partitions, cfg.ModeSource)
+	}
+
+	if *paks != "" {
+		if _, err := os.Stat(*paks); err != nil {
+			fatalf("Ordner fehlt: %s (-paks)", *paks)
+		}
+		srv.EnableAutoLayout(*paks)
+		log.Printf("Deep Desert: Gelände für neue Coriolis-Layouts wird aus %s selbst gebaut", *paks)
 	}
 
 	ln, err := net.Listen("tcp", *addr)

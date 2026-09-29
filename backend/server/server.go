@@ -24,6 +24,7 @@ import (
 	"regexp"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"mapviewer3d/mapdata"
 	"mapviewer3d/secure"
@@ -49,6 +50,7 @@ type Coriolis struct {
 	Seed      string `json:"seed,omitempty"`      // z. B. cor-8
 	NextCycle string `json:"nextCycle,omitempty"` // Beginn des nächsten Zyklus (UTC, RFC 3339)
 	Match     bool   `json:"match"`               // Gelände dieser Karte gehört zu diesem Layout
+	Building  bool   `json:"building,omitempty"`  // Gelände für dieses Layout wird gerade gebaut
 }
 
 // MapInfo ist Meta plus vom Server ergänzte Werte.
@@ -92,6 +94,12 @@ type Server struct {
 	NoLocalAdmin bool
 
 	stripped sync.Map // Pfad → bereinigte Live-Antwort (privacy.go)
+
+	// Automatischer Bau des Deep-Desert-Geländes je Coriolis-Layout (autolayout.go)
+	paks            string       // Ordner mit den Spieldateien; leer = aus
+	building        atomic.Int32 // Layout, das gerade gebaut wird (0 = keines)
+	layoutFailed    atomic.Value // time.Time des letzten Fehlschlags
+	layoutFailedFor atomic.Int32
 }
 
 // lp liefert die aktuelle Verbindung zur Console oder nil.
