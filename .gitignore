@@ -19,3 +19,4 @@ mapimage.png
 /Beschreibung-DE.md
 /build-release.sh
 /check-clean.sh
+*.log
