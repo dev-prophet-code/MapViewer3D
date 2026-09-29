@@ -90,7 +90,7 @@ if [ -z "${API_BASE:-}" ]; then
   [ -n "$port" ] || port="$(env_get ADMIN_BIND_PORT)"
   case "$port" in ''|*[!0-9]*) port=8088 ;; esac
   case "$bind_host" in
-    ''|auto|0.0.0.0|::|'[::]') candidates="127.0.0.1 $(lan_addrs)" ;;
+    ''|auto|0.0.0.0|::|'[::]') candidates="127.0.0.1 $(lan_addrs | tr "\n" " ")" ;;
     localhost) candidates="127.0.0.1" ;;
     *) candidates="$bind_host" ;;
   esac
