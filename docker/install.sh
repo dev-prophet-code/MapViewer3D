@@ -17,11 +17,13 @@
 #   API_TOKEN   console API token (asked for if not stored yet)
 #   MV_URL / MV_SHA256   release ZIP and checksum (default: pinned release below)
 #   MV_ZIP      use an already downloaded ZIP instead of downloading
+#   MV_ADDR     address the viewer listens on (default 0.0.0.0:8795; use e.g.
+#               192.168.1.5:8795 to expose it on one interface only)
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-MV_URL="${MV_URL:-https://github.com/dev-prophet-code/MapViewer3D/releases/download/beta.3/MapViewer3D-Beta.3.zip}"
-MV_SHA256="${MV_SHA256:-488b54293c4d83ba6775ac20eefc363a884c46d473a32e31c63d6f7065f036d1}"
+MV_URL="${MV_URL:-https://github.com/dev-prophet-code/MapViewer3D/releases/download/beta.4/MapViewer3D-Beta.4.zip}"
+MV_SHA256="${MV_SHA256:-95ac3c48576aa5a1388342f4e5ed8b5d170c1c27c770530a0c6ec2eb318a36f9}"
 
 fail() { echo "✗ $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "'$1' is required."; }
@@ -129,15 +131,23 @@ else
   echo "→ Unpacking…"
   rm -rf app.tmp && mkdir app.tmp
   unzip -q "$zip" -d app.tmp
-  [ -d app.tmp/bin ] && [ -d app.tmp/data ] && [ -d app.tmp/viewer ] || fail "The ZIP does not look like a MapViewer3D package."
-  mv app.tmp app
+  # The package has either a single top-level folder (MapViewer3D/) or is flat
+  src=app.tmp
+  if [ ! -d "$src/bin" ] && [ "$(ls -A app.tmp | wc -l | tr -d ' ')" = 1 ] && [ -d "app.tmp/$(ls -A app.tmp)" ]; then
+    src="app.tmp/$(ls -A app.tmp)"
+  fi
+  [ -d "$src/bin" ] && [ -d "$src/data" ] && [ -d "$src/viewer" ] || fail "The ZIP does not look like a MapViewer3D package."
+  mv "$src" app
+  rm -rf app.tmp
 fi
 
 # 6. Config (private: contains the key) and start ------------------------------
 umask 077
 printf '{\n  "apiBase": "%s",\n  "token": "%s"\n}\n' "$API_BASE" "$API_TOKEN" > config.json
-printf 'MV_UID=%s\nMV_GID=%s\n' "$(id -u)" "$(id -g)" > .env
+printf 'MV_UID=%s\nMV_GID=%s\nMV_ADDR=%s\n' "$(id -u)" "$(id -g)" "${MV_ADDR:-0.0.0.0:8795}" > .env
 docker compose up -d
 echo
-echo "✓ MapViewer3D is running on port 8795."
+echo "✓ MapViewer3D is running on ${MV_ADDR:-0.0.0.0:8795}."
+echo "  Anyone who can reach that port sees player names and positions: restrict it"
+echo "  with a firewall or MV_ADDR (see README, section Security)."
 echo "  Open the '3D Map' entry in Dune Docker Console (or http://<server>:8795)."

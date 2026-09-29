@@ -17,6 +17,7 @@ exec "$bin" \
   -data /app/data \
   -web /app/viewer \
   -config /config/config.json \
+  -no-local-admin \
   -state /tmp/state \
   -keydir /tmp/key \
   -open=false

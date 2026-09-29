@@ -62,6 +62,26 @@ Console → addon page (iframe) → viewer :8795 (companion container, host netw
 The API key stays inside the companion container (`config.json`, owner-only). The browser
 never sees it. The container runs as your user, read-only, without capabilities.
 
+## Security
+
+- **Port `8795` is open to everyone who can reach it.** The viewer has no login: anyone with the
+  address sees player names, positions, bases and vehicles. Account IDs (`account_id`, `funcom_id`, …)
+  are removed for visitors, but the map itself is visible. Restrict the port with a firewall to the
+  networks that need it, or bind it to a single interface, e.g.
+  `MV_ADDR=192.168.1.5:8795 sh runtime/addons/installed/mapviewer3d/docker/install.sh`
+  (the installer writes it to `runtime/mapviewer3d/.env`).
+- **Least privilege:** the API key only needs `maps: Read` and `bases: Read`. It is stored in
+  `runtime/mapviewer3d/config.json` (owner-only, plain text, like other console secrets). Revoke it
+  under *Settings → API Keys* if the server is ever compromised.
+- **Container:** runs as your user, read-only filesystem, no capabilities, `no-new-privileges`;
+  browser setup inside the viewer is disabled (`-config`, `-no-local-admin`).
+- **Supply chain:** the installer downloads a pinned viewer release and refuses it unless its
+  SHA-256 matches. The viewer loads no code from a CDN and sends a Content-Security-Policy.
+- The addon page itself has a strict CSP and only embeds the viewer address you configured
+  (`http`/`https` only).
+
+Found a problem? See the viewer's [SECURITY.md](https://github.com/dev-prophet-code/MapViewer3D/blob/main/SECURITY.md).
+
 ## Notes
 
 - Console served over `https://`? Browsers block the plain-http viewer inside the page.
