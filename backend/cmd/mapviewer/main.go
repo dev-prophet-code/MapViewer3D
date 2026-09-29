@@ -109,6 +109,9 @@ func main() {
 		if _, err := os.Stat(*paks); err != nil {
 			fatalf("Ordner fehlt: %s (-paks)", *paks)
 		}
+		if !server.AutoBuildAvailable {
+			fatalf("-paks: Dieses Programm liest die Spieldateien nicht. Selbst bauen mit: cd backend && go build -tags paks -o ../bin/<Programm> ./cmd/mapviewer (braucht einen C++-Compiler)")
+		}
 		srv.EnableAutoLayout(*paks)
 		log.Printf("Deep Desert: Gelände für neue Coriolis-Layouts wird aus %s selbst gebaut", *paks)
 	}

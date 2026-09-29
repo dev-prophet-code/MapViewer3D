@@ -11,10 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"mapviewer3d/assets"
-	"mapviewer3d/mapbuild"
 	"mapviewer3d/mapdata"
-	"mapviewer3d/maps"
 )
 
 // Nach jedem Coriolis-Sturm wählt der Spielserver ein neues Layout der Deep Desert.
@@ -87,32 +84,6 @@ func (s *Server) ensureLayout() {
 	}
 	log.Printf("Coriolis-Layout %d: Gelände fertig (%.0f s)", n, time.Since(t0).Seconds())
 	s.pruneLayouts(n)
-}
-
-func (s *Server) buildLayout(n int, dir string) error {
-	db, err := assets.Open(s.paks)
-	if err != nil {
-		return err
-	}
-	defs, _ := maps.Resolve([]string{"DeepDesert_1"}, db.Paths())
-	if len(defs) == 0 || defs[0].Repeat == "" {
-		return fmt.Errorf("Deep Desert nicht in den Spieldateien gefunden")
-	}
-	def := defs[0]
-	def.Layout = n
-	def.ID = filepath.Base(dir)
-	res, err := mapbuild.Build(db, def)
-	if err != nil {
-		return err
-	}
-	tmp := dir + ".tmp"
-	os.RemoveAll(tmp)
-	if err := res.Write(tmp); err != nil {
-		os.RemoveAll(tmp)
-		return err
-	}
-	os.RemoveAll(dir)
-	return os.Rename(tmp, dir)
 }
 
 // pruneLayouts behält das aktuelle Layout und die jüngsten Stände, der Rest wird gelöscht.
