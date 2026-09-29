@@ -7,28 +7,49 @@ The addon page embeds [MapViewer3D](https://github.com/dev-prophet-code/MapViewe
 which runs as a small companion container next to the console. Nothing is written to the
 game or the database – it is read-only.
 
+## ⚠️ An API key is required
+
+MapViewer3D **cannot work without a Console API key.** The viewer reads its live data through
+the Console HTTP API, and the Console refuses every request without a key (`401`) – also from
+the same machine, and addons get no direct API access. Only an admin can create keys.
+
+**Create the key first** (Console → **Settings → API Keys** → create):
+
+| Field | Value |
+|---|---|
+| Name | `MapViewer3D` (any name) |
+| Scope **`maps`** | **Read** – map list, live players, vehicles, storage, locations, hazards, resources, spice |
+| Scope **`bases`** | **Read** – the pieces of each base, shown as 3D buildings |
+| **All other scopes** | **None** (leave everything else untouched) |
+| Expiry | none, or a date you will remember – an expired key stops the map |
+
+- Choose **Read**, never *Read+write*. The viewer only reads.
+- With `maps` missing, the map stays empty; with `bases` missing, bases show as icons but not as 3D buildings.
+- Copy the key (`dak_…`) when the Console shows it – it is displayed **only once**.
+- Revoke or rotate it any time under *Settings → API Keys*; then run the installer again with the new key.
+
 ## Install
 
-1. Install the addon from the console's **Addons** page. It needs **no permissions**.
-2. On the machine that runs the console, run the installer that ships in the addon folder:
+1. Create the API key as described above.
+2. Install the addon from the console's **Addons** page. It needs **no permissions** itself.
+3. On the machine that runs the console, run the installer that ships in the addon folder:
 
    ```bash
    sh runtime/addons/installed/mapviewer3d/docker/install.sh
    ```
 
-   Everything is detected automatically (stack folder, console port from `.env`,
-   console address). You are asked for **one thing, once**: a console API key. Only an
-   admin can create keys, so this cannot be automated:
-   *Settings → API Keys → create key, scopes* **maps: Read** and **bases: Read**.
-3. Open **3D Map** in the console. Done – the page finds the viewer on port `8795`
-   of the same host by itself.
+   Everything except the key is detected automatically (stack folder, console port from
+   `.env`, console address). The installer asks for the key once, **checks it against the
+   Console** and refuses to start if it is missing, wrong or lacks `maps: Read`. It is stored
+   and reused on re-runs.
+4. Open **3D Map** in the console. The page finds the viewer on port `8795` of the same host by itself.
 
-Open TCP port `8795` for the browsers that use the console. The installer checks the key
-against the console before it starts anything.
+Open TCP port `8795` for the browsers that use the console.
 
 ## Update / remove
 
 - Update the viewer: delete `runtime/mapviewer3d/app`, run the installer again (the stored key is reused).
+- New key: delete `runtime/mapviewer3d/config.json`, run the installer again and paste the new key.
 - Remove: `docker compose -f runtime/mapviewer3d/docker-compose.yml down`, then delete `runtime/mapviewer3d`.
 
 ## How it works

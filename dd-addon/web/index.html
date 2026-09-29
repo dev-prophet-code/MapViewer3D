@@ -35,6 +35,12 @@
         <p id="helpReason" class="muted"></p>
         <ol>
           <li>
+            <strong>Create a Console API key first</strong> (<em>Settings → API Keys</em>):
+            scope <code>maps</code> = <strong>Read</strong>, scope <code>bases</code> =
+            <strong>Read</strong>, everything else <em>None</em>. MapViewer3D cannot work
+            without it.
+          </li>
+          <li>
             Install the companion container on the machine that runs the console
             (one command, see <code>docker/README.md</code> in the addon package):
             <pre>sh install.sh</pre>

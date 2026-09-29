@@ -5,8 +5,9 @@
 #
 # Everything is detected automatically: the console stack folder, the console
 # port (ADMIN_BIND_PORT from the stack's .env) and its address. The only thing
-# that cannot be automated is the API token: the console lets only an admin
-# create API keys (Settings -> API Keys, scopes "maps: Read" and "bases: Read").
+# that cannot be automated is the API key, and MapViewer3D does not work without
+# it: only a console admin can create keys (Settings -> API Keys). Create one
+# with scope maps = Read and bases = Read, all other scopes None.
 # You are asked for it once; re-running the script reuses the stored one.
 #
 # Optional environment variables:
@@ -81,8 +82,13 @@ fi
 API_TOKEN="${API_TOKEN:-$stored_token}"
 if [ -z "$API_TOKEN" ]; then
   echo
-  echo "One-time step: in Dune Docker Console open Settings -> API Keys, create a key"
-  echo "(name e.g. 'MapViewer3D', scopes: maps = Read, bases = Read) and paste it here."
+  echo "An API key is REQUIRED - MapViewer3D cannot work without it."
+  echo "In Dune Docker Console open Settings -> API Keys and create a key:"
+  echo "  name:  MapViewer3D"
+  echo "  scope: maps  = Read"
+  echo "  scope: bases = Read"
+  echo "  all other scopes: None (never Read+write)"
+  echo "The key is shown only once - paste it here."
   printf 'API key (dak_...): '
   stty -echo 2>/dev/null || true
   read -r API_TOKEN
@@ -102,7 +108,7 @@ code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
   -H "Authorization: Bearer $API_TOKEN" "$API_BASE/api/map/partitions" || true)"
 case "$code" in
   200) echo "✓ Console accepted the key" ;;
-  401|403) fail "The console rejected the key (HTTP $code). Check the key and its scopes (maps: Read)." ;;
+  401|403) fail "The console rejected the key (HTTP $code). Check the key and that it has maps = Read and bases = Read." ;;
   000) fail "Console not reachable at $API_BASE. Is it running? Set API_BASE if it uses another address." ;;
   *) fail "Unexpected answer from the console (HTTP $code) at $API_BASE/api/map/partitions." ;;
 esac
