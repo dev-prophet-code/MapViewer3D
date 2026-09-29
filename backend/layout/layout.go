@@ -40,10 +40,19 @@ type Tile struct {
 	Bounds [6]float64 // FBox (min xyz, max xyz) der Kachel im Vorlagenraum, cm
 }
 
+// Cluster ist ein Baustein des Layouts (WLC_*): Kacheln und Content-Blöcke, verankert
+// an einer Zelle des Rasters.
+type Cluster struct {
+	AX, AY    int    // ClusterAnchor: Zelle der Ecke des 4×4-Bereichs
+	Asset     string // Paketpfad des WorldLayoutClusterDataAsset
+	Variation string // ClusterVariation, z. B. Default oder Ecolab_012
+}
+
 // Layout ist der ausgelesene Kachelplan eines Layouts.
 type Layout struct {
-	N     int
-	Tiles []Tile
+	N        int
+	Tiles    []Tile
+	Clusters []Cluster
 }
 
 var assetName = regexp.MustCompile(`/DeepDesert_1/Layouts/DA_DeepDesert_1_Layout_(\d+)$`)
@@ -91,6 +100,9 @@ func Load(db *assets.DB, n int) (*Layout, error) {
 		return nil, fmt.Errorf("Layout %d: kein m_TiledLandscapeBiomeDataOverride", n)
 	}
 	l := &Layout{N: n}
+	if cp, ok := zen.Find(props, "m_Clusters"); ok {
+		l.Clusters = readClusters(db, pk, cp)
+	}
 	for _, q := range pk.Struct(ov) {
 		if q.Name != "Tiles" {
 			continue
@@ -160,6 +172,46 @@ func (l *Layout) Components(db *assets.DB, origin [2]float64) []landscape.Compon
 		sh := t.Shift(origin)
 		for _, c := range presets[t.Preset] {
 			c.Origin = [2]float64{c.Origin[0] + sh[0], c.Origin[1] + sh[1]}
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// readClusters liest m_Clusters (Map uint32 → Struct): Anker, Datenasset und Variante.
+func readClusters(db *assets.DB, pk *zen.Package, p zen.Property) []Cluster {
+	var out []Cluster
+	if len(p.Raw) < 8 {
+		return nil
+	}
+	r := pk.Sub(p.Raw)
+	r.I32() // zu entfernende Schlüssel
+	n := int(r.I32())
+	for i := 0; i < n && i < 100000 && r.P+4 <= len(r.B); i++ {
+		r.U32() // Schlüssel (Hash)
+		ps, err := r.Properties()
+		if err != nil {
+			break
+		}
+		var c Cluster
+		for _, q := range ps {
+			switch q.Name {
+			case "ClusterAnchor":
+				if len(q.Raw) >= 8 {
+					c.AX = int(int32(binary.LittleEndian.Uint32(q.Raw)))
+					c.AY = int(int32(binary.LittleEndian.Uint32(q.Raw[4:])))
+				}
+			case "ClusterDataAsset":
+				if ref, err := db.Resolve(pk, q.ObjectIndex()); err == nil && ref.Pkg != nil {
+					c.Asset = ref.Pkg.Path
+				}
+			case "ClusterVariation":
+				if len(q.Raw) >= 8 {
+					c.Variation = pk.Names[binary.LittleEndian.Uint32(q.Raw)&0x3fffffff]
+				}
+			}
+		}
+		if c.Asset != "" {
 			out = append(out, c)
 		}
 	}

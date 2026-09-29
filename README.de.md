@@ -201,7 +201,7 @@ Eine ausführliche Bauanleitung liegt in den Ordnern „MapViewer3D - DE“ und
   sind nachgebaute Modelle, Gebäude entstehen aus Kollisionsformen.
 - **Deep Desert:** Der Server wählt wöchentlich ein Coriolis-Layout. Der Viewer baut
   das Gelände aus dem Kachelplan dieses Layouts (Krater, Rampen, Plätze) samt den festen
-  Felsblöcken; Content-Blöcke des Layouts (Felsen, Gebäude) fehlen noch, und passend zum
+  Felsblöcken und den Content-Blöcken des Layouts (Felsen, Ecolabs, Wracks); passend zum
   Server ist nur das Layout, für das das Gelände gebaut wurde.
 - **Live-Positionen:** Sie kommen aus der Datenbank der Console und können einige
   Sekunden bis Minuten hinterherhinken.

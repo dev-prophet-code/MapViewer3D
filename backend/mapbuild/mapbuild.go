@@ -21,6 +21,7 @@ import (
 	"mapviewer3d/mapdata"
 	"mapviewer3d/maps"
 	"mapviewer3d/raster"
+	"mapviewer3d/ue"
 )
 
 // MaxCells begrenzt die Rasterkante; große Karten bekommen einen gröberen Abstand.
@@ -50,7 +51,17 @@ func Build(db *assets.DB, def maps.Def) (*Result, error) {
 			return nil, err
 		}
 		top = l.Components(db, layout.Origin)
-		log.Printf("%s: Layout %d, %d Kacheln, %d Komponenten", def.Name, def.Layout, len(l.Tiles), len(top))
+		var refs []blocks.Ref
+		for _, b := range l.Blocks(db, layout.Origin) {
+			refs = append(refs, blocks.Ref{Asset: b.Asset, M: ue.FromTRS(b.Loc, b.Rot, [3]float64{1, 1, 1})})
+		}
+		lb := blocks.CollectRefs(db, refs)
+		col.Placed = append(col.Placed, lb.Placed...)
+		col.Stats.Blocks += lb.Stats.Blocks
+		col.Stats.Meshes += lb.Stats.Meshes
+		col.Stats.NoGeometry += lb.Stats.NoGeometry
+		log.Printf("%s: Layout %d, %d Kacheln, %d Komponenten, %d Cluster, %d Content-Blöcke (%d Netze)",
+			def.Name, def.Layout, len(l.Tiles), len(top), len(l.Clusters), len(refs), len(lb.Placed))
 	}
 	all := append(append(append([]landscape.Component{}, comps...), rep0...), top...)
 	st := col.Stats

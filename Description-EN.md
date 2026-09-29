@@ -52,8 +52,8 @@ panel switches to German (*Deutsch*); the choice is remembered in the browser.
 - **2.5D terrain:** Overhangs and caves are not shown as hollow spaces.
 - **Deep Desert:** The server picks a Coriolis layout each week. The viewer
   builds the terrain from that layout's tile plan (craters, ramps, sites) plus the
-  fixed rock formations; content blocks such as rocks and buildings of the layout are
-  not shown yet, and only the layout the terrain was built for matches the server.
+  fixed rock formations and the layout's own content blocks (rocks, ecolabs, wrecks);
+  only the layout the terrain was built for matches the server.
 - **Slight delay:** Positions come from the server's database and can lag by a few
   seconds to minutes.
 

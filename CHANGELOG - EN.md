@@ -10,6 +10,20 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ---
 
+## Beta.6 – 09/29/2026
+
+### New
+
+- **Deep Desert: the layout's rocks, ecolabs and wrecks.** Beta.5 built only the terrain tiles of the weekly layout. Now the *content blocks* that the layout's 162 clusters place in the desert (rock formations, ecolab sites, shipwrecks, sandfly camps: about 720 blocks) are read from the game files as well, rotated and placed on the map like the fixed blocks of row A, and rasterised into the terrain. The desert beyond row A therefore shows the objects of the server's current map state, not just the ground.
+- The number of blocks and their meshes appears in the log of `extract` (e.g. *162 clusters, 727 content blocks*).
+
+### Notes
+
+- Block positions fall inside the tile patches of their clusters, which also confirms the placement of the tile grid.
+- Blocks stay part of the terrain height map (2.5D, no overhangs), like the rocks in row A.
+
+---
+
 ## Beta.5 – 09/29/2026
 
 ### New

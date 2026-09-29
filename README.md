@@ -100,4 +100,4 @@ Issues and pull requests are welcome – see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## ⚠️ Limitations
 
-No original textures (colors come from the console's map image plus procedural detail), 2.5D terrain without overhangs, Deep Desert built from the server's current Coriolis layout (terrain tiles, no layout rocks yet) plus fixed rocks, and live positions may lag by seconds to minutes.
+No original textures (colors come from the console's map image plus procedural detail), 2.5D terrain without overhangs, Deep Desert built from the server's current Coriolis layout (terrain tiles plus its rocks, ecolabs and wrecks) plus fixed rocks, and live positions may lag by seconds to minutes.

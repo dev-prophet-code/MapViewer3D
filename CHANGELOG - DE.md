@@ -13,6 +13,20 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 
 ---
 
+## Beta.6 – 29.09.2026
+
+### Neu
+
+- **Deep Desert: Felsen, Ecolabs und Wracks des Layouts.** Beta.5 baute nur die Geländekacheln des wöchentlichen Layouts. Jetzt werden auch die *Content-Blöcke* gelesen, die die 162 Cluster des Layouts in die Wüste setzen (Felsformationen, Ecolab-Plätze, Schiffswracks, Sandfliegen-Lager: rund 720 Blöcke), gedreht und wie die festen Blöcke der Reihe A auf die Karte gesetzt und ins Gelände gerastert. Die Wüste hinter Reihe A zeigt damit die Objekte des aktuellen Kartenstands deines Servers, nicht nur den Boden.
+- Die Zahl der Blöcke und ihrer Netze steht im Protokoll von `extract` (z. B. *162 Cluster, 727 Content-Blöcke*).
+
+### Hinweise
+
+- Die Blöcke liegen innerhalb der Kachelfelder ihrer Cluster; das bestätigt auch die Lage des Kachelrasters.
+- Die Blöcke bleiben Teil der Höhenkarte (2,5D, keine Überhänge), wie die Felsen in Reihe A.
+
+---
+
 ## Beta.5 – 29.09.2026
 
 ### Neu

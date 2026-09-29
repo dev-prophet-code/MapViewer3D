@@ -146,9 +146,15 @@ func (c *collector) terrainBlock(pk *zen.Package, i int) {
 	if rc, ok := zen.Find(ps, "RootComponent"); ok && rc.ObjectIndex() > 0 {
 		world = c.worldOf(pk, int(rc.ObjectIndex())-1)
 	}
+	c.placeBlock(ref.Name, world)
+}
+
+// placeBlock setzt den Terrain-Block asset (Levels <asset>_ArtCollision und <asset>_Art)
+// an den Welttransform world.
+func (c *collector) placeBlock(asset string, world ue.Mat) {
 	c.res.Stats.Blocks++
 	for _, suffix := range []string{"_ArtCollision", "_Art"} {
-		lp, ok := c.byBase[ref.Name+suffix]
+		lp, ok := c.byBase[asset+suffix]
 		if !ok {
 			continue
 		}
@@ -163,6 +169,26 @@ func (c *collector) terrainBlock(pk *zen.Package, i int) {
 			}
 		}
 	}
+}
+
+// Ref ist ein Terrain-Block, der ohne Level-Actor platziert wird (Cluster eines Layouts).
+type Ref struct {
+	Asset string // Name des Blocks, z. B. CB_Arrakis_Generic_SD_05
+	M     ue.Mat
+}
+
+// CollectRefs setzt die Blöcke refs so zusammen, als stünden sie als Actors in einem Level.
+func CollectRefs(db *assets.DB, refs []Ref) Result {
+	c := &collector{db: db, byBase: map[string]string{}, cache: map[string]*mesh.Mesh{},
+		props: map[*zen.Package][][]zen.Property{}}
+	for _, p := range db.Paths() {
+		c.byBase[path.Base(p)] = p
+	}
+	for _, r := range refs {
+		c.placeBlock(r.Asset, r.M)
+	}
+	c.res.Stats.Instances = len(c.res.Placed)
+	return c.res
 }
 
 // components platziert alle (Instanced)StaticMeshComponents eines Levels.
