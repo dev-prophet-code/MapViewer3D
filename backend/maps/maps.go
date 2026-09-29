@@ -21,6 +21,7 @@ type Def struct {
 	Live   string   // Kartenname der Live-API (leer = keine Live-Daten)
 	Repeat string   // Präfix von Geländekacheln, die über Bounds wiederholt werden
 	Bounds *[4]float64
+	Layout int // Coriolis-Layout der Deep Desert (DA_DeepDesert_1_Layout_NN); 0 = keines
 }
 
 // Always: Hagga Basin (Survival_1) läuft immer, steht aber nicht in der

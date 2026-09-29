@@ -10,6 +10,22 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ---
 
+## Beta.5 – 09/29/2026
+
+### New
+
+- **Deep Desert with the weekly Coriolis layout.** Beyond row A the game builds the world from a layout the server picks each Coriolis cycle (`DA_DeepDesert_1_Layout_NN`, the number is `coriolisLayout` in the console). The viewer now reads that layout from the game files and builds the terrain from its 24 × 24 tile plan (tiles of 1016 m: craters, ramps, ecolab and shipwreck sites, spice areas) instead of one repeated dune template. Cells without an override stay dune. The current map state of the server is therefore what you see in 3D.
+- **The viewer picks the matching terrain.** The server reports its layout through the console (`coriolisLayout`, `coriolisNextCycleAt`); the viewer loads the terrain built for that layout and shows *Coriolis layout N · changes … (in x d y h)* under the map. If no terrain exists for the current layout, a warning names the command that builds it.
+- **Map grid A1–I9.** New switch under the map selection (Deep Desert only): the 9 × 9 cells of 2.5 km as in the game and on the console map (row A north, column 1 west), drawn as lines on the terrain, with the cell names floating above.
+- **`extract -layout`** builds Deep Desert terrain per layout into `data/deepdesert_1_lNN/`: `auto` (default: current layout from the console), a list such as `8,9`, `all` (all layouts in the game files) or `none` (old dune template). One layout takes about 10 s and 170 MB, so ready-made packages contain the current layout only.
+
+### Notes
+
+- The tile grid is placed on the map from its centre and the 63.5 m lattice of the layout's generic actors (accuracy about 16 m).
+- Rocks, ecolab and shipwreck buildings that the layout places as *content blocks* are not shown yet; the terrain under them is.
+
+---
+
 ## Beta.4 – 09/29/2026
 
 ### Security

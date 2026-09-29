@@ -31,7 +31,7 @@ import (
 
 // Version steht in der Oberfläche und in CHANGELOG.md; beim Bauen per
 // -ldflags "-X mapviewer3d/server.Version=…" überschreibbar.
-var Version = "Beta.4"
+var Version = "Beta.5"
 
 // PatchQuads ist die Kantenlänge eines Geländestücks in Quads.
 const PatchQuads = 128
@@ -43,13 +43,22 @@ type View struct {
 	Internal  string `json:"internal"`
 }
 
+// Coriolis beschreibt den aktuellen Coriolis-Zyklus der Deep Desert laut Console.
+type Coriolis struct {
+	Layout    int    `json:"layout"`              // Layout des Servers (coriolisLayout)
+	Seed      string `json:"seed,omitempty"`      // z. B. cor-8
+	NextCycle string `json:"nextCycle,omitempty"` // Beginn des nächsten Zyklus (UTC, RFC 3339)
+	Match     bool   `json:"match"`               // Gelände dieser Karte gehört zu diesem Layout
+}
+
 // MapInfo ist Meta plus vom Server ergänzte Werte.
 type MapInfo struct {
 	mapdata.Meta
-	Views      []View `json:"views,omitempty"`
-	Version    int64  `json:"version"` // Änderungszeit der Daten, für Cache-Busting
-	PatchQuads int    `json:"patchQuads"`
-	MaxLevel   int    `json:"maxLevel"`
+	Views      []View    `json:"views,omitempty"`
+	Coriolis   *Coriolis `json:"coriolis,omitempty"` // Deep Desert: Layout des Servers und Abgleich mit diesem Gelände
+	Version    int64     `json:"version"`            // Änderungszeit der Daten, für Cache-Busting
+	PatchQuads int       `json:"patchQuads"`
+	MaxLevel   int       `json:"maxLevel"`
 }
 
 type terrain struct {
@@ -221,7 +230,7 @@ func (s *Server) load(name string) (*terrain, error) {
 func (s *Server) listMaps(w http.ResponseWriter, r *http.Request) {
 	entries, _ := os.ReadDir(s.dataDir)
 	active := s.activeMaps() // nil = unbekannt, dann alle zeigen
-	list := []MapInfo{}
+	var terrains []*terrain
 	for _, e := range entries {
 		if !e.IsDir() || !validName.MatchString(e.Name()) {
 			continue
@@ -233,8 +242,13 @@ func (s *Server) listMaps(w http.ResponseWriter, r *http.Request) {
 		if active != nil && !active[t.info.Source] {
 			continue
 		}
+		terrains = append(terrains, t)
+	}
+	list := []MapInfo{}
+	for _, t := range s.pickLayouts(terrains) {
 		info := t.info
 		info.Views = s.views(t)
+		info.Coriolis = s.coriolisFor(t)
 		list = append(list, info)
 	}
 	sort.SliceStable(list, func(i, j int) bool {
@@ -306,4 +320,47 @@ func (s *Server) patch(w http.ResponseWriter, r *http.Request, t *terrain) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Cache-Control", "max-age=3600")
 	w.Write(out)
+}
+
+// pickLayouts wählt je Karte das Gelände, das zum Coriolis-Layout des Servers passt.
+// Gibt es mehrere Layout-Stände einer Karte, bleibt einer übrig: der passende, sonst
+// der ohne Layout (Dünenvorlage), sonst der mit der kleinsten Nummer.
+func (s *Server) pickLayouts(ts []*terrain) []*terrain {
+	by := map[string][]*terrain{}
+	var order []string
+	for _, t := range ts {
+		if _, ok := by[t.info.Source]; !ok {
+			order = append(order, t.info.Source)
+		}
+		by[t.info.Source] = append(by[t.info.Source], t)
+	}
+	var out []*terrain
+	for _, src := range order {
+		group := by[src]
+		if len(group) == 1 {
+			out = append(out, group[0])
+			continue
+		}
+		live, known := 0, false
+		if c := s.coriolisFor(group[0]); c != nil {
+			live, known = c.Layout, true
+		}
+		best := group[0]
+		rank := func(t *terrain) int {
+			switch {
+			case known && t.info.Layout == live:
+				return 0
+			case t.info.Layout == 0:
+				return 1
+			}
+			return 2 + t.info.Layout
+		}
+		for _, t := range group[1:] {
+			if rank(t) < rank(best) {
+				best = t
+			}
+		}
+		out = append(out, best)
+	}
+	return out
 }

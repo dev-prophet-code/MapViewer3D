@@ -160,3 +160,27 @@ func (s *Server) views(t *terrain) []View {
 	})
 	return out
 }
+
+// coriolisFor meldet den Coriolis-Zyklus der Deep Desert (Layout, Seed, nächster
+// Wechsel) aus der Marker-Antwort der Console (5 min zwischengespeichert); nil bei
+// Karten ohne Layout oder wenn die Console nichts meldet.
+func (s *Server) coriolisFor(t *terrain) *Coriolis {
+	name := s.liveName(t)
+	if s.lp() == nil || name != "DeepDesert" {
+		return nil
+	}
+	c := s.lp().get("/api/map/markers?map="+name, 5*time.Minute)
+	if c.status != http.StatusOK {
+		return nil
+	}
+	var doc struct {
+		Layout    *int   `json:"coriolisLayout"`
+		Seed      string `json:"coriolisSeed"`
+		NextCycle string `json:"coriolisNextCycleAt"`
+	}
+	if json.Unmarshal(c.body, &doc) != nil || doc.Layout == nil {
+		return nil
+	}
+	return &Coriolis{Layout: *doc.Layout, Seed: doc.Seed, NextCycle: doc.NextCycle,
+		Match: t.info.Layout == *doc.Layout}
+}

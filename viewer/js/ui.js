@@ -101,10 +101,30 @@ export function showMapInfo(m, view) {
   $('mapinfo').textContent =
     `${km((m.width - 1) * m.spacing)} × ${km((m.height - 1) * m.spacing)} km · ${t('mapinfo.grid')} ${m.spacing / 100} m`
     + `\n${t('mapinfo.height')} ${(m.minZ / 100).toFixed(0)} … ${(m.maxZ / 100).toFixed(0)} m`
-    + (view ? `\n${t('mapinfo.instance')}: ${view.label} (Partition ${view.partition}, ${view.internal})` : '');
+    + (view ? `\n${t('mapinfo.instance')}: ${view.label} (Partition ${view.partition}, ${view.internal})` : '')
+    + coriolisInfo(m);
   $('live').hidden = !m.live;
   $('jump').hidden = !m.live;
   $('nolive').hidden = !!m.live;
+}
+
+// Deep Desert: Layout des Servers, nächster Wechsel und ob das Gelände dazu passt
+function coriolisInfo(m) {
+  const c = m.coriolis;
+  if (!c) return '';
+  let text = `\n${t('mapinfo.layout', { n: c.layout })}`;
+  const next = c.nextCycle ? new Date(c.nextCycle) : null;
+  if (next && !Number.isNaN(next.getTime())) {
+    const min = Math.max(0, Math.round((next - Date.now()) / 60000));
+    const left = `${Math.floor(min / 1440)} ${t('unit.d')} ${Math.floor((min % 1440) / 60)} ${t('unit.h')}`;
+    text += ` · ${t('mapinfo.layout.next', { date: next.toLocaleString(), left })}`;
+  }
+  if (!c.match) {
+    text += `\n⚠ ${m.layout
+      ? t('mapinfo.layout.other', { have: m.layout, live: c.layout })
+      : t('mapinfo.layout.generic', { live: c.layout })}`;
+  }
+  return text;
 }
 
 // Rechte Anzeige: Seitenleiste, Vollbild und Anleitung

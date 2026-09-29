@@ -13,6 +13,22 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 
 ---
 
+## Beta.5 – 29.09.2026
+
+### Neu
+
+- **Deep Desert mit dem wöchentlichen Coriolis-Layout.** Hinter Reihe A baut das Spiel die Welt aus einem Layout, das der Server je Coriolis-Zyklus wählt (`DA_DeepDesert_1_Layout_NN`, die Nummer ist `coriolisLayout` in der Console). Der Viewer liest dieses Layout jetzt aus den Spieldateien und baut das Gelände aus dessen 24 × 24-Kachelplan (Kacheln zu 1016 m: Krater, Rampen, Ecolab- und Wrack-Plätze, Spice-Gebiete) statt aus einer einzigen wiederholten Dünenvorlage. Zellen ohne Überschreibung bleiben Düne. Damit siehst du in 3D den aktuellen Kartenstand deines Servers.
+- **Der Viewer wählt das passende Gelände.** Der Server meldet sein Layout über die Console (`coriolisLayout`, `coriolisNextCycleAt`); der Viewer lädt das Gelände, das für dieses Layout gebaut wurde, und zeigt unter der Karte *Coriolis-Layout N · wechselt … (in x T y Std)*. Fehlt das Gelände für das aktuelle Layout, nennt eine Warnung den Befehl, der es baut.
+- **Kartenraster A1–I9.** Neuer Schalter unter der Kartenauswahl (nur Deep Desert): die 9 × 9 Zellen zu 2,5 km wie im Spiel und auf der Console-Karte (Reihe A im Norden, Spalte 1 im Westen), als Linien auf dem Gelände, dazu die Zellnamen darüber.
+- **`extract -layout`** baut das Deep-Desert-Gelände je Layout nach `data/deepdesert_1_lNN/`: `auto` (Standard: aktuelles Layout laut Console), eine Liste wie `8,9`, `all` (alle Layouts der Spieldateien) oder `none` (alte Dünenvorlage). Ein Layout dauert etwa 10 s und belegt 170 MB; fertige Pakete enthalten deshalb nur das aktuelle Layout.
+
+### Hinweise
+
+- Das Kachelraster ist aus der Kartenmitte und dem 63,5-m-Raster der generischen Actors des Layouts auf die Karte gelegt (Genauigkeit etwa 16 m).
+- Felsen, Ecolab- und Wrack-Gebäude, die das Layout als *Content-Blöcke* setzt, werden noch nicht gezeigt; das Gelände darunter schon.
+
+---
+
 ## Beta.4 – 29.09.2026
 
 ### Sicherheit

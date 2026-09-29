@@ -26,7 +26,8 @@ type Meta struct {
 	Source   string  `json:"source"` // Kartenname in der Console
 	Title    string  `json:"title"`
 	Group    string  `json:"group"`
-	Live     string  `json:"live,omitempty"` // Kartenname der Live-API
+	Live     string  `json:"live,omitempty"`   // Kartenname der Live-API
+	Layout   int     `json:"layout,omitempty"` // Deep Desert: Coriolis-Layout dieses Geländes (coriolisLayout der Console)
 	Width    int     `json:"width"`
 	Height   int     `json:"height"`
 	OriginX  float64 `json:"originX"` // Welt-X (cm) der Spalte 0

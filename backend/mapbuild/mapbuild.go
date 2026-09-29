@@ -17,6 +17,7 @@ import (
 	"mapviewer3d/assets"
 	"mapviewer3d/blocks"
 	"mapviewer3d/landscape"
+	"mapviewer3d/layout"
 	"mapviewer3d/mapdata"
 	"mapviewer3d/maps"
 	"mapviewer3d/raster"
@@ -35,13 +36,23 @@ type Result struct {
 func Build(db *assets.DB, def maps.Def) (*Result, error) {
 	col := blocks.Collect(db, def.Dirs)
 	comps := col.Landscape
+	var rep0, top []landscape.Component // Grundlandschaft (Wiederholung) und Layout-Kacheln
 	if def.Repeat != "" {
 		rep, err := repeatTiles(db, def.Repeat, def.Bounds)
 		if err != nil {
 			return nil, err
 		}
-		comps = append(comps, rep...)
+		rep0 = rep
 	}
+	if def.Layout > 0 {
+		l, err := layout.Load(db, def.Layout)
+		if err != nil {
+			return nil, err
+		}
+		top = l.Components(db, layout.Origin)
+		log.Printf("%s: Layout %d, %d Kacheln, %d Komponenten", def.Name, def.Layout, len(l.Tiles), len(top))
+	}
+	all := append(append(append([]landscape.Component{}, comps...), rep0...), top...)
 	st := col.Stats
 	log.Printf("%s: %d Level, %d Landschaftskomponenten, %d Terrain-Blöcke, %d Netze (%d ohne Geometrie), %d Instanzen",
 		def.Name, st.Levels, len(comps), st.Blocks, st.Meshes, st.NoGeometry, st.Instances)
@@ -54,14 +65,14 @@ func Build(db *assets.DB, def maps.Def) (*Result, error) {
 		hi[0], hi[1] = math.Max(hi[0], x), math.Max(hi[1], y)
 	}
 	base := 100.0
-	for _, c := range comps {
+	for _, c := range all {
 		grow(c.Origin[0], c.Origin[1])
 		grow(c.Origin[0]+float64(c.Cols-1)*c.Spacing[0], c.Origin[1]+float64(c.Rows-1)*c.Spacing[1])
 		base = math.Min(base, c.Spacing[0])
 	}
 	// Ohne Landschaft bestimmt die Geometrie die Fläche; mit Landschaft bleibt
 	// Kulisse außerhalb (Fernansichten, äußerer Schildwall) draußen.
-	if len(comps) == 0 {
+	if len(all) == 0 {
 		for _, p := range col.Placed {
 			l, h := p.Mesh.Bounds()
 			for _, x := range []float32{l[0], h[0]} {
@@ -90,28 +101,43 @@ func Build(db *assets.DB, def maps.Def) (*Result, error) {
 
 	r := &Result{Mat: make([]uint8, w*h)}
 	r.Meta = mapdata.Meta{Name: def.ID, Source: def.Name, Title: def.Title, Group: def.Group, Live: def.Live,
-		Width: w, Height: h, OriginX: lo[0], OriginY: lo[1], Spacing: sp, Comps: len(comps),
+		Width: w, Height: h, OriginX: lo[0], OriginY: lo[1], Spacing: sp, Comps: len(all), Layout: def.Layout,
 		Blocks: st.Blocks, Meshes: st.Meshes, Levels: st.Levels, Material: true}
 	z := make([]float32, w*h)
 	for i := range z {
 		z[i] = float32(math.Inf(-1))
 	}
-	for _, c := range comps {
-		for row := 0; row < c.Rows; row++ {
-			for col := 0; col < c.Cols; col++ {
-				x := int(math.Round((c.Origin[0] + float64(col)*c.Spacing[0] - lo[0]) / sp))
-				y := int(math.Round((c.Origin[1] + float64(row)*c.Spacing[1] - lo[1]) / sp))
-				if x < 0 || y < 0 || x >= w || y >= h {
-					continue
-				}
-				v := float32(c.Heights[row*c.Cols+col])
-				if i := y*w + x; r.Mat[i] == mapdata.MatNone || v > z[i] {
-					z[i] = v
-					r.Mat[i] = mapdata.MatLandscape
+	// Ebenen von unten nach oben: Layout-Kacheln ersetzen die Grundlandschaft in den
+	// Zellen, die sie belegen; Level-Landschaft und Blöcke kommen wie bisher obenauf.
+	covered := make([]bool, w*h)
+	put := func(cs []landscape.Component, skip []bool, mark bool) {
+		for _, c := range cs {
+			for row := 0; row < c.Rows; row++ {
+				for col := 0; col < c.Cols; col++ {
+					x := int(math.Round((c.Origin[0] + float64(col)*c.Spacing[0] - lo[0]) / sp))
+					y := int(math.Round((c.Origin[1] + float64(row)*c.Spacing[1] - lo[1]) / sp))
+					if x < 0 || y < 0 || x >= w || y >= h {
+						continue
+					}
+					i := y*w + x
+					if skip != nil && skip[i] {
+						continue
+					}
+					v := float32(c.Heights[row*c.Cols+col])
+					if r.Mat[i] == mapdata.MatNone || v > z[i] {
+						z[i] = v
+						r.Mat[i] = mapdata.MatLandscape
+					}
+					if mark {
+						covered[i] = true
+					}
 				}
 			}
 		}
 	}
+	put(top, nil, true)
+	put(rep0, covered, false)
+	put(comps, nil, false)
 	r.overlay(z, col.Placed)
 
 	minZ, maxZ := math.Inf(1), math.Inf(-1)
