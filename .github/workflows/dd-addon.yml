@@ -1,12 +1,10 @@
-name: DD Addon
+name: Validate addon
 
 on:
-  push:
-    branches: [main, DD-Addon]
-    paths: ["dd-addon/**", ".github/workflows/dd-addon.yml"]
-    tags: ["addon-v*"]
   pull_request:
-    paths: ["dd-addon/**"]
+  push:
+    branches: [DD-Addon]
+    tags: ["addon-v*"]
 
 permissions:
   contents: write
@@ -14,9 +12,6 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: dd-addon
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
