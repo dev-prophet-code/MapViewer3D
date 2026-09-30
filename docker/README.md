@@ -20,8 +20,14 @@ The full addon guide (API key, scopes, security) is in the addon's `README.md`.
 3. Asks once for the API key (`dak_…`, scopes `maps: Read` and `bases: Read`) and checks
    **both scopes** against the console before starting anything. The key is sent to the
    console without ever appearing in a command line (`curl` reads it from stdin).
-4. Downloads the pinned viewer release and verifies its SHA-256.
+4. Downloads the pinned viewer release (Beta.8) and verifies its SHA-256. Existing viewer
+   files are only kept when they are exactly this release (the installer records it in
+   `app/.mapviewer3d-release`). An older viewer, which would ignore the password setting,
+   is replaced; `config.json` and extra terrain folders under `app/data/` are kept.
 5. Writes `config.json` (owner-only) and starts the container.
+6. With a network address it checks the running viewer before reporting success: without
+   login it must answer `401`, with the password `200`. Otherwise the container is
+   stopped again.
 
 ## Who can open the viewer
 
@@ -57,7 +63,8 @@ the port sees player names and positions.
 
 ## Update / remove
 
-- Update the viewer: delete `runtime/mapviewer3d/app`, run the installer again.
+- Update the viewer: run the installer again. It upgrades the viewer files by itself when
+  they are not the pinned release (your `config.json` stays).
 - New key or password: delete `runtime/mapviewer3d/config.json`, run the installer again.
 - Remove: `docker compose -f runtime/mapviewer3d/docker-compose.yml down`, then delete
   `runtime/mapviewer3d`.

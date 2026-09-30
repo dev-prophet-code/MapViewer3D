@@ -16,7 +16,10 @@
 #   DATA_DIR    where files live (default: <stack>/runtime/mapviewer3d)
 #   API_BASE    console API address (default: detected, see step 2)
 #   API_TOKEN   console API token (asked for if not stored yet)
-#   MV_URL / MV_SHA256   release ZIP and checksum (default: pinned release below)
+#   MV_URL / MV_SHA256   release ZIP and checksum (default: pinned release below).
+#               Viewer files that are not exactly this release (an older viewer
+#               from an earlier addon version, or unknown files) are replaced;
+#               config.json (key, password) and extra terrain under data/ stay.
 #   MV_ZIP      use an already downloaded ZIP instead of downloading
 #   MV_ADDR     address the viewer listens on. Default 127.0.0.1:8795 (private:
 #               only browsers on this machine). A network address such as
@@ -28,8 +31,9 @@
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-MV_URL="${MV_URL:-https://github.com/dev-prophet-code/MapViewer3D/releases/download/beta.7/MapViewer3D-Beta.7.zip}"
-MV_SHA256="${MV_SHA256:-985d749d654ca832627e55338d4735165dee40a5ff3263a20f9e15dcd8ea7289}"
+MV_VERSION="Beta.8"
+MV_URL="${MV_URL:-https://github.com/dev-prophet-code/MapViewer3D/releases/download/beta.8/MapViewer3D-Beta.8.zip}"
+MV_SHA256="${MV_SHA256:-16a7db212130aaa149790703dd1646f0a2678ffcc0afb17d9b47d8eb70657400}"
 
 fail() { echo "✗ $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "'$1' is required."; }
@@ -195,14 +199,24 @@ if [ "$private" = 0 ]; then
 fi
 
 # 5. Program and terrain data --------------------------------------------------
-if [ -d app/bin ] && [ -d app/data ]; then
-  echo "→ MapViewer3D files already present in $DATA_DIR/app (delete it to reinstall)"
+# The viewer files must be exactly the pinned release. A viewer from before
+# Beta.7 ignores the password setting, so an old install must never be reused:
+# an upgrade would look protected while the viewer stayed open. The release that
+# was unpacked is recorded in app/.mapviewer3d-release; anything else (older
+# release, no record, half-finished install) is replaced.
+release_id="$MV_VERSION $MV_SHA256"
+if [ -f app/.mapviewer3d-release ] && [ "$(cat app/.mapviewer3d-release)" = "$release_id" ] \
+   && [ -d app/bin ] && [ -d app/data ] && [ -d app/viewer ]; then
+  echo "→ MapViewer3D $MV_VERSION already installed in $DATA_DIR/app"
 else
+  if [ -d app ]; then
+    echo "→ Viewer files in $DATA_DIR/app are not $MV_VERSION: upgrading (config.json is kept)"
+  fi
   zip="${MV_ZIP:-}"
   if [ -z "$zip" ]; then
     zip="$(mktemp -t mapviewer3d.XXXXXX)"
     trap 'rm -f "$zip"' EXIT
-    echo "→ Downloading MapViewer3D (about 170 MB)…"
+    echo "→ Downloading MapViewer3D $MV_VERSION (about 250 MB)…"
     curl --fail --location --progress-bar --output "$zip" "$MV_URL"
   fi
   actual="$(sha256_of "$zip")"
@@ -216,8 +230,21 @@ else
     src="app.tmp/$(ls -A app.tmp)"
   fi
   [ -d "$src/bin" ] && [ -d "$src/data" ] && [ -d "$src/viewer" ] || fail "The ZIP does not look like a MapViewer3D package."
+  # Stop a running (possibly old) viewer before its files are swapped
+  docker compose down >/dev/null 2>&1 || true
+  rm -rf app.old
+  if [ -d app ]; then mv app app.old; fi
   mv "$src" app
-  rm -rf app.tmp
+  printf '%s\n' "$release_id" > app/.mapviewer3d-release
+  # Keep terrain folders of the old install that the new package does not have
+  if [ -d app.old/data ]; then
+    for d in app.old/data/*/; do
+      [ -d "$d" ] || continue
+      n="$(basename "$d")"
+      [ -e "app/data/$n" ] || mv "$d" "app/data/$n"
+    done
+  fi
+  rm -rf app.old app.tmp
 fi
 
 # 6. Config (private: contains the key and password) and start ----------------
@@ -229,6 +256,27 @@ umask 077
 } > config.json
 printf 'MV_UID=%s\nMV_GID=%s\nMV_ADDR=%s\nMV_ALLOW_OPEN=%s\n' "$(id -u)" "$(id -g)" "$MV_ADDR" "${MV_ALLOW_OPEN:-}" > .env
 docker compose up -d
+
+# Before reporting success (and leaving a network address open), check that the
+# running viewer really enforces the password: no login -> 401, password -> 200.
+# On any other answer the container is stopped again.
+if [ -n "$VIEWER_PW" ]; then
+  vhost="${MV_ADDR%:*}"
+  case "$vhost" in 0.0.0.0|::|'[::]'|'') vhost=127.0.0.1 ;; esac
+  vurl="http://$vhost:${MV_ADDR##*:}/"
+  no_login=000; tries=0
+  while [ "$tries" -lt "${MV_VERIFY_WAIT:-30}" ]; do
+    no_login="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$vurl" 2>/dev/null || true)"
+    case "$no_login" in 000|'') tries=$((tries + 1)); sleep 1 ;; *) break ;; esac
+  done
+  with_login="$(printf 'user = "mapviewer:%s"\n' "$VIEWER_PW" |
+    curl -s -o /dev/null -w '%{http_code}' --max-time 5 -K - "$vurl" 2>/dev/null || true)"
+  if [ "$no_login" != 401 ] || [ "$with_login" != 200 ]; then
+    docker compose down >/dev/null 2>&1 || true
+    fail "The viewer did not enforce its password (no login: HTTP $no_login, with password: HTTP $with_login; expected 401 and 200). It was stopped, nothing is exposed. Delete $DATA_DIR/app and run the installer again."
+  fi
+  echo "✓ Viewer password verified (no login: 401, with password: 200)"
+fi
 echo
 echo "✓ MapViewer3D is running on $MV_ADDR."
 if [ "$private" = 1 ]; then

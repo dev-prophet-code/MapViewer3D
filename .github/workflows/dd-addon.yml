@@ -26,6 +26,8 @@ jobs:
       - run: node scripts/validate.js
       - run: sh -n docker/install.sh && sh -n docker/entrypoint.sh
       - run: node --check web/addon.js
+      - name: Upgrade regression test (Beta.6 viewer -> pinned viewer, 401 without login, 200 with)
+        run: sh scripts/test-upgrade.sh
       - name: Package
         run: bash scripts/package.sh
       - name: Tag matches addon version
