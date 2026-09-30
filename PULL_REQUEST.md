@@ -10,8 +10,8 @@ Live 3D map of Hagga Basin and Deep Desert: players, bases (as 3D buildings), ve
 - **Source:** https://github.com/dev-prophet-code/MapViewer3D (branch `DD-Addon`, MIT)
 - **Release:** https://github.com/dev-prophet-code/MapViewer3D/releases/tag/addon-v0.1.6
 - **Pinned package:** `https://github.com/dev-prophet-code/MapViewer3D/releases/download/addon-v0.1.6/mapviewer3d-0.1.6.zip`
-- **SHA-256 (verified by downloading the published asset):** `fb6263038061ac37a7ffca83af4743c5aa1b7ee37e9dbb4bd66a3dd09ace1516`
-- The installer pins the viewer release `beta.8` (`MapViewer3D-Beta.8.zip`, SHA-256 `0a56fe0b801413ccd6df281524359048aae284a45bad30728bf57048dde68d5f`) and verifies it before unpacking.
+- **SHA-256 (verified by downloading the published asset):** `bf6f5c0471b01a0e464443b80eed791ffa8cdcd25d7035292c3e6bb428940aba`
+- The installer pins the viewer release `beta.8` (`MapViewer3D-Beta.8.zip`, SHA-256 `1f9623ca3b192876c80efb7b0415908346eb30029a190242dbe578ae05873bf7`) and verifies it before unpacking.
 
 ### What changed since 0.1.5 (review point: upgrade security)
 The reported problem: the installer reused existing viewer files without checking their version. A viewer older than Beta.7 ignores the password setting, so an upgrade could look password-protected while the viewer stayed open.
