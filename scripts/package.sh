@@ -20,10 +20,17 @@ ADDON_ID="$(node -e "process.stdout.write(require('./addon.json').id)")"
 ADDON_VERSION="$(node -e "process.stdout.write(require('./addon.json').version)")"
 PACKAGE_NAME="${ADDON_ID}-${ADDON_VERSION}.zip"
 
+# The package goes to Linux: CRLF in any shipped file is a build error (Windows checkouts: see .gitattributes).
+if grep -rIl $'\r' addon.json README.md web docker; then
+  echo "CRLF line endings in the files above. Re-checkout with LF (git add --renormalize .) and run again." >&2
+  exit 1
+fi
+
 rm -rf dist
 mkdir -p dist
 
-zip -r "dist/${PACKAGE_NAME}" addon.json README.md web docker -x "*.DS_Store" >/dev/null
+zip -X -r "dist/${PACKAGE_NAME}" addon.json README.md web docker -x "*.DS_Store" >/dev/null
+bash scripts/verify-package.sh "dist/${PACKAGE_NAME}"
 
 echo "Created: dist/${PACKAGE_NAME}"
 

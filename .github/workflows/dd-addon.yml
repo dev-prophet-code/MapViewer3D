@@ -28,8 +28,10 @@ jobs:
       - run: node --check web/addon.js
       - name: Upgrade regression test (Beta.6 viewer -> pinned viewer, 401 without login, 200 with)
         run: sh scripts/test-upgrade.sh
-      - name: Package
+      - name: Package (static checks on the unpacked ZIP run inside)
         run: bash scripts/package.sh
+      - name: Verify the packaged ZIP itself (no CRLF, sh -n, upgrade regression on the unpacked files)
+        run: WITH_UPGRADE_TEST=1 bash scripts/verify-package.sh "$(ls dist/*.zip)"
       - name: Tag matches addon version
         if: startsWith(github.ref, 'refs/tags/addon-v')
         run: |
@@ -48,3 +50,8 @@ jobs:
           gh release create "$GITHUB_REF_NAME" "$ZIP" "$ZIP.sha256" \
             --title "MapViewer3D Addon ${GITHUB_REF_NAME#addon-v}" \
             --notes "Addon package and SHA-256 checksum." --repo "$GITHUB_REPOSITORY"
+      - name: Verify the published release asset
+        if: startsWith(github.ref, 'refs/tags/addon-v')
+        run: |
+          V="$(node -e "process.stdout.write(require('./addon.json').version)")"
+          bash scripts/verify-package.sh "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/mapviewer3d-$V.zip"

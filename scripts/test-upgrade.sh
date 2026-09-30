@@ -14,10 +14,10 @@
 # docker is replaced by a shim that runs docker/entrypoint.sh on the host, so the
 # REAL viewer programs of both releases are started.
 #
-# Optional: OLD_URL / OLD_SHA256 (the old viewer), CACHE_DIR (keeps downloads).
+# Optional: ADDON_DIR (test an unpacked release package instead of this checkout), OLD_URL / OLD_SHA256 (the old viewer), CACHE_DIR (keeps downloads).
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ADDON="$(dirname "$HERE")"
+ADDON="${ADDON_DIR:-$(dirname "$HERE")}"   # ADDON_DIR: an unpacked release ZIP (see verify-package.sh)
 
 OLD_URL="${OLD_URL:-https://github.com/dev-prophet-code/MapViewer3D/releases/download/beta.6/MapViewer3D-Beta.6.zip}"
 OLD_SHA256="${OLD_SHA256:-529ee65cbeae0e972deb21e9c5985a971700df032b4c9232b7b7416e6c6aa89e}"
