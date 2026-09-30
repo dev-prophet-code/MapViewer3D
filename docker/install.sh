@@ -33,7 +33,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 MV_VERSION="Beta.8"
 MV_URL="${MV_URL:-https://github.com/dev-prophet-code/MapViewer3D/releases/download/beta.8/MapViewer3D-Beta.8.zip}"
-MV_SHA256="${MV_SHA256:-16a7db212130aaa149790703dd1646f0a2678ffcc0afb17d9b47d8eb70657400}"
+MV_SHA256="${MV_SHA256:-0a56fe0b801413ccd6df281524359048aae284a45bad30728bf57048dde68d5f}"
 
 fail() { echo "✗ $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "'$1' is required."; }
@@ -235,6 +235,7 @@ else
   rm -rf app.old
   if [ -d app ]; then mv app app.old; fi
   mv "$src" app
+  chmod +x app/bin/mapviewer-linux-* 2>/dev/null || true
   printf '%s\n' "$release_id" > app/.mapviewer3d-release
   # Keep terrain folders of the old install that the new package does not have
   if [ -d app.old/data ]; then
