@@ -10,7 +10,7 @@ Live 3D map of Hagga Basin and Deep Desert: players, bases (as 3D buildings), ve
 - **Source:** https://github.com/dev-prophet-code/MapViewer3D (branch `DD-Addon`, MIT)
 - **Release:** https://github.com/dev-prophet-code/MapViewer3D/releases/tag/addon-v0.1.7
 - **Pinned package:** `https://github.com/dev-prophet-code/MapViewer3D/releases/download/addon-v0.1.7/mapviewer3d-0.1.7.zip`
-- **SHA-256 (verified by downloading the published asset):** `a9d84d02849c13d8cf1639ef061fd3e25f32e7e6198c49b2956bb341aa10e49d`
+- **SHA-256 (verified by downloading the published asset):** `ad7dc14bfa9b55a8831fc429b15b738a071d9d1f9407f0a2c4693c5a20a4b77f`
 - The installer pins the viewer release `beta.8` (`MapViewer3D-Beta.8.zip`, SHA-256 `1f9623ca3b192876c80efb7b0415908346eb30029a190242dbe578ae05873bf7`) and verifies it before unpacking.
 
 ### What changed since 0.1.6 (review point: CRLF in the published package)
@@ -20,7 +20,7 @@ The package content is identical to 0.1.6 except for the line endings and the ve
 2. **Checks against the packaged ZIP, not the checkout** (`scripts/verify-package.sh`): it unpacks the ZIP and checks the extracted files: no CR byte in any text file, `sh -n` on `docker/install.sh` and `docker/entrypoint.sh`, `node --check web/addon.js`, file name matches `addon.json`. It also accepts a URL, so the released asset on GitHub is checked the same way after publishing.
 3. **Upgrade regression against the extracted package:** `WITH_UPGRADE_TEST=1 bash scripts/verify-package.sh <zip>` runs `scripts/test-upgrade.sh` with the installer and entrypoint taken from the unpacked ZIP (Beta.6 -> pinned Beta.8, 401 without login, 200 with, fail-closed case). The CI runs both on the ZIP it builds and on the published release asset.
 
-Verified locally on the final ZIP (Linux amd64 container): no CR in 9 text files, `sh -n` ok, upgrade regression passed (401 / 200 / wrong password 401 / API 401 / Beta.8 / config and extra terrain kept / lying install fails closed). The same check applied to the published 0.1.6 ZIP fails with "CRLF line endings in addon.json", so it does catch the reported problem.
+Verified on the published release asset (`verify-package.sh` with the asset downloaded from the release, and the CI job on the tag) and locally in a Linux amd64 container: no CR in 9 text files, `sh -n` ok, upgrade regression passed (401 / 200 / wrong password 401 / API 401 / Beta.8 / config and extra terrain kept / lying install fails closed). The same check applied to the published 0.1.6 ZIP fails with "CRLF line endings in addon.json", so it does catch the reported problem.
 
 ### Earlier: 0.1.6 (review point: upgrade security)
 The reported problem: the installer reused existing viewer files without checking their version. A viewer older than Beta.7 ignores the password setting, so an upgrade could look password-protected while the viewer stayed open.
