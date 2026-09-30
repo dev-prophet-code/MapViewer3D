@@ -8,8 +8,9 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 - Wird eine Änderung verworfen, bleibt ihr Eintrag stehen. Er wird ~~durchgestrichen~~,
   mit **Verworfen** und dem Grund markiert und zusätzlich unter *Verworfen* aufgeführt.
   So bleibt nachvollziehbar, was probiert wurde.
-- Die Versionsnummer steht auch in `backend/server/server.go` (`Version`) und oben im
-  Bedienfeld.
+- Die Versionsnummer steht auch in `backend/server/server.go` (`Version`), oben im
+  Bedienfeld und im Kopfkommentar von `start.bat`, `start.command`, `start.sh` und
+  `SECURITY.md`. Bei jedem Release überall mitziehen.
 
 ---
 

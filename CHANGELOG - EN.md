@@ -6,7 +6,7 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 - Every change goes into the current version immediately, not just upon release.
 - If a change is discarded, its entry remains. It is ~~struck through~~, marked with **Discarded** and the reason, and additionally listed under *Discarded*. This keeps a record of what was tried.
-- The version number is also located in `backend/server/server.go` (`Version`) and at the top of the control panel.
+- The version number is also located in `backend/server/server.go` (`Version`), at the top of the control panel and in the header comment of `start.bat`, `start.command`, `start.sh` and `SECURITY.md`. Update all of them with every release.
 
 ---
 

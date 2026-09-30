@@ -1,5 +1,7 @@
 # Security Policy
 
+Applies to the current release, Dune MapViewer3D Beta.8.
+
 ## Reporting a vulnerability
 
 Please **do not** open a public issue for security problems. Use GitHub's

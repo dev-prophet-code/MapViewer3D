@@ -1,5 +1,5 @@
 @echo off
-rem Startet den Dune MapViewer3D unter Windows 10/11 - ohne Go.
+rem Dune MapViewer3D Beta.8 - Start fuer Windows 10/11 (macOS/Linux: start.sh) - ohne Go.
 rem Weitere Argumente gehen an das Programm, z. B.:  start.bat -addr 0.0.0.0:8795
 setlocal
 chcp 65001 >nul
