@@ -6,7 +6,6 @@ import { Fly } from './fly.js';
 import { LiveLayer } from './live/live.js';
 import { createScene, SKY } from './scene.js';
 import { Terrain } from './terrain.js';
-import { DdGrid } from './grid.js';
 import { bindHud, bindUi, showMapInfo } from './ui.js';
 import { initCompass } from './compass.js';
 import { initTheme } from './theme.js';
@@ -21,7 +20,6 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('view');
 const { renderer, scene, camera, controls, world, sun, sky, hemi } = createScene(canvas);
 const terrain = new Terrain(world);
-const grid = new DdGrid(world, terrain);
 const fly = new Fly(camera, controls);
 const live = new LiveLayer({ world, camera, canvas });
 
@@ -84,8 +82,6 @@ function loadMap(entry, keepView = false) {
       camera.position.set(ox + ext * 0.35, ext * 0.45, oz + ext * 1.05);
     }
   }
-  grid.setMap(m);
-  $('gridRow').hidden = !grid.enabled;
   showMapInfo(m, entry.view);
   if (!EMBED) history.replaceState(null, '', `#${entry.id}`);
   live.setMap(m, entry.view ? entry.view.partition : null);
@@ -175,7 +171,6 @@ addEventListener('message', (e) => {
   }
 });
 
-$('gridToggle').addEventListener('change', (e) => grid.setOn(e.target.checked));
 $('connChange').addEventListener('click', async () => {
   const status = await askForSetup({ cancellable: true });
   if (!status) return;
@@ -201,7 +196,6 @@ function tick() {
   if (g !== null) camera.position.y = Math.max(camera.position.y, g * terrain.exaggeration + 2);
   terrain.update(camera);
   live.update(dt);
-  grid.update(camera, dt);
   theme.update(dt);
   compass.update(dt);
   scene.fog.density = terrain.uniforms.uFogDensity.value;

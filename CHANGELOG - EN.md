@@ -10,6 +10,17 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ---
 
+## Beta.8 – 09/30/2026
+
+### Removed
+
+- **Map grid A1–I9 (Deep Desert) removed.** The console map image shown in the viewer already draws this grid, so the extra lines and floating cell names were redundant. The switch under the map selection, grid.js and the terrain shader's cell overlay are gone. (Beta.5 entry below stays as a record.)
+
+### Security
+
+- **Upgrade of the Dune Docker addon (0.1.6) no longer reuses an old viewer.** Viewer versions before Beta.7 ignore the password setting, so an upgrade that kept the old files could look protected while the viewer stayed open. The addon installer now records which viewer release it unpacked, replaces every install that does not match the pinned release (Beta.8; your config.json with API key and password stays untouched, extra terrain folders under data/ are kept) and, before it reports success, checks the running viewer: without login it must answer 401, with the password 200; otherwise it stops the container. A regression test (scripts/test-upgrade.sh in the addon) runs the upgrade from a real Beta.6 install and asserts exactly this.
+
+---
 ## Beta.7 – 09/29/2026
 
 ### Security

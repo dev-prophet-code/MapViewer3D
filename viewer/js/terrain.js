@@ -35,7 +35,6 @@ const FRAGMENT = /* glsl */`
   uniform float uMinH, uMaxH, uContours, uGrid, uFogDensity, uRock, uDetail, uMapOn, uMapFlip;
   uniform sampler2D uMapImg;
   uniform vec4 uMapBounds; // minX, maxX, minZ, maxZ (m)
-  uniform vec4 uCells;     // Kartenraster: minX, minZ, Zellkante (m), an
   varying vec3 vWorld;
   varying vec3 vNormal;
   varying float vH, vValid, vMat, vDist;
@@ -130,13 +129,6 @@ const FRAGMENT = /* glsl */`
       float g = max(line(vWorld.x / 1000.0, 1.2), line(vWorld.z / 1000.0, 1.2));
       lit = mix(lit, vec3(0.1, 0.3, 0.5), g * 0.6);
     }
-    if (uCells.w > 0.5) {
-      vec2 c = (vWorld.xz - uCells.xy) / uCells.z;
-      if (c.x > -0.01 && c.y > -0.01 && c.x < 9.01 && c.y < 9.01) {
-        float g = max(line(c.x, 2.2), line(c.y, 2.2));
-        lit = mix(lit, vec3(1.0, 0.86, 0.45), g * 0.85);
-      }
-    }
     lit *= uTone; // Tag/Nacht
     float fog = 1.0 - exp(-pow(vDist * uFogDensity, 2.0));
     gl_FragColor = vec4(mix(lit, uFogColor, fog), 1.0);
@@ -169,7 +161,6 @@ export class Terrain {
       uMapFlip: { value: 0 },
       uMapImg: { value: null },
       uMapBounds: { value: new THREE.Vector4(0, 1, 0, 1) },
-      uCells: { value: new THREE.Vector4(0, 0, 1, 0) },
     };
     this.materials = [];
     this.wireframe = false;

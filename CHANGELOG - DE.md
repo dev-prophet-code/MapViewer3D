@@ -13,6 +13,17 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 
 ---
 
+## Beta.8 – 30.09.2026
+
+### Entfernt
+
+- **Kartenraster A1–I9 (Deep Desert) entfernt.** Das Console-Kartenbild im Viewer zeigt dieses Raster bereits, die zusätzlichen Linien und schwebenden Zellnamen waren überflüssig. Der Schalter unter der Kartenauswahl, grid.js und die Zell-Überlagerung im Gelände-Shader sind weg. (Der Eintrag unter Beta.5 bleibt als Nachweis stehen.)
+
+### Sicherheit
+
+- **Das Upgrade des Dune-Docker-Addons (0.1.6) übernimmt keinen alten Viewer mehr.** Viewer vor Beta.7 ignorieren die Passwort-Einstellung; ein Upgrade, das die alten Dateien behielt, konnte daher geschützt aussehen, während der Viewer offen blieb. Der Addon-Installer merkt sich jetzt, welchen Viewer-Release er entpackt hat, ersetzt jede Installation, die nicht zum festgelegten Release (Beta.8) passt (deine config.json mit API-Key und Passwort bleibt unberührt, zusätzliche Geländeordner unter data/ bleiben erhalten) und prüft vor der Erfolgsmeldung den laufenden Viewer: ohne Login muss er 401 antworten, mit Passwort 200; sonst stoppt er den Container. Ein Regressionstest (scripts/test-upgrade.sh im Addon) fährt das Upgrade von einer echten Beta.6-Installation und prüft genau das.
+
+---
 ## Beta.7 – 29.09.2026
 
 ### Sicherheit
