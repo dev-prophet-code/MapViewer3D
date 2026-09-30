@@ -33,7 +33,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 MV_VERSION="Beta.8"
 MV_URL="${MV_URL:-https://github.com/dev-prophet-code/MapViewer3D/releases/download/beta.8/MapViewer3D-Beta.8.zip}"
-MV_SHA256="${MV_SHA256:-0a56fe0b801413ccd6df281524359048aae284a45bad30728bf57048dde68d5f}"
+MV_SHA256="${MV_SHA256:-1f9623ca3b192876c80efb7b0415908346eb30029a190242dbe578ae05873bf7}"
 
 fail() { echo "✗ $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "'$1' is required."; }
