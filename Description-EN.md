@@ -58,7 +58,7 @@ panel switches to German (*Deutsch*); the choice is remembered in the browser.
 - **Slight delay:** Positions come from the server's database and can lag by a few
   seconds to minutes. Only the optional position agent (root on the game host, read-only,
   reads the game processes' memory) delivers sandworms, enemies and vehicles in real time;
-  it never forwards players, and in public mode only PvE partitions.
+  with `-players` it also moves the console's online players in real time (matched by distance, nothing the console does not already show), and in public mode only PvE partitions.
 
 ## How the viewer gets its data
 

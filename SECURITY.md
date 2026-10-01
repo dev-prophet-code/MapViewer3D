@@ -1,6 +1,6 @@
 # Security Policy
 
-Applies to the current release, Dune MapViewer3D Beta.9.
+Applies to the current release, Dune MapViewer3D Beta.10.
 
 ## Reporting a vulnerability
 
@@ -19,8 +19,9 @@ the local HTTP server, CSRF protection or path traversal are especially welcome.
 `mvagent` reads the memory of the game server processes (`/proc/<pid>/mem`) and therefore
 runs as root on the game host. It is read-only (no ptrace, no writes, no injection), listens
 on loopback only and never outputs or forwards the process command line (it contains the game
-server's auth token). Players are not output unless `-players` is given and are never forwarded
-by the viewer server; in public mode only PvE partitions leave the server. Run it only on
+server's auth token). Players are not output unless `-players` is given; the viewer server forwards a
+live player only when it can match it to an online player the console already shows
+(same partition, nearest distance), so no new names or players appear; in public mode only PvE partitions leave the server. Run it only on
 servers you operate. Details: [docs/Agent-EN.md](docs/Agent-EN.md).
 
 ## Tip for users

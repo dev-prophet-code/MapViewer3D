@@ -20,7 +20,7 @@ sudo ./bin/mvagent-linux-amd64                  # auf dem Spiel-Host, lauscht au
 ./start.sh -agent http://127.0.0.1:8796         # Viewer: vier zusätzliche Schalter erscheinen
 ```
 
-Spieler werden nie weitergereicht, im öffentlichen Betrieb (`-public`) nur PvE-Partitionen gezeigt. Der Agent bestimmt seine Speicher-Offsets nach Spiel-Updates selbst neu (geprüft mit Build 2134304). Einzelheiten, Optionen, systemd-Dienst und Grenzen: [docs/Agent-DE.md](docs/Agent-DE.md) · [English](docs/Agent-EN.md).
+Spieler (mit `-players`) erscheinen in Echtzeit nur als die Online-Spieler der Console, zugeordnet nach Partition und Abstand, im öffentlichen Betrieb (`-public`) nur PvE-Partitionen gezeigt. Der Agent bestimmt seine Speicher-Offsets nach Spiel-Updates selbst neu (geprüft mit Build 2134304). Einzelheiten, Optionen, systemd-Dienst und Grenzen: [docs/Agent-DE.md](docs/Agent-DE.md) · [English](docs/Agent-EN.md).
 
 ## Addon für die Dune Docker Console (ohne Server-Installation)
 

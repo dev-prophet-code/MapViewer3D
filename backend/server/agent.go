@@ -22,6 +22,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -242,12 +243,18 @@ type agentFilter struct {
 	part     int // -1 = alle Partitionen dieser Karte
 	allowed  map[int]bool
 	restrict bool
+	players  []consolePlayer // Spieler laut Console (online), zum Zuordnen der Echtzeitpositionen
 }
 
+// ok: Objekte außer Spielern (die gehen nur über matchPlayers hinaus).
 func (f agentFilter) ok(o *agentObj) bool {
 	if o.Kind == "player" || o.mapN != f.mapName {
 		return false
 	}
+	return f.partOK(o)
+}
+
+func (f agentFilter) partOK(o *agentObj) bool {
 	if f.part >= 0 && o.part != f.part {
 		return false
 	}
@@ -270,6 +277,50 @@ func (s *Server) newAgentFilter(r *http.Request, mapName string) agentFilter {
 	return f
 }
 
+// consolePlayer ist ein Spieler, der laut Console online ist.
+type consolePlayer struct {
+	id   any // wie die Console ihn nennt (Zahl oder Text)
+	x, y float64
+	part int
+}
+
+// maxMatchCm: so weit darf die Position der Console (einige Sekunden alt) von der
+// Echtzeitposition abweichen; Ornithopter fliegen ~40 m/s.
+const maxMatchCm = 30000
+
+// matchPlayers ordnet Echtzeitspieler (ohne Namen) den Spielern der Console zu:
+// gleiche Partition, nächster Abstand zuerst, jeder höchstens einmal. Nicht
+// zuordenbare Spieler bleiben unsichtbar – es geht nur hinaus, was die Console
+// ohnehin zeigt.
+func matchPlayers(live []*agentObj, cons []consolePlayer) map[uint32]any {
+	type cand struct {
+		a, c int
+		d    float64
+	}
+	var cs []cand
+	for i, a := range live {
+		for j, c := range cons {
+			if a.part != c.part {
+				continue
+			}
+			if d := math.Hypot(a.X-c.x, a.Y-c.y); d <= maxMatchCm {
+				cs = append(cs, cand{i, j, d})
+			}
+		}
+	}
+	sort.Slice(cs, func(i, j int) bool { return cs[i].d < cs[j].d })
+	out := map[uint32]any{}
+	usedA, usedC := map[int]bool{}, map[int]bool{}
+	for _, c := range cs {
+		if usedA[c.a] || usedC[c.c] {
+			continue
+		}
+		usedA[c.a], usedC[c.c] = true, true
+		out[live[c.a].ID] = cons[c.c].id
+	}
+	return out
+}
+
 type agentRow struct {
 	ID   uint32  `json:"i"`
 	Kind string  `json:"k"`
@@ -278,6 +329,7 @@ type agentRow struct {
 	X    float64 `json:"x"`
 	Y    float64 `json:"y"`
 	Z    float64 `json:"z"`
+	PL   any     `json:"pl,omitempty"` // Spieler: Kennung des Spielers in der Console
 }
 
 type agentView struct {
@@ -301,46 +353,105 @@ func (l *agentLink) view(f agentFilter) agentView {
 		v.Connected = false
 		return v
 	}
+	var live []*agentObj
 	for _, o := range l.objs {
-		if f.ok(o) {
-			v.Rows = append(v.Rows, agentRow{o.ID, o.Kind, o.Class, o.part, math.Round(o.X), math.Round(o.Y), math.Round(o.Z)})
+		switch {
+		case f.ok(o):
+			v.Rows = append(v.Rows, agentRow{ID: o.ID, Kind: o.Kind, Cls: o.Class, Part: o.part, X: math.Round(o.X), Y: math.Round(o.Y), Z: math.Round(o.Z)})
+		case o.Kind == "player" && o.mapN == f.mapName && f.partOK(o):
+			live = append(live, o)
+		}
+	}
+	matched := matchPlayers(live, f.players)
+	for _, o := range live {
+		if pl, ok := matched[o.ID]; ok {
+			v.Rows = append(v.Rows, agentRow{ID: o.ID, Kind: "player", Part: o.part, X: math.Round(o.X), Y: math.Round(o.Y), Z: math.Round(o.Z), PL: pl})
 		}
 	}
 	return v
 }
 
-func (s *Server) agentMap(w http.ResponseWriter, r *http.Request) (*agentLink, string, bool) {
+func (s *Server) agentMap(w http.ResponseWriter, r *http.Request) (*agentLink, *terrain, bool) {
 	l := s.agentLink()
 	if l == nil {
 		writeJSON(w, agentView{Rows: []agentRow{}})
-		return nil, "", false
+		return nil, nil, false
 	}
 	name := r.PathValue("map")
 	if !validName.MatchString(name) {
 		http.NotFound(w, r)
-		return nil, "", false
+		return nil, nil, false
 	}
 	t, err := s.load(name)
 	if err != nil {
 		http.NotFound(w, r)
-		return nil, "", false
+		return nil, nil, false
 	}
-	return l, t.info.Source, true
+	return l, t, true
+}
+
+// consolePlayers liefert die online Spieler der Karte laut Console – genau so gefiltert,
+// wie der Browser sie über /api/live/<karte>/players sähe (öffentlich: nur PvE-Partitionen).
+func (s *Server) consolePlayers(t *terrain, r *http.Request) []consolePlayer {
+	lp := s.lp()
+	name := s.liveName(t)
+	if lp == nil || name == "" {
+		return nil
+	}
+	path := liveFeeds["players"].path + "?map=" + url.QueryEscape(name)
+	c := lp.get(path, liveFeeds["players"].ttl)
+	if s.public != nil {
+		c = s.public.filterFeed(path, "players", c)
+	}
+	if c.status != http.StatusOK {
+		return nil
+	}
+	rows, err := decodeRows(c.body)
+	if err != nil {
+		return nil
+	}
+	var out []consolePlayer
+	for _, row := range rows {
+		if row["online_status"] != "Online" {
+			continue
+		}
+		x, ok1 := jsonFloat(row["x"])
+		y, ok2 := jsonFloat(row["y"])
+		part, has := partitionOf(row)
+		if !ok1 || !ok2 || !has {
+			continue
+		}
+		out = append(out, consolePlayer{id: row["id"], x: x, y: y, part: part})
+	}
+	return out
+}
+
+func jsonFloat(v any) (float64, bool) {
+	switch x := v.(type) {
+	case json.Number:
+		f, err := x.Float64()
+		return f, err == nil
+	case float64:
+		return x, true
+	}
+	return 0, false
 }
 
 // agentSnapshot: GET /api/agent/{map}
 func (s *Server) agentSnapshot(w http.ResponseWriter, r *http.Request) {
-	l, src, ok := s.agentMap(w, r)
+	l, t, ok := s.agentMap(w, r)
 	if !ok {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, l.view(s.newAgentFilter(r, src)))
+	f := s.newAgentFilter(r, t.info.Source)
+	f.players = s.consolePlayers(t, r)
+	writeJSON(w, l.view(f))
 }
 
 // agentStream: GET /api/agent/{map}/stream
 func (s *Server) agentStream(w http.ResponseWriter, r *http.Request) {
-	l, src, ok := s.agentMap(w, r)
+	l, t, ok := s.agentMap(w, r)
 	if !ok {
 		return
 	}
@@ -349,7 +460,8 @@ func (s *Server) agentStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "kein Streaming", http.StatusInternalServerError)
 		return
 	}
-	f := s.newAgentFilter(r, src)
+	f := s.newAgentFilter(r, t.info.Source)
+	f.players = s.consolePlayers(t, r)
 	rc := http.NewResponseController(w)
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
@@ -378,10 +490,27 @@ func (s *Server) agentStream(w http.ResponseWriter, r *http.Request) {
 	}
 	keep := time.NewTicker(20 * time.Second)
 	defer keep.Stop()
+	// Die Zuordnung Echtzeitspieler → Console-Spieler gilt nur kurz (Spieler kommen, gehen,
+	// stehen nebeneinander): alle 3 s neu bilden und bei Änderung den Stand neu senden.
+	rematch := time.NewTicker(3 * time.Second)
+	defer rematch.Stop()
+	sig := playerSig(l.view(f))
 	for {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-rematch.C:
+			f.players = s.consolePlayers(t, r)
+			if v := l.view(f); playerSig(v) != sig {
+				sig = playerSig(v)
+				known = map[uint32]bool{}
+				for _, row := range v.Rows {
+					known[row.ID] = true
+				}
+				if !write("snap", v) {
+					return
+				}
+			}
 		case <-keep.C:
 			rc.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
@@ -425,4 +554,16 @@ func (s *Server) agentStream(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// playerSig fasst die Spielerzuordnung einer Ansicht zusammen (Agenten-ID → Console-ID).
+func playerSig(v agentView) string {
+	var parts []string
+	for _, r := range v.Rows {
+		if r.Kind == "player" {
+			parts = append(parts, fmt.Sprintf("%d>%v", r.ID, r.PL))
+		}
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, ",")
 }

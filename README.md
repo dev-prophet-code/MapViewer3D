@@ -63,7 +63,7 @@ sudo ./bin/mvagent-linux-amd64                  # on the game host, listens on 1
 ./start.sh -agent http://127.0.0.1:8796         # viewer: four extra switches appear
 ```
 
-Players are never forwarded, and in public mode (`-public`) only PvE partitions are shown. The agent re-detects its memory offsets after game updates (verified with build 2134304). Details, flags, systemd unit and limits: [docs/Agent-EN.md](docs/Agent-EN.md) · [Deutsch](docs/Agent-DE.md).
+Players (with `-players`) are shown in real time only as the console's own online players, matched by partition and distance, and in public mode (`-public`) only PvE partitions are shown. The agent re-detects its memory offsets after game updates (verified with build 2134304). Details, flags, systemd unit and limits: [docs/Agent-EN.md](docs/Agent-EN.md) · [Deutsch](docs/Agent-DE.md).
 
 ## 🧩 Dune Docker Console addon (no server install)
 

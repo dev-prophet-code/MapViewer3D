@@ -14,6 +14,18 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 
 ---
 
+## Beta.10 – 01.10.2026
+
+### Neu
+
+- **Spieler live.** Mit dem Agenten als `mvagent -players` gestartet, bewegt der Viewer die Online-Spieler der Console jetzt in Echtzeit (10 Hz, flüssig), statt alle 5 s zu springen. Der Agent liest die Positionen von `ADunePlayerCharacter` aus dem Spielspeicher; der Viewer-Server ordnet jede einem Online-Spieler der Console zu (gleiche Partition, nächster Abstand, höchstens 300 m, jeder einmal) und ordnet alle 3 s neu zu. Siehe [docs/Agent-DE.md](docs/Agent-DE.md#spieler-live--players). Ohne `-players` ändert sich nichts.
+
+### Sicherheit
+
+- Live-Spieler gehen nur hinaus, wenn sie einem Online-Spieler zugeordnet sind, den die Console ohnehin zeigt (im öffentlichen Betrieb: nur PvE-Partitionen); es erscheinen also keine neuen Namen oder Spieler. Nicht zuordenbare bleiben unsichtbar. Zwei Spieler dicht beieinander können kurz vertauscht werden.
+
+---
+
 ## Beta.9 – 01.10.2026
 
 ### Neu

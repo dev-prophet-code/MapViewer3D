@@ -198,3 +198,38 @@ func TestAgentAddress(t *testing.T) {
 		}
 	}
 }
+
+// Echtzeitspieler werden den Spielern der Console zugeordnet: gleiche Partition,
+// nächster Abstand zuerst, jeder höchstens einmal; was fern oder fremd ist, bleibt unsichtbar.
+func TestMatchPlayers(t *testing.T) {
+	live := []*agentObj{
+		{ObjOut: agent.ObjOut{ID: 1, Kind: "player", X: 1000, Y: 1000}, part: 1},
+		{ObjOut: agent.ObjOut{ID: 2, Kind: "player", X: 1200, Y: 1000}, part: 1},
+		{ObjOut: agent.ObjOut{ID: 3, Kind: "player", X: 1000, Y: 1000}, part: 31}, // PvP: Console kennt ihn hier nicht
+		{ObjOut: agent.ObjOut{ID: 4, Kind: "player", X: 900000, Y: 0}, part: 1},   // zu weit weg
+	}
+	cons := []consolePlayer{
+		{id: json.Number("7"), x: 1190, y: 1010, part: 1},
+		{id: "alice", x: 1010, y: 990, part: 1},
+	}
+	got := matchPlayers(live, cons)
+	if got[1] != "alice" || got[2] != json.Number("7") || len(got) != 2 {
+		t.Fatalf("Zuordnung: %v", got)
+	}
+}
+
+func TestAgentViewPlayers(t *testing.T) {
+	l := &agentLink{connected: true, lastEvent: time.Now(), objs: map[uint32]*agentObj{
+		1: {ObjOut: agent.ObjOut{ID: 1, Kind: "player", X: 100, Y: 100}, part: 1, mapN: "Survival_1"},
+		2: {ObjOut: agent.ObjOut{ID: 2, Kind: "worm"}, part: 1, mapN: "Survival_1"},
+	}}
+	f := agentFilter{mapName: "Survival_1", part: -1, players: []consolePlayer{{id: "p1", x: 150, y: 100, part: 1}}}
+	v := l.view(f)
+	if len(v.Rows) != 2 {
+		t.Fatalf("Zeilen: %+v", v.Rows)
+	}
+	f.players = nil
+	if v := l.view(f); len(v.Rows) != 1 || v.Rows[0].Kind != "worm" {
+		t.Fatalf("ohne Console-Spieler darf kein Spieler hinaus: %+v", v.Rows)
+	}
+}

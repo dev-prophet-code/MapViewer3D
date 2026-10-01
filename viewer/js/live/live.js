@@ -96,6 +96,7 @@ export class LiveLayer {
     this.partition = null;
     this.show = Object.fromEntries([...TOGGLES, ...CATEGORIES.map((c) => ({ key: c.key, on: false }))].map((t) => [t.key, t.on]));
     this.players = new Map();
+    this.agent.players = this.players;
     this.vehicles = new Map();
     this.bases = new Map();
     this.layers = {};          // Kategorie → { rows, points, meshes[] }
@@ -221,7 +222,7 @@ export class LiveLayer {
       seen.add(row.id);
       let p = this.players.get(row.id);
       if (p && p.online !== online) { this.group.remove(p.obj); p = null; }
-      const pos = ueToThree(row.x, row.y, row.z);
+      const pos = this.agent.livePlayer(row.id) ?? ueToThree(row.x, row.y, row.z);
       if (!p) {
         const obj = playerModel(online);
         const lab = label(row.name, { color: online ? '#ffd9a8' : '#cccccc' });
@@ -484,7 +485,8 @@ export class LiveLayer {
   update(dt) {
     if (!this.map) return;
     const k = 1 - Math.exp(-dt * 3); // weiche Bewegung zwischen zwei Abrufen
-    for (const p of this.players.values()) p.obj.position.lerp(p.target, k);
+    const kLive = 1 - Math.exp(-dt * 10); // Echtzeitspieler folgen schnell
+    for (const [id, p] of this.players) p.obj.position.lerp(p.target, this.agent.livePlayer(id) ? kLive : k);
     this.agent.update(dt);
     if (this.selected?.obj) this.highlight.position.copy(this.selected.obj.position);
     const s = 1 + 0.15 * Math.sin(performance.now() / 250);

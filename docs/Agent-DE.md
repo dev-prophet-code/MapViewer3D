@@ -14,7 +14,11 @@ NPCs, Gegner und Sandwürmer stehen **nicht in der Datenbank** (dort liegen nur 
 | Gegner, Gestrandete, Soldaten | `ADuneNpcCharacter` | stehen still, solange kein Spieler in der Nähe ist (KI schläft) |
 | Zivilisten, Händler, Quartiermeister | `ADuneNpcCharacterCivilian`, `ATaxationNpc` | stehen still |
 | Ornithopter, Fahrzeuge | `ADuneVehicle`, `ADuneOrnithopter`, `AWheeledVehiclePawn` | meist statisch, einzelne bewegen sich |
-| Spieler | `ADunePlayerCharacter` | **werden nicht ausgegeben**, außer mit `-players` (und vom Viewer nie weitergereicht) |
+| Spieler | `ADunePlayerCharacter` | nur mit `-players`; der Viewer zeigt sie als die Online-Spieler der Console in Echtzeit (siehe unten) |
+
+## Spieler live (`-players`)
+
+Mit `-players` gestartet, bewegt der Viewer die Online-Spieler der Console in Echtzeit (10 Hz, flüssig) statt alle 5 s. Der Agent kennt keine Namen: Der Viewer-Server ordnet jeden Echtzeitspieler einem Console-Spieler derselben Partition nach kleinstem Abstand zu (Console-Positionen sind einige Sekunden alt, bis 300 m Abstand gelten; jeder Console-Spieler nur einmal) und ordnet alle 3 s neu zu. Zwei Spieler dicht beieinander können kurz vertauscht werden. Ohne `-players` ändert sich nichts.
 
 ## Schnellstart
 
@@ -40,7 +44,7 @@ systemd-Dienst (Agent, läuft als root): siehe [Agent-EN.md](Agent-EN.md#quick-s
 | `-workers` | 4 | parallele Scan-Worker (immer nur ein Scan zugleich, ~1–4 s je Prozess) |
 | `-rescan` | 30m | volle Discovery in diesem Abstand (neue Spawns erscheinen dann; ein voller Scan liest den ganzen Prozessspeicher und ist deshalb bewusst selten) |
 | `-rescan-min` | 1m | auf Anforderung höchstens so oft (ein Sandwurm verschwand = ein neuer entstand) |
-| `-players` | aus | auch Spieler ausgeben (Datenschutz: aus) |
+| `-players` | aus | auch Spieler lesen (nötig für Live-Spieler; Datenschutz: standardmäßig aus) |
 | `-pid` | – | nur diesen Prozess (Diagnose) |
 | `-blocks`, `-root`, `-pos` | Build 2134304 | Offsets von Hand überschreiben |
 | `-once` | – | einmal suchen, JSON ausgeben, beenden |
@@ -70,7 +74,7 @@ Gemessen auf einem Live-Server (Build 2134304): Hagga Basin ~2550 Objekte in 3,4
 - Nur lesend; kein ptrace, kein Schreibzugriff, keine Injection.
 - Die Kommandozeile der Prozesse enthält einen **Auth-Token** (`-ini:engine:…ServiceAuthToken=…`). Der Agent gibt ihn nie aus, schreibt ihn nie ins Log und reicht ihn nie weiter (ausgewertet werden nur Kartenname und `-PartitionIndex`).
 - Die Schnittstelle hat keinen Login: Sie lauscht nur auf Loopback. Der Viewer-Server verbindet sich und filtert:
-  - **Spieler werden nie weitergereicht**,
+  - **Spieler gehen nur hinaus, wenn sie zugeordnet sind**: einem Online-Spieler, den die Console ohnehin zeigt (gleiche Partition, nächster Abstand, höchstens 300 m, jeder einmal); nicht zuordenbare bleiben unsichtbar, es erscheinen also keine neuen Namen oder Spieler,
   - im öffentlichen Betrieb (`-public`) nur Partitionen der Erlaubnisliste, die die Seite als **PvE** meldet. Würmer und Gegner folgen den Spielern; ihre Bewegung in PvP-Partitionen würde Spielerpositionen verraten.
 - Den Agent-Port niemandem öffnen, dem man keine Spielerpositionen zeigen würde.
 

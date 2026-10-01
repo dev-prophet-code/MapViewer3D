@@ -10,6 +10,18 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ---
 
+## Beta.10 – 10/01/2026
+
+### New
+
+- **Live players.** With the agent started as `mvagent -players`, the viewer now moves the console's online players in real time (10 Hz, smooth) instead of jumping every 5 s. The agent reads `ADunePlayerCharacter` positions from the game's memory; the viewer server matches each one to an online player of the console (same partition, nearest distance, at most 300 m, each once) and re-matches every 3 s. See [docs/Agent-EN.md](docs/Agent-EN.md#live-players--players). Without `-players` nothing changes.
+
+### Security
+
+- Live players are forwarded only when matched to an online player the console already shows (in public mode: PvE partitions only), so no new names or players appear. Unmatched players stay invisible. Two players standing right next to each other can swap for a moment.
+
+---
+
 ## Beta.9 – 10/01/2026
 
 ### New

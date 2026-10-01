@@ -14,7 +14,11 @@ NPCs, enemies and sandworms are **not in the database** (the tables hold spawner
 | Enemies, stranded, soldiers | `ADuneNpcCharacter` | stand still unless a player is nearby (their AI sleeps) |
 | Civilians, traders, quartermasters | `ADuneNpcCharacterCivilian`, `ATaxationNpc` | stand still |
 | Ornithopters, vehicles | `ADuneVehicle`, `ADuneOrnithopter`, `AWheeledVehiclePawn` | mostly static, some move |
-| Players | `ADunePlayerCharacter` | **not output** unless `-players` (and never forwarded by the viewer) |
+| Players | `ADunePlayerCharacter` | only with `-players`; the viewer shows them as the console's online players moving in real time (see below) |
+
+## Live players (`-players`)
+
+Start the agent with `-players` and the viewer moves the console's online players in real time (10 Hz, smooth) instead of every 5 s. The agent has no names: the viewer server matches each live player to a console player of the same partition by nearest distance (console positions are a few seconds old, so up to 300 m apart is accepted; each console player is used once) and re-matches every 3 s. Two players standing right next to each other can swap for a moment. Without `-players` nothing changes.
 
 ## Quick start
 
@@ -37,7 +41,7 @@ Description=Dune MapViewer3D position agent
 After=docker.service
 
 [Service]
-ExecStart=/opt/mapviewer-agent/mvagent -addr 127.0.0.1:8796
+ExecStart=/opt/mapviewer-agent/mvagent -addr 127.0.0.1:8796 -players
 Restart=always
 RestartSec=10
 NoNewPrivileges=yes
@@ -60,7 +64,7 @@ WantedBy=multi-user.target
 | `-workers` | 4 | parallel scan workers (one scan at a time, ~1–4 s per process) |
 | `-rescan` | 30m | full discovery interval (new spawns show up then; a full scan reads the whole process memory, so it is deliberately rare) |
 | `-rescan-min` | 1m | at most this often on demand (a sandworm vanished = a new one spawned) |
-| `-players` | off | also output players (privacy: off) |
+| `-players` | off | also read players (needed for live players; privacy: off by default) |
 | `-pid` | – | only this process (diagnosis) |
 | `-blocks`, `-root`, `-pos` | build 2134304 | override the offsets by hand |
 | `-once` | – | search once, print JSON, exit |
@@ -90,7 +94,7 @@ Measured on a live server (build 2134304): Hagga Basin ~2550 objects in 3.4 s (2
 - Read-only; no ptrace, no write access, no injection.
 - The process command line contains an **auth token** (`-ini:engine:…ServiceAuthToken=…`). The agent never prints, logs or forwards it (only map name and `-PartitionIndex` are parsed).
 - The interface has no login: it listens on loopback only. The viewer server connects to it and filters:
-  - **players are never forwarded**,
+  - **players are forwarded only when matched** to an online player the console already shows (same partition, nearest distance, at most 300 m apart, each once); unmatched players stay invisible, so no new names or players appear,
   - in public mode (`-public`) only partitions on the allow list that the site reports as **PvE**. Worms and enemies follow players, so their movement in PvP partitions would reveal player positions.
 - Do not give the agent port to anyone you would not trust with player positions.
 
