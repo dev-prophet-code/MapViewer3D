@@ -26,7 +26,7 @@ Ein *Community-Addon* von Dune Docker kann das nicht: Addons sind Browser-Seiten
 └───────────────────────────────────────────────┘
 ```
 
-- **mvagent** – aus den MapViewer3D-Quellen gebaut (Release-Tag `MV_REF`, geprüft gegen `MV_COMMIT`). `pid: host` lässt ihn die Spielserver-Prozesse der Dune-Docker-Container sehen; zum Lesen ihres Speichers braucht er `SYS_PTRACE` + `DAC_OVERRIDE`. Alle anderen Rechte sind entzogen, das Dateisystem ist schreibgeschützt, er hat **keinen veröffentlichten Port und kein Internet** (internes Netz).
+- **mvagent** – aus den MapViewer3D-Quellen gebaut (Release-Tag `MV_REF`, geprüft gegen `MV_COMMIT`). `pid: host` lässt ihn die Spielserver-Prozesse der Dune-Docker-Container sehen; zum Lesen ihres Speichers braucht er `SYS_PTRACE` + `DAC_OVERRIDE` (und AppArmor `unconfined`, wie die Dune-Container). Alle anderen Rechte sind entzogen, das Dateisystem ist schreibgeschützt, er hat **keinen veröffentlichten Port und kein Internet** (internes Netz).
 - **mvgate** – der einzige veröffentlichte Port (8797/TCP). Es spricht **securelink**: nur TLS 1.3, ein eigener Schlüssel, den der Client fest erwartet, und ein gegenseitiger Token-Nachweis, der an die TLS-Sitzung gebunden ist – das Token selbst geht nie über das Netz. Nur angemeldete Clients erreichen die drei lesenden Agent-Adressen. Läuft ohne root. Einzelheiten: [SECURITY.md](SECURITY.md).
 - **mvlink** – optionales Hilfsprogramm auf deinem PC für MapViewer3D-Versionen vor Beta.16 (siehe unten).
 
@@ -111,7 +111,7 @@ Bedrohungsmodell, Protokoll und der Vorschlag für eine Einbindung in Dune Docke
 | `MV_AGENT_PLAYERS` | `false` | auch Spieler lesen |
 | `MV_AGENT_HZ` | `10` | Abtastrate bewegter Objekte |
 | `MV_AGENT_CPUS` | `1.0` | CPU-Grenze des Agenten (die Suche liest den ganzen Prozessspeicher) |
-| `MV_AGENT_APPARMOR` | `docker-default` | `unconfined` nur, wenn das Log `permission denied` bei `/proc/<pid>/mem` zeigt |
+| `MV_AGENT_APPARMOR` | `unconfined` | Dune Docker startet die Spiel-Container privilegiert und AppArmor-`unconfined`; das Profil `docker-default` darf solche Prozesse nicht lesen (`permission denied`, Kernel-Log `apparmor="DENIED" … peer="unconfined"`), darum braucht der Agent ebenfalls `unconfined`. Seine übrigen Grenzen bleiben. |
 | `MV_GATE_ALLOW` | leer = alle | IPs / CIDRs, die verbinden dürfen |
 | `MV_GATE_BIND` / `MV_GATE_PORT` | `0.0.0.0` / `8797` | wo das Gate auf dem Host lauscht (der Port steht auch im Kopplungscode) |
 | `MV_GATE_MAX_STREAMS` | `8` | gleichzeitige Viewer |
@@ -134,7 +134,7 @@ Im Container aktualisiert sich der Agent nie selbst; ein neues Release heißt ne
 | Symptom | Ursache / Lösung |
 |---|---|
 | Agent-Log: keine Spielserver-Prozesse | Dune Docker läuft nicht, oder der Container hat kein `pid: host` (Podman/rootless Docker werden nicht unterstützt) |
-| `permission denied` bei `/proc/<pid>/mem` | AppArmor: `MV_AGENT_APPARMOR=unconfined`. SELinux: `label=disable` in `security_opt` von `mvagent` ergänzen. `kernel.yama.ptrace_scope=3` verhindert es ganz. |
+| `permission denied` bei `/proc/<pid>/mem` | AppArmor: `MV_AGENT_APPARMOR=unconfined` lassen (Standard; `DENIED` in `sudo dmesg` suchen). SELinux: `label=disable` in `security_opt` von `mvagent` ergänzen. `kernel.yama.ptrace_scope=3` verhindert es ganz. |
 | Viewer-Log: „keine Antwort“ | Port 8797 zu/falsch weitergeleitet, falscher Host im Kopplungscode, IP nicht in `MV_GATE_ALLOW` oder nach Fehlversuchen gesperrt (10 Minuten warten) |
 | Viewer-Log: „anderer Schlüssel“ | mvgate wurde neu aufgesetzt (Volume weg) → neu koppeln; sonst **sitzt jemand dazwischen**: nicht weitermachen |
 | Viewer-Log: „lehnt den Kopplungscode ab“ | Token wurde gewechselt → neuen Kopplungscode holen |

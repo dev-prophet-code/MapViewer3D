@@ -28,10 +28,12 @@ services:
     cap_add: [SYS_PTRACE, DAC_OVERRIDE]
     security_opt:
       - no-new-privileges:true
-      # docker-default lets a container read processes of other docker-default
-      # containers; set MV_AGENT_APPARMOR=unconfined only if the log says
-      # "permission denied" on /proc/<pid>/mem
-      - apparmor=${MV_AGENT_APPARMOR:-docker-default}
+      # Dune Docker runs its game containers privileged with AppArmor
+      # "unconfined"; the docker-default profile refuses to read such a peer
+      # (kernel: apparmor="DENIED" operation="ptrace" peer="unconfined"), so the
+      # agent needs "unconfined" too. Its other limits stay: two capabilities,
+      # no-new-privileges, read-only file system, internal network only.
+      - apparmor=${MV_AGENT_APPARMOR:-unconfined}
     read_only: true
     command:
       - -addr=0.0.0.0:8796

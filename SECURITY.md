@@ -14,7 +14,7 @@ This describes how live positions get from a Dune Docker host to a MapViewer3D o
 
 | Part | Where | Network |
 |---|---|---|
-| `mvagent` | Dune Docker host, container, root, `pid: host`, caps `SYS_PTRACE`+`DAC_OVERRIDE` only, read-only FS | internal Docker network only: no published port, no internet |
+| `mvagent` | Dune Docker host, container, root, `pid: host`, caps `SYS_PTRACE`+`DAC_OVERRIDE` only, AppArmor `unconfined` (required: the Dune game containers are privileged and unconfined, and AppArmor's `docker-default` refuses to read an unconfined peer), `no-new-privileges`, read-only FS | internal Docker network only: no published port, no internet |
 | `mvgate` | Dune Docker host, container, non-root, read-only FS | the only published port (8797/TCP) |
 | MapViewer3D Beta.16+ | the user's PC | connects to mvgate itself (`-agent-pair`, same `securelink` code in `backend/securelink`) |
 | `mvlink` | the user's PC, for viewers before Beta.16 | connects to mvgate; offers the data to the local viewer on **127.0.0.1 only** |

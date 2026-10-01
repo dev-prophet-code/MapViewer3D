@@ -26,7 +26,7 @@ A Dune Docker *community addon* cannot do this: addons are browser pages in the 
 └───────────────────────────────────────────────┘
 ```
 
-- **mvagent** – built from the MapViewer3D sources (release tag `MV_REF`, verified against `MV_COMMIT`). `pid: host` lets it see the game server processes of the Dune Docker containers; it needs `SYS_PTRACE` + `DAC_OVERRIDE` to read their memory. All other capabilities are dropped, the file system is read-only, it has **no published port and no internet** (internal network).
+- **mvagent** – built from the MapViewer3D sources (release tag `MV_REF`, verified against `MV_COMMIT`). `pid: host` lets it see the game server processes of the Dune Docker containers; it needs `SYS_PTRACE` + `DAC_OVERRIDE` (and AppArmor `unconfined`, like the Dune containers) to read their memory. All other capabilities are dropped, the file system is read-only, it has **no published port and no internet** (internal network).
 - **mvgate** – the only published port (8797/TCP). It speaks **securelink**: TLS 1.3 only, its own key pinned by the client, and a mutual token proof bound to the TLS session – the token itself never travels over the network. Only authenticated clients reach the three read-only agent routes. Runs as non-root. Details: [SECURITY.md](SECURITY.md).
 - **mvlink** – optional helper on your PC for MapViewer3D versions before Beta.16 (see below).
 
@@ -111,7 +111,7 @@ Threat model, protocol and the proposal for an integration into Dune Docker: [SE
 | `MV_AGENT_PLAYERS` | `false` | also read players |
 | `MV_AGENT_HZ` | `10` | sampling rate of moving objects |
 | `MV_AGENT_CPUS` | `1.0` | CPU limit of the agent (the discovery scan reads the whole process memory) |
-| `MV_AGENT_APPARMOR` | `docker-default` | `unconfined` only if the log shows `permission denied` on `/proc/<pid>/mem` |
+| `MV_AGENT_APPARMOR` | `unconfined` | Dune Docker runs the game containers privileged and AppArmor-`unconfined`; the `docker-default` profile refuses to read such a process (`permission denied`, kernel log `apparmor="DENIED" … peer="unconfined"`), so the agent needs `unconfined` as well. Its other limits stay. |
 | `MV_GATE_ALLOW` | empty = all | IPs / CIDRs that may connect |
 | `MV_GATE_BIND` / `MV_GATE_PORT` | `0.0.0.0` / `8797` | where the gate listens on the host (the port also goes into the pairing code) |
 | `MV_GATE_MAX_STREAMS` | `8` | parallel viewers |
@@ -134,7 +134,7 @@ The agent never updates itself in the container; a new release means a rebuild.
 | Symptom | Cause / fix |
 |---|---|
 | agent log: no game server processes | Dune Docker not running, or the container has no `pid: host` (Podman/rootless Docker are not supported) |
-| `permission denied` on `/proc/<pid>/mem` | AppArmor: `MV_AGENT_APPARMOR=unconfined`. SELinux: add `label=disable` to `security_opt` of `mvagent`. `kernel.yama.ptrace_scope=3` blocks it completely. |
+| `permission denied` on `/proc/<pid>/mem` | AppArmor: keep `MV_AGENT_APPARMOR=unconfined` (default; look for `DENIED` in `sudo dmesg`). SELinux: add `label=disable` to `security_opt` of `mvagent`. `kernel.yama.ptrace_scope=3` blocks it completely. |
 | viewer log: "keine Antwort" (no answer) | port 8797 closed/forwarded wrong, wrong host in the pairing code, IP not in `MV_GATE_ALLOW`, or blocked after failed attempts (wait 10 minutes) |
 | viewer log: key does not match ("anderer Schlüssel") | mvgate was set up again (volume lost) → pair again; otherwise **someone is in between**: do not continue |
 | viewer log: code rejected ("lehnt … ab") | token was rotated → get a new pairing code |
