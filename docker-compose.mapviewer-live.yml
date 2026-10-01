@@ -1,0 +1,78 @@
+# MapViewer3D live data (sandworms, enemies, civilians, vehicles, storms,
+# optionally players) for a Dune Docker host.
+#
+# Runs next to Dune Docker as its own compose project, changes nothing in it:
+#
+#   cp .env.example .env    # set MV_GATE_TOKEN
+#   docker compose -f docker-compose.mapviewer-live.yml up -d --build
+#
+# Then on your PC:  start.sh -agent https://mv:<TOKEN>@<server>:8797
+# See README.md.
+
+name: mapviewer-live
+
+services:
+  mvagent:
+    build:
+      context: .
+      target: agent
+      args:
+        MV_REF: ${MV_REF:-beta.15}
+    image: mapviewer-live/mvagent:${MV_REF:-beta.15}
+    restart: unless-stopped
+    # sees the game server processes of the Dune Docker containers
+    pid: host
+    # reading /proc/<pid>/mem of another container's process
+    cap_drop: [ALL]
+    cap_add: [SYS_PTRACE, DAC_OVERRIDE]
+    security_opt:
+      - no-new-privileges:true
+      # docker-default lets a container read processes of other docker-default
+      # containers; set MV_AGENT_APPARMOR=unconfined only if the log says
+      # "permission denied" on /proc/<pid>/mem
+      - apparmor=${MV_AGENT_APPARMOR:-docker-default}
+    read_only: true
+    command:
+      - -addr=0.0.0.0:8796
+      - -allow-open
+      - -players=${MV_AGENT_PLAYERS:-false}
+      - -hz=${MV_AGENT_HZ:-10}
+    networks: [agent]
+    mem_limit: 512m
+    cpus: ${MV_AGENT_CPUS:-1.0}
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+
+  mvgate:
+    build:
+      context: .
+      target: gate
+    image: mapviewer-live/mvgate:latest
+    restart: unless-stopped
+    depends_on: [mvagent]
+    environment:
+      MV_GATE_TOKEN: ${MV_GATE_TOKEN:?set MV_GATE_TOKEN in .env (openssl rand -hex 24)}
+      MV_GATE_UPSTREAM: http://mvagent:8796
+      MV_GATE_ALLOW: ${MV_GATE_ALLOW:-}
+      MV_GATE_MAX_STREAMS: ${MV_GATE_MAX_STREAMS:-8}
+      MV_GATE_TLS_CERT: ${MV_GATE_TLS_CERT:-}
+      MV_GATE_TLS_KEY: ${MV_GATE_TLS_KEY:-}
+    volumes:
+      - ${MV_GATE_CERT_DIR:-./certs}:/certs:ro
+    ports:
+      - "${MV_GATE_BIND:-0.0.0.0}:${MV_GATE_PORT:-8797}:8797"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    networks: [agent, public]
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+
+networks:
+  # mvagent has no login: it is only reachable from mvgate, and has no internet
+  agent:
+    internal: true
+  public: {}
