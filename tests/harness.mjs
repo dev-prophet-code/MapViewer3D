@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 const dataDir = path.resolve(process.argv[2] ?? '.');
 const port = Number(process.argv[3] ?? 8099);
 const webDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
-export const KEY = 'dak_testid_0123456789abcdef0123456789';
+export const KEY = 'dak_test_test_test_test';
 const COOKIE = 'console_session=ADMIN-SESSION-MUST-NOT-BE-USED';
 const violations = [];
 const log = [];
