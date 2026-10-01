@@ -1,15 +1,27 @@
 <!-- Text of the pull request to Red-Blink/dune-docker-addons. Update it with every addon release:
      version, release link, SHA-256, "What changed" and "Tested". Placeholders {{...}} are filled after the release exists. -->
 
-## MapViewer3D 0.2.0 (update of the existing catalog entry `mapviewer3d`)
+## MapViewer3D 0.2.1 (update of the existing catalog entry `mapviewer3d`; answers the review of 0.2.0)
 
 0.2.0 replaces the companion-container design of 0.1.x. **There is no installer, container, listening port or viewer password any more**; the viewer runs entirely inside the addon page. This removes the surface that the earlier reviews of 0.1.x were about (network exposure of the viewer, upgrade of an old viewer, package line endings). Thank you for those reviews, they led here.
 
 - **Source:** https://github.com/dev-prophet-code/MapViewer3D (branch `DD-Addon`, MIT)
-- **Release:** https://github.com/dev-prophet-code/MapViewer3D/releases/tag/addon-v0.2.0
-- **Pinned package:** `https://github.com/dev-prophet-code/MapViewer3D/releases/download/addon-v0.2.0/mapviewer3d-0.2.0.zip` (about 350 KB)
-- **SHA-256 (verified by downloading the published asset):** `acde033801b969d9824c53ad1374c288be86d1b3e810597591f622ee8a24764d`
+- **Release:** https://github.com/dev-prophet-code/MapViewer3D/releases/tag/addon-v0.2.1
+- **Pinned package:** `https://github.com/dev-prophet-code/MapViewer3D/releases/download/addon-v0.2.1/mapviewer3d-0.2.1.zip` (about 350 KB)
+- **SHA-256 (verified by downloading the published asset):** `dbeb00f82a1799dd266653bc5e3b8bd2c2e8e2acd45ea326679c879cc354718e`
 - **Catalog change:** `addons/mapviewer3d.json` and `index.json`: `version`, `downloadUrl`, `sha256`, `description`, and `permissions` (see below). No new addon file.
+
+### Response to the review of 0.2.0
+Thank you for the review; the blocker was right. The console's `addon.storage.*` is isolated per addon, not per authenticated user (checked in the console code: `readAddonData(config, addon.id, ...)`), and the bridge has no user-scoped, server-enforced storage, so `console.key` there was readable by every user with bridge access. Done in 0.2.1:
+
+| Request | Change |
+|---|---|
+| Keep credentials in memory unless server-enforced, user-isolated storage is used | The API key is held in memory only: not in `addon.storage`, `localStorage`, `sessionStorage`, IndexedDB or the Cache API. The user enters it each time the addon is opened (the password field allows the browser's password manager). |
+| Remove the production `localStorage` fallback | `web/js/store.js` no longer has any browser-storage path. Outside the console (no parent frame, or no bridge) values live in memory only. |
+| Tests for multiple authenticated users | `tests/key-storage.mjs` runs the addon's real `console.js`/`store.js` against a model of the per-addon shared storage with users A and B: B never obtains A's key, and no `console.key` ever appears in the shared storage. |
+| Tests for direct page access outside the bridge flow | Same file: page without parent frame, and framed page without bridge script. No `setItem`, IndexedDB or Cache API use, no bridge call. |
+
+Also: 0.2.1 deletes a `console.key` that 0.2.0 left in the shared storage (and the old `mapviewer3d.dev.console.key` in `localStorage`); the permission `files:addon-data` stays for that and for the non-secret instance names. Switching the language no longer reloads the page (a reload would drop the in-memory key); texts, toggles, map list and live layer are relabeled in place. `scripts/verify-package.sh` (CI, also on the published asset) fails if `console.js`/`store.js` use a browser storage API. The new tests fail against the 0.2.0 code (6 of 9) and pass on 0.2.1.
 
 ### What it does
 Live 3D map of Hagga Basin and Deep Desert: players, bases (as 3D buildings), vehicles, hazards, resources, and the Deep Desert as the server's current Coriolis layout. Read-only.
@@ -43,7 +55,9 @@ The console's Update button replaces the package. The old companion container of
 - `node tests/unit.mjs` (CI): synthetic map -> tile generator -> loader; tiles equal the raw rasters at every level; height sampling equals the reference formula (random points, tile borders, outside, no-data hole); a damaged tile is refused; a tampered catalog is refused; building models are verified; the SHA-256 fallback equals Node's.
 - Real browser, mock console: the addon framed like the console does, bridge storage, key entry, maps/instances/player shown, **0 requests without key, 0 with a session cookie, 0 non-GET**, terrain tiles streamed, height sampling identical to the raw data.
 - Published data: `catalog.json` fetched from `raw.githubusercontent.com` and `cdn.jsdelivr.net` at tag `data-v1` matches the pinned SHA-256; both send `access-control-allow-origin: *`.
-- Live: installed 0.2.0 on a real Dune Docker Console (a test server), opened the addon, entered an API key created in the console (maps: Read, bases: Read), and the 3D map loaded with terrain and live data.
+- Mock console in a real browser: key entry, language switch without reload (page marker survives, key stays active, toggles keep their state), direct page access (a planted 0.2.0 `localStorage` key is removed, nothing is written after entering a key), 0 violations (no request without key, none with a session cookie, no non-GET).
+- Against the console's own code (Dune Docker Console on a test server): the 0.2.1 package passes `validateZipEntries` and `normalizeAddonManifest`; with `readAddonData`/`writeAddonData`/`listAddonData`/`deleteAddonData` a second user reads the 0.2.0 key from the shared addon store, the 0.2.1 purge (`addon.storage.delete`) removes it, leaves `instance.names` untouched and is a no-op when the key is absent.
+- 0.2.0 on a real console (test server): API key created in the console, 3D map loaded with terrain and live data.
 
 ### Known limitations
 - **Deep Desert layouts:** the data release contains the dune template and layout 8 (the current one when released). A newer layout falls back to the template with a warning in the panel until a new data release (`data-vN`) and addon version are published. Making this automatic would need a server-side process, which an addon cannot have.
