@@ -28,6 +28,7 @@ Explore Hagga Basin and Deep Desert with players, bases, vehicles, hazards and r
 
 - 🗺️ **Two maps in 3D** – Hagga Basin (8 × 8 km, 1 m grid) and Deep Desert (22.5 × 22.5 km, 3 m grid), selectable per server instance (PvE, PvP, Creative …).
 - 📡 **Live data** from your server's console: players (smoothly animated), bases, vehicles, storage, locations, hazards, resources, spice fields.
+- 🐛 **Live sandworms, enemies and vehicles** *(optional, since Beta.9)* – a small read-only agent on the game host reads their positions from the game processes (~10 Hz); worms glide across the map. See [docs/Agent-EN.md](docs/Agent-EN.md).
 - 🏗️ **Bases as real 3D buildings**, assembled from the actual building pieces.
 - 🧭 **Free camera** – mouse wheel rotates, Shift tilts, Ctrl/⌘ zooms; W/A/S/D/Q/E flight, compass, "fly to" on any object.
 - 🎯 **Same icons as the 2D live map**; 3D models take over up close. Every layer can be toggled.
@@ -53,6 +54,17 @@ On first start the viewer asks for your console's address and API token; nothing
 
 Detailed notes on Windows SmartScreen, macOS Gatekeeper and running on a server (systemd example, `-addr`, `-remote-setup`, `-state`, `-keydir`) are in the [German README](README.de.md#starten) and the [English description](Description-EN.md).
 
+## 🐛 Live sandworms, enemies and vehicles (position agent)
+
+NPCs and sandworms are not in the database or the console API, only in the memory of the running game processes. The optional **position agent** (`bin/mvagent-linux-amd64`, runs as root on the game host, **read-only**, Linux only) reads them about 10 times per second; the viewer shows them live and glides the markers between samples.
+
+```bash
+sudo ./bin/mvagent-linux-amd64                  # on the game host, listens on 127.0.0.1:8796
+./start.sh -agent http://127.0.0.1:8796         # viewer: four extra switches appear
+```
+
+Players are never forwarded, and in public mode (`-public`) only PvE partitions are shown. The agent re-detects its memory offsets after game updates (verified with build 2134304). Details, flags, systemd unit and limits: [docs/Agent-EN.md](docs/Agent-EN.md) · [Deutsch](docs/Agent-DE.md).
+
 ## 🧩 Dune Docker Console addon (no server install)
 
 For servers running the Red-Blink stack there is also an **addon for the Dune Docker Console** (branch [`DD-Addon`](https://github.com/dev-prophet-code/MapViewer3D/tree/DD-Addon), listed in the console's *Addons* page). It needs **nothing on the server**: the viewer runs entirely inside the addon page. Install it, open **3D Map**, enter an API key created in the console (*Settings → API Keys*, scopes `maps: Read` and `bases: Read`), done. Live data comes from the console API with that key only (never the admin session); terrain and building models stream from branch [`cdn`](https://github.com/dev-prophet-code/MapViewer3D/tree/cdn) of this repository and are checked against built-in checksums. This page describes the standalone viewer (local Go server); the addon has its own README.
@@ -65,7 +77,8 @@ Browser (three.js)  ⇄  local viewer server (Go, 127.0.0.1)  ⇄  your server's
 
 | Path | Content |
 |---|---|
-| `backend/` | Go module `mapviewer3d`: pak/IoStore reading, map building, HTTP server, encrypted storage (`secure/`) |
+| `backend/` | Go module `mapviewer3d`: pak/IoStore reading, map building, HTTP server, encrypted storage (`secure/`), position agent (`agent/`, `cmd/mvagent`) |
+| `docs/` | Documentation of the position agent |
 | `viewer/` | Web UI (three.js) |
 | `data/` | Pre-built terrain and building catalog *(in release ZIP only – see below)* |
 | `bin/` | Pre-built binaries per OS/CPU *(in release ZIP only)* |
@@ -106,4 +119,4 @@ Issues and pull requests are welcome – see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## ⚠️ Limitations
 
-No original textures (colors come from the console's map image plus procedural detail), 2.5D terrain without overhangs, Deep Desert built from the server's current Coriolis layout (terrain tiles plus its rocks, ecolabs and wrecks) plus fixed rocks, and live positions may lag by seconds to minutes.
+No original textures (colors come from the console's map image plus procedural detail), 2.5D terrain without overhangs, Deep Desert built from the server's current Coriolis layout (terrain tiles plus its rocks, ecolabs and wrecks) plus fixed rocks, and live positions from the console may lag by seconds to minutes (sandworms, enemies and vehicles are real-time only with the optional position agent, which needs root on the game host).

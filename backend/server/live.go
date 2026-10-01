@@ -26,6 +26,10 @@ type LiveConfig struct {
 
 	// Zugangsschutz für den Viewer selbst (HTTP-Basic-Login, Benutzername egal).
 	ViewerPassword string `json:"viewerPassword"`
+
+	// Adresse des Positions-Agenten (cmd/mvagent), z. B. http://127.0.0.1:8796:
+	// zeigt Sandwürmer, Gegner und Fahrzeuge live.
+	AgentURL string `json:"agentUrl"`
 }
 
 // LoadLiveConfig liest eine feste Konfigurationsdatei (-config). Zugangsdaten
@@ -146,10 +150,10 @@ func writeCached(w http.ResponseWriter, c *cached) {
 
 func (s *Server) liveStatus(w http.ResponseWriter, r *http.Request) {
 	if s.lp() == nil {
-		writeJSON(w, map[string]any{"enabled": false})
+		writeJSON(w, map[string]any{"enabled": false, "agent": s.agentLink() != nil})
 		return
 	}
-	writeJSON(w, map[string]any{"enabled": true, "public": s.public != nil})
+	writeJSON(w, map[string]any{"enabled": true, "public": s.public != nil, "agent": s.agentLink() != nil})
 }
 
 // liveFeed: GET /api/live/{map}/{feed}

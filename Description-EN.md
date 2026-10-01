@@ -27,6 +27,7 @@ browser.
 | Locations | caves, ecolabs, wrecks, sietches, trading posts, fortresses, NPCs |
 | Hazards | enemy camps, quicksand, drumsand, radiation zones |
 | Resources | spice fields, ores (coloured by type), scrap, plants, flour sand, storage |
+| Sandworms, enemies, civilians, vehicles (live) | *optional, with the position agent:* sandworms as gliding markers (~10 Hz), enemies and civilians as points, vehicles with live position; see [docs/Agent-EN.md](docs/Agent-EN.md) |
 
 - From afar the map shows the icons of the 2D live map, up close 3D models. The
   toggles in the panel carry the same icons.
@@ -55,7 +56,9 @@ panel switches to German (*Deutsch*); the choice is remembered in the browser.
   fixed rock formations and the layout's own content blocks (rocks, ecolabs, wrecks);
   only the layout the terrain was built for matches the server.
 - **Slight delay:** Positions come from the server's database and can lag by a few
-  seconds to minutes.
+  seconds to minutes. Only the optional position agent (root on the game host, read-only,
+  reads the game processes' memory) delivers sandworms, enemies and vehicles in real time;
+  it never forwards players, and in public mode only PvE partitions.
 
 ## How the viewer gets its data
 

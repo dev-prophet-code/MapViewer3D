@@ -14,10 +14,10 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Vet
         working-directory: backend
-        run: CGO_ENABLED=0 go vet ./cmd/mapviewer/... ./server/... ./secure/... ./zen/...
+        run: CGO_ENABLED=0 go vet ./cmd/mapviewer/... ./cmd/mvagent/... ./agent/... ./server/... ./secure/... ./zen/...
       - name: Test
         working-directory: backend
-        run: CGO_ENABLED=0 go test ./secure/... ./server/... ./zen/...
+        run: CGO_ENABLED=0 go test ./agent/... ./secure/... ./server/... ./zen/...
       - name: Extraction tools (needs the C compiler for Oodle)
         working-directory: backend
         run: CGO_ENABLED=1 go vet ./assets/... && CGO_ENABLED=1 go test ./assets/...
@@ -26,6 +26,9 @@ jobs:
         run: |
           for t in linux/amd64 linux/arm64 darwin/arm64 windows/amd64; do
             CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} go build -o /dev/null ./cmd/mapviewer
+          done
+          for t in linux/amd64 linux/arm64; do
+            CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} go build -o /dev/null ./cmd/mvagent
           done
 
   security:
@@ -43,7 +46,7 @@ jobs:
         working-directory: backend
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          CGO_ENABLED=0 "$(go env GOPATH)/bin/govulncheck" ./cmd/mapviewer/... ./server/... ./secure/...
+          CGO_ENABLED=0 "$(go env GOPATH)/bin/govulncheck" ./cmd/mapviewer/... ./cmd/mvagent/... ./agent/... ./server/... ./secure/...
       - name: gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:

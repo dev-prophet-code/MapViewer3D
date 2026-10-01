@@ -10,6 +10,26 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ---
 
+## Beta.9 – 10/01/2026
+
+### New
+
+- **Live sandworms, enemies, civilians and vehicles.** NPCs are not in the database or the console API; they exist only in the memory of the running game process. A new program, the **position agent** (`mvagent`, Linux, runs as root on the game host, read-only), reads their positions from there about 10 times per second and the viewer shows them live: **sandworms** (all of them, worldwide, gliding smoothly at ~20 position changes per second), **enemies**, **civilians & traders** (point clouds, thousands cost nothing) and **vehicles (live)**. Four new switches in the panel (worms on by default); clicking an object shows its type, blueprint class and position. Without an agent nothing changes and the switches do not appear. Start the viewer with `-agent http://127.0.0.1:8796` (or `MV_AGENT` / `agentUrl` in the `-config` file). Details, flags, the offsets of game build 2134304 and how the agent re-detects them after a game update: [docs/Agent-EN.md](docs/Agent-EN.md).
+- **The agent protects itself against game updates.** It checks the engine's name pool (`None` at index 0, `ByteProperty` at index 3) and, if the stored offsets no longer fit, finds the pool again from its signature and re-determines the actor offsets (RootComponent, position) from a sample of the hits. If nothing gives plausible objects the process is reported as not ready instead of delivering garbage.
+- **Streaming with interpolation.** The viewer server relays the agent's stream (SSE, `GET /api/agent/<map>/stream`) to the browser: the full state first, then only changes (up to 10 Hz). The browser glides the markers between samples; if the stream is unavailable it asks every 3 s. The program sets `X-Accel-Buffering: no` so nginx does not buffer the stream.
+
+### Security
+
+- **Players are never forwarded.** The agent does not output players unless started with `-players`, and the viewer server drops them in any case (player positions come from the console as before).
+- **Public mode only shows PvE.** Sandworms and enemies follow the players, so their movement in a PvP partition would reveal where players are. With `-public` the agent feed contains only partitions on the allow list that the site reports as PvE.
+- The agent's interface has no login and refuses non-loopback addresses unless started with `-allow-open`. It never prints or forwards the process command line (it contains the game server's auth token).
+
+### Changed
+
+- Release ZIPs now contain `bin/mvagent-linux-amd64` and `bin/mvagent-linux-arm64` and the `docs/` folder. The CI vets, tests and builds the agent.
+
+---
+
 ## Beta.8 – 09/30/2026
 
 ### Removed

@@ -9,6 +9,7 @@
 //	GET  /api/live/status                       ist die Live-Karte konfiguriert?
 //	GET  /api/live/<name>/<feed>                players | overlays | poi | spice (Proxy zur Console)
 //	                                            <name> ist der Kartenordner; Live-Name aus meta.json
+//	GET  /api/agent/<name>[/stream]             Live-Positionen aus dem Agenten (agent.go): Würmer, Gegner, Fahrzeuge
 //	GET  /api/live/base/<id>                    Bauteile einer Basis (Proxy zur Console)
 //	GET  /api/icons/<datei>                     Kartensymbol der Console (zwischengespeichert)
 //	GET  /api/version                           Versionsstand
@@ -32,7 +33,7 @@ import (
 
 // Version steht in der Oberfläche und in CHANGELOG.md; beim Bauen per
 // -ldflags "-X mapviewer3d/server.Version=…" überschreibbar.
-var Version = "Beta.8"
+var Version = "Beta.9"
 
 // PatchQuads ist die Kantenlänge eines Geländestücks in Quads.
 const PatchQuads = 128
@@ -76,6 +77,9 @@ type Server struct {
 	mu      sync.Mutex
 	maps    map[string]*terrain
 	layout  sync.Mutex
+
+	agentMu sync.RWMutex
+	agent   *agentLink // Live-Positionen aus dem Agenten (agent.go); nil = aus
 
 	liveMu     sync.RWMutex
 	liveProxy  *liveProxy    // nil, solange keine Zugangsdaten eingerichtet sind
@@ -147,6 +151,8 @@ func New(dataDir, webDir, stateDir string, store *secure.Store) *Server {
 	s.mux.HandleFunc("GET /api/live/status", s.liveStatus)
 	s.mux.HandleFunc("GET /api/live/base/{id}", s.liveBase)
 	s.mux.HandleFunc("GET /api/map/{map}/mapimage", s.withMap(s.mapImage))
+	s.mux.HandleFunc("GET /api/agent/{map}", s.agentSnapshot)
+	s.mux.HandleFunc("GET /api/agent/{map}/stream", s.agentStream)
 	s.mux.HandleFunc("GET /api/live/{map}/{feed}", s.liveFeed)
 	s.mux.HandleFunc("GET /api/icons/{file}", s.icon)
 	s.mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {

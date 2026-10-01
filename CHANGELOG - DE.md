@@ -14,6 +14,26 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 
 ---
 
+## Beta.9 – 01.10.2026
+
+### Neu
+
+- **Sandwürmer, Gegner, Zivilisten und Fahrzeuge live.** NPCs stehen weder in der Datenbank noch in der Console-API; es gibt sie nur im Arbeitsspeicher des laufenden Spielprozesses. Ein neues Programm, der **Positions-Agent** (`mvagent`, Linux, läuft als root auf dem Spiel-Host, nur lesend), liest ihre Positionen von dort etwa 10-mal pro Sekunde, und der Viewer zeigt sie live: **Sandwürmer** (alle, weltweit, flüssig gleitend bei ~20 Positionsänderungen pro Sekunde), **Gegner**, **Zivilisten & Händler** (Punktwolken, Tausende kosten nichts) und **Fahrzeuge (live)**. Vier neue Schalter im Bedienfeld (Würmer standardmäßig an); ein Klick auf ein Objekt zeigt Art, Blueprint-Klasse und Position. Ohne Agent ändert sich nichts, und die Schalter erscheinen nicht. Viewer mit `-agent http://127.0.0.1:8796` starten (oder `MV_AGENT` / `agentUrl` in der `-config`-Datei). Einzelheiten, Optionen, die Offsets des Spiel-Builds 2134304 und wie der Agent sie nach einem Spiel-Update selbst neu bestimmt: [docs/Agent-DE.md](docs/Agent-DE.md).
+- **Der Agent sichert sich gegen Spiel-Updates ab.** Er prüft den Namenspool der Engine (`None` bei Index 0, `ByteProperty` bei Index 3) und findet ihn, wenn die gespeicherten Offsets nicht mehr passen, aus seiner Signatur neu und bestimmt die Actor-Offsets (RootComponent, Position) aus einer Stichprobe der Treffer neu. Liefert nichts plausible Objekte, meldet er den Prozess als nicht bereit, statt Müll zu liefern.
+- **Strom mit Interpolation.** Der Viewer-Server reicht den Strom des Agenten (SSE, `GET /api/agent/<Karte>/stream`) an den Browser weiter: erst der volle Stand, danach nur Änderungen (bis 10 Hz). Der Browser gleitet die Marker zwischen den Stützpunkten; ist der Strom nicht verfügbar, fragt er alle 3 s nach. Das Programm setzt `X-Accel-Buffering: no`, damit nginx den Strom nicht puffert.
+
+### Sicherheit
+
+- **Spieler werden nie weitergereicht.** Der Agent gibt Spieler nur mit `-players` aus, und der Viewer-Server verwirft sie in jedem Fall (Spielerpositionen kommen weiter aus der Console).
+- **Öffentlicher Betrieb zeigt nur PvE.** Sandwürmer und Gegner folgen den Spielern; ihre Bewegung in einer PvP-Partition würde verraten, wo Spieler sind. Mit `-public` enthält der Agenten-Strom nur Partitionen der Erlaubnisliste, die die Seite als PvE meldet.
+- Die Schnittstelle des Agenten hat keinen Login und lehnt Adressen außerhalb von Loopback ab, außer mit `-allow-open`. Die Kommandozeile der Prozesse (sie enthält den Auth-Token des Spielservers) gibt er nie aus und reicht sie nie weiter.
+
+### Geändert
+
+- Die Release-ZIPs enthalten jetzt `bin/mvagent-linux-amd64` und `bin/mvagent-linux-arm64` sowie den Ordner `docs/`. Die CI prüft, testet und baut den Agenten.
+
+---
+
 ## Beta.8 – 30.09.2026
 
 ### Entfernt

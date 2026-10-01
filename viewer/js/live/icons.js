@@ -42,6 +42,7 @@ const DRAWN = {
   quicksand: { ring: '#d08a3a', glyph: 'swirl' },
   drumsand: { ring: '#f2c14e', glyph: 'waves' },
   radiation: { ring: '#9dff4a', glyph: 'trefoil' },
+  worm: { ring: '#e0872a', glyph: 'worm' },
   hazard: { ring: '#ef4444', glyph: 'warn' },
 };
 
@@ -53,6 +54,7 @@ const LEGEND = {
   flora: 'plantfiber.webp', flour: 'floursand.webp', storage: 'storage.png', npc: 'trainermentat.webp',
   fortress: 'harkonnenfortress.webp',
   quicksand: '@quicksand', drumsand: '@drumsand', radiation: '@radiation',
+  worms: '@worm', npcs: 'enemyoutpost.webp', civilians: 'tradingpost.webp', liveVehicles: 'ornithoptervehicle.webp',
 };
 
 // Farbe des Ersatzpunkts, solange ein Bild lädt oder fehlt (wie im Docker)
@@ -90,6 +92,10 @@ export function iconFor(kind, row = {}) {
     case 'flora': file ??= 'plantfiber.webp'; break;
     case 'quicksand': case 'drumsand': case 'radiation':
       return { id: `@${kind}`, draw: kind, px: 26, variant };
+    case 'worm':
+      return { id: '@worm', draw: 'worm', px: 40, variant };
+    case 'npc': return { id: '@dot:npc', draw: 'dot', color: '#ff5a4d', px: 18, variant };
+    case 'civilian': return { id: '@dot:civilian', draw: 'dot', color: '#4dd2c6', px: 18, variant };
     default: break;
   }
   if (!file) return { id: `@dot:${kind}`, draw: 'dot', color: FALLBACK[kind] ?? '#60a5fa', px: 18, variant };
@@ -206,6 +212,18 @@ function drawSymbol(ctx, icon) {
       for (const dy of [-20, 0, 20]) {
         ctx.beginPath();
         for (let x = -30; x <= 30; x += 2) ctx.lineTo(m + x, m + dy + Math.sin(x / 7) * 6);
+        ctx.stroke();
+      }
+      break;
+    case 'worm': // Sandwurm: Schlund mit Zähnen
+      ctx.beginPath(); ctx.arc(m, m, 30, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(m, m, 14, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 6;
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(m + Math.cos(a) * 20, m + Math.sin(a) * 20);
+        ctx.lineTo(m + Math.cos(a) * 30, m + Math.sin(a) * 30);
         ctx.stroke();
       }
       break;

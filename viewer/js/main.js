@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { fmtInt } from './coords.js';
 import { Fly } from './fly.js';
 import { LiveLayer } from './live/live.js';
+import { AGENT_TOGGLES } from './live/agent.js';
 import { createScene, SKY } from './scene.js';
 import { Terrain } from './terrain.js';
 import { bindHud, bindUi, showMapInfo } from './ui.js';
@@ -100,8 +101,11 @@ async function init() {
   if (!status.configured) status = await askForSetup();
   showConnection(status);
   // Öffentlich gibt es keine Offline-Spieler – der Schalter bliebe immer leer
-  const live = await api.liveStatus().catch(() => ({}));
-  if (live.public) document.querySelector('#liveToggles [data-key="offline"]')?.remove();
+  const st = await api.liveStatus().catch(() => ({}));
+  if (st.public) document.querySelector('#liveToggles [data-key="offline"]')?.remove();
+  // Sandwürmer, Gegner und Fahrzeuge live gibt es nur mit Agent (mapviewer -agent …)
+  live.agentEnabled = !!st.agent;
+  if (!st.agent) for (const k of AGENT_TOGGLES) document.querySelector(`#liveToggles [data-key="${k.key}"]`)?.remove();
   await loadMaps();
   running = true;
   renderer.setAnimationLoop(tick);

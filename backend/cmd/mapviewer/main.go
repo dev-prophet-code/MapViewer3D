@@ -5,6 +5,7 @@
 //	mapviewer -addr 0.0.0.0:8795      # im Netz bzw. auf einem Server erreichbar
 //	mapviewer -public public.json     # öffentlich: nur freigegebene PvE-Partitionen
 //	mapviewer -config config.json     # Verbindung fest aus Datei statt Einrichtung im Browser
+//	mapviewer -agent http://127.0.0.1:8796  # Sandwürmer, Gegner, Fahrzeuge live (Agent: cmd/mvagent)
 //
 // Beim ersten Start werden Server-Adresse und API-Token im Browser abgefragt und
 // verschlüsselt gespeichert (Paket secure) – im Benutzerordner, nie im
@@ -45,6 +46,7 @@ func main() {
 	config := flag.String("config", "", "feste Konfigurationsdatei (apiBase, token, partitions, public) statt Einrichtung im Browser")
 	public := flag.String("public", "", "öffentlicher Betrieb: JSON mit erlaubten Partitionen und PvE-Quelle (siehe server/public.go)")
 	paks := flag.String("paks", "", "Ordner mit den Spieldateien (.utoc/.ucas): baut das Deep-Desert-Gelände nach jedem Coriolis-Sturm selbst für das neue Layout")
+	agentURL := flag.String("agent", os.Getenv("MV_AGENT"), "Adresse des Positions-Agenten (mvagent), z. B. http://127.0.0.1:8796: zeigt Sandwürmer, Gegner und Fahrzeuge live; alternativ MV_AGENT oder agentUrl in -config")
 	// Ohne Argumente gestartet (Doppelklick im Explorer/Finder): Browser öffnen;
 	// unter Windows zusätzlich das Fenster bei Fehlern offen halten.
 	noArgs := len(os.Args) == 1
@@ -88,6 +90,9 @@ func main() {
 		if *password == "" {
 			*password = cfg.ViewerPassword
 		}
+		if *agentURL == "" {
+			*agentURL = cfg.AgentURL
+		}
 		log.Printf("Verbindung aus %s", *config)
 		if cfg.Public != nil {
 			log.Printf("Öffentlicher Betrieb: nur Partitionen %v, soweit %s sie als PvE meldet", cfg.Public.Partitions, cfg.Public.ModeSource)
@@ -119,6 +124,13 @@ func main() {
 		}
 		srv.EnableAutoLayout(*paks)
 		log.Printf("Deep Desert: Gelände für neue Coriolis-Layouts wird aus %s selbst gebaut", *paks)
+	}
+
+	if *agentURL != "" {
+		if err := srv.UseAgent(*agentURL); err != nil {
+			fatalf("-agent: %v", err)
+		}
+		log.Printf("Live-Positionen (Würmer, Gegner, Fahrzeuge) vom Agenten %s", *agentURL)
 	}
 
 	srv.SetPassword(*password)

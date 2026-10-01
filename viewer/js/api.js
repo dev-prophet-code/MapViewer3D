@@ -39,6 +39,7 @@ export const api = {
   liveStatus: () => json('api/live/status'),
   liveFeed: (map, feed) => json(`api/live/${map}/${feed}`),
   liveBase: (id) => json(`api/live/base/${id}`),
+  agent: (map, partition = null) => json(`api/agent/${map}${partition === null ? '' : `?partition=${partition}`}`),
   buildables: () => json('api/buildables'),
   buildableMeshUrl: (id) => `api/buildables/mesh/${id}.bin`,
 };

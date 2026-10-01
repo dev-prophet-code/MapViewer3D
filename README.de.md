@@ -11,6 +11,17 @@ Fahrzeugen, Orten, Gefahren und Ressourcen.
 >
 > **Lizenz:** [MIT](LICENSE) – frei nutzbar und anpassbar.
 
+## Sandwürmer, Gegner und Fahrzeuge live (Positions-Agent, seit Beta.9)
+
+NPCs und Sandwürmer stehen weder in der Datenbank noch in der Console-API, sondern nur im Arbeitsspeicher der laufenden Spielprozesse. Der optionale **Positions-Agent** (`bin/mvagent-linux-amd64`, läuft als root auf dem Spiel-Host, **nur lesend**, nur Linux) liest sie etwa 10-mal pro Sekunde; der Viewer zeigt sie live und gleitet die Marker zwischen den Stützpunkten.
+
+```bash
+sudo ./bin/mvagent-linux-amd64                  # auf dem Spiel-Host, lauscht auf 127.0.0.1:8796
+./start.sh -agent http://127.0.0.1:8796         # Viewer: vier zusätzliche Schalter erscheinen
+```
+
+Spieler werden nie weitergereicht, im öffentlichen Betrieb (`-public`) nur PvE-Partitionen gezeigt. Der Agent bestimmt seine Speicher-Offsets nach Spiel-Updates selbst neu (geprüft mit Build 2134304). Einzelheiten, Optionen, systemd-Dienst und Grenzen: [docs/Agent-DE.md](docs/Agent-DE.md) · [English](docs/Agent-EN.md).
+
 ## Addon für die Dune Docker Console (ohne Server-Installation)
 
 Für Server mit dem Red-Blink-Stack gibt es zusätzlich ein **Addon für die Dune Docker Console** (Branch [`DD-Addon`](https://github.com/dev-prophet-code/MapViewer3D/tree/DD-Addon), in der Konsole unter *Addons*). Es braucht **nichts auf dem Server**: Der Viewer läuft komplett in der Addon-Seite. Addon installieren, **3D Map** öffnen, einen in der Konsole erstellten API-Schlüssel eintragen (*Settings → API Keys*, Bereiche `maps: Read` und `bases: Read`), fertig. Die Live-Daten kommen nur mit diesem Schlüssel aus der Konsolen-API (nie mit der Admin-Sitzung); Gelände und Gebäudemodelle werden aus dem Branch [`cdn`](https://github.com/dev-prophet-code/MapViewer3D/tree/cdn) dieses Repositorys gestreamt und gegen eingebaute Prüfsummen geprüft. Diese Seite beschreibt den eigenständigen Viewer (lokaler Go-Server); das Addon hat ein eigenes README.
@@ -213,4 +224,5 @@ Eine ausführliche Bauanleitung liegt in den Ordnern „MapViewer3D - DE“ und
   Felsblöcken und den Content-Blöcken des Layouts (Felsen, Ecolabs, Wracks); passend zum
   Server ist nur das Layout, für das das Gelände gebaut wurde.
 - **Live-Positionen:** Sie kommen aus der Datenbank der Console und können einige
-  Sekunden bis Minuten hinterherhinken.
+  Sekunden bis Minuten hinterherhinken. Sandwürmer, Gegner und Fahrzeuge sind nur mit dem
+  optionalen Positions-Agenten in Echtzeit (braucht root auf dem Spiel-Host).
