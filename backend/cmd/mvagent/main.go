@@ -150,7 +150,10 @@ func startUpdater(ctx context.Context) {
 			return []updater.Op{{Src: src, Dest: exe}}, nil
 		},
 		SelfTest: updater.VersionSelfTest("mvagent"),
-		Restart:  func() { updater.RestartSelf(exe, nil) },
+		Restart: func() {
+			updater.RestartSelf(exe, nil)
+			log.Fatalf("Neustart nach dem Update fehlgeschlagen – systemd startet den Agenten neu")
+		},
 	})
 	go u.Run(ctx)
 	log.Printf("Automatische Updates von GitHub an (Prüfung alle %s)", updater.DefaultInterval)

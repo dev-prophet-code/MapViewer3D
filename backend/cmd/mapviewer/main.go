@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 
 	"mapviewer3d/secure"
 	"mapviewer3d/server"
@@ -141,8 +142,10 @@ func main() {
 	}
 
 	var ln net.Listener
+	var restarting atomic.Bool
 	if !*noUpdate {
 		startUpdater(srv, root, *autoUpdate, func() {
+			restarting.Store(true) // http.Serve endet gleich; main soll dann nicht beenden
 			if ln != nil {
 				ln.Close()
 			}
@@ -175,7 +178,11 @@ func main() {
 	if *open {
 		go openBrowser(url)
 	}
-	fatalf("%v", http.Serve(ln, srv))
+	err = http.Serve(ln, srv)
+	if restarting.Load() {
+		select {} // das Update startet das Programm gleich neu (startUpdater)
+	}
+	fatalf("%v", err)
 }
 
 // projectRoot ist der Ordner über bin/ (dort liegen data/, viewer/, state/).
@@ -346,7 +353,10 @@ func startUpdater(srv *server.Server, root string, auto bool, closeListener func
 		Work:    root,
 		Auto:    auto,
 		Plan:    updater.ViewerPlan(root, exe, built),
-		Restart: func() { updater.RestartSelf(exe, closeListener) },
+		Restart: func() {
+			updater.RestartSelf(exe, closeListener)
+			fatalf("Neustart nach dem Update fehlgeschlagen – bitte das Programm neu starten")
+		},
 	}
 	if built {
 		cfg.Prepare = updater.BuildPrepare(updater.FindGo(), filepath.Join(root, ".update"))

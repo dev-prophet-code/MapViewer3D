@@ -304,6 +304,9 @@ func (u *Updater) Install(ctx context.Context) (err error) {
 	pruneBackups(work, 2)
 	log.Printf("Update %s installiert (Sicherung: %s), Neustart", version, backup)
 	u.setState("restarting", "")
+	// Aufräumen vor dem Neustart: danach läuft dieser Code nicht mehr zu Ende
+	os.RemoveAll(stage)
+	os.Remove(zipPath)
 	if u.cfg.Restart != nil {
 		u.cfg.Restart()
 	}
