@@ -3,11 +3,11 @@
 #
 # Runs next to Dune Docker as its own compose project, changes nothing in it:
 #
-#   cp .env.example .env    # set MV_GATE_TOKEN
+#   cp .env.example .env
 #   docker compose -f docker-compose.mapviewer-live.yml up -d --build
+#   docker compose -f docker-compose.mapviewer-live.yml exec mvgate mvgate -pair <public-host>
 #
-# Then on your PC:  start.sh -agent https://mv:<TOKEN>@<server>:8797
-# See README.md.
+# The pairing code goes into mvlink on your PC (see README.md, SECURITY.md).
 
 name: mapviewer-live
 
@@ -18,6 +18,7 @@ services:
       target: agent
       args:
         MV_REF: ${MV_REF:-beta.15}
+        MV_COMMIT: ${MV_COMMIT:-7e1a73044023da89d42c9ea3ab3dba133904e8c1}
     image: mapviewer-live/mvagent:${MV_REF:-beta.15}
     restart: unless-stopped
     # sees the game server processes of the Dune Docker containers
@@ -52,14 +53,14 @@ services:
     restart: unless-stopped
     depends_on: [mvagent]
     environment:
-      MV_GATE_TOKEN: ${MV_GATE_TOKEN:?set MV_GATE_TOKEN in .env (openssl rand -hex 24)}
+      # empty = mvgate creates a token in /data (recommended)
+      MV_GATE_TOKEN: ${MV_GATE_TOKEN:-}
       MV_GATE_UPSTREAM: http://mvagent:8796
       MV_GATE_ALLOW: ${MV_GATE_ALLOW:-}
       MV_GATE_MAX_STREAMS: ${MV_GATE_MAX_STREAMS:-8}
-      MV_GATE_TLS_CERT: ${MV_GATE_TLS_CERT:-}
-      MV_GATE_TLS_KEY: ${MV_GATE_TLS_KEY:-}
+      MV_GATE_PUBLIC_PORT: ${MV_GATE_PORT:-8797}
     volumes:
-      - ${MV_GATE_CERT_DIR:-./certs}:/certs:ro
+      - mvgate-data:/data
     ports:
       - "${MV_GATE_BIND:-0.0.0.0}:${MV_GATE_PORT:-8797}:8797"
     cap_drop: [ALL]
@@ -70,6 +71,10 @@ services:
     logging:
       driver: json-file
       options: {max-size: 10m, max-file: "3"}
+
+volumes:
+  # gate key + token: back it up, never share it
+  mvgate-data: {}
 
 networks:
   # mvagent has no login: it is only reachable from mvgate, and has no internet
