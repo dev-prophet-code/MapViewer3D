@@ -14,6 +14,14 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 
 ---
 
+## Beta.15 – 01.10.2026
+
+### Behoben
+
+- **Ein zweiter Start scheitert nicht mehr mit „address already in use“.** Läuft der Viewer schon (z. B. zweiter Doppelklick auf `start.command`), öffnet der neue Start den laufenden im Browser und beendet sich; belegt ein anderes Programm den Port, sagt die Meldung das und wie man einen anderen Port wählt.
+
+---
+
 ## Beta.14 – 01.10.2026
 
 ### Neu

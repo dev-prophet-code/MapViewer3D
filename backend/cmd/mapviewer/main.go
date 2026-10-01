@@ -18,6 +18,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -29,6 +31,8 @@ import (
 	"runtime"
 	"strings"
 	"sync/atomic"
+	"syscall"
+	"time"
 
 	"mapviewer3d/agent"
 	"mapviewer3d/cdn"
@@ -185,6 +189,9 @@ func main() {
 	var err error
 	ln, err = net.Listen("tcp", *addr)
 	if err != nil {
+		if errors.Is(err, syscall.EADDRINUSE) {
+			alreadyRunning(*addr, *open)
+		}
 		fatalf("%v", err)
 	}
 	url := "http://" + browserHost(ln.Addr().(*net.TCPAddr))
@@ -425,4 +432,30 @@ func startEmbeddedAgent(players bool) string {
 	go http.Serve(ln, a.Handler())
 	log.Printf("-agent auto: %d Spielserver-Prozesse gefunden, Positions-Agent läuft im Viewer (Echtzeit-Daten an)", n)
 	return "http://" + ln.Addr().String()
+}
+
+// alreadyRunning: Der Port ist belegt. Antwortet dort ein MapViewer3D (z. B. ein zweiter Doppelklick),
+// wird er geöffnet und das Programm beendet sich; sonst bleibt es bei einer verständlichen Meldung.
+func alreadyRunning(addr string, open bool) {
+	host, port, _ := net.SplitHostPort(addr)
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	url := "http://" + net.JoinHostPort(host, port)
+	c := &http.Client{Timeout: 3 * time.Second}
+	if resp, err := c.Get(url + "/api/version"); err == nil {
+		defer resp.Body.Close()
+		var v struct {
+			Version string `json:"version"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&v) == nil && v.Version != "" {
+			log.Printf("Dune MapViewer3D %s läuft schon unter %s – öffne ihn.", v.Version, url)
+			if open {
+				openBrowser(url)
+				time.Sleep(time.Second)
+			}
+			os.Exit(0)
+		}
+	}
+	fatalf("Der Port %s ist schon belegt – ein anderes Programm (oder ein zweiter Viewer) nutzt ihn.\nMit einem anderen Port starten: start.sh -addr 127.0.0.1:8796", addr)
 }
