@@ -409,7 +409,7 @@
   },
   {
    "file": "m/survival_1.json",
-   "sha256": "7d54ea60a49a86de76b638967a0c1ad68a7419ea8aede6af8353f6b1c46257f3",
+   "sha256": "d3725c3d3b503a9ce2c3890cf6c1c225367c1edc158ab11d3227a1ebb3e34b8a",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "survival_1",
