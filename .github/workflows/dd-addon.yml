@@ -13,25 +13,30 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: node scripts/validate.js
-      - run: sh -n docker/install.sh && sh -n docker/entrypoint.sh
-      - run: node --check web/addon.js
-      - name: Upgrade regression test (Beta.6 viewer -> pinned viewer, 401 without login, 200 with)
-        run: sh scripts/test-upgrade.sh
+      - name: Data path tests (tile generator -> loader, checksums, tamper checks, SHA-256 fallback)
+        run: node tests/unit.mjs
+      - name: Pinned data release is reachable and matches the pinned catalog checksum
+        run: |
+          TAG="$(sed -n "s/^export const DATA_TAG = '\(.*\)';/\1/p" web/js/config.js)"
+          SHA="$(sed -n "s/^export let CATALOG_SHA256 = '\(.*\)';/\1/p" web/js/config.js)"
+          curl --fail --silent --location "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${TAG}/catalog.json" -o catalog.json
+          [ "$(sha256sum catalog.json | cut -d' ' -f1)" = "$SHA" ] || { echo "catalog.json of $TAG does not match CATALOG_SHA256"; exit 1; }
+          echo "data $TAG ok"
       - name: Package (static checks on the unpacked ZIP run inside)
         run: bash scripts/package.sh
-      - name: Verify the packaged ZIP itself (no CRLF, sh -n, upgrade regression on the unpacked files)
-        run: WITH_UPGRADE_TEST=1 bash scripts/verify-package.sh "$(ls dist/*.zip)"
+      - name: Verify the packaged ZIP itself
+        run: bash scripts/verify-package.sh "$(ls dist/*.zip)"
       - name: Tag matches addon version
         if: startsWith(github.ref, 'refs/tags/addon-v')
         run: |

@@ -1,112 +1,97 @@
 # MapViewer3D – Dune Docker Console Addon
 
-Adds a **3D Map** page to Dune Docker Console: Hagga Basin and Deep Desert in 3D with
-live players, bases (as real 3D buildings), vehicles, hazards and resources.
+Adds a **3D Map** page to Dune Docker Console: Hagga Basin and Deep Desert in 3D with live players, bases (as real
+3D buildings), vehicles, hazards and resources.
 
-The addon page embeds [MapViewer3D](https://github.com/dev-prophet-code/MapViewer3D),
-which runs as a small companion container next to the console. Nothing is written to the
-game or the database – it is read-only.
+**Nothing to install on the server.** Install the addon, open it, enter an API key, done. There is no container, no
+installer, no extra port, no password and no reverse proxy: the whole viewer runs in your browser inside the addon page.
+Everything is read-only; nothing is written to the game or the database.
 
-## ⚠️ An API key is required
+## Use
 
-MapViewer3D **cannot work without a Console API key.** The viewer reads its live data through
-the Console HTTP API, and the Console refuses every request without a key (`401`) – also from
-the same machine, and addons get no direct API access. Only an admin can create keys.
+1. In the console open **Settings → API Keys** and create a key (see below). The key is shown only once.
+2. Install **MapViewer3D** on the **Addons** page and approve its single permission (`files:addon-data`, used to keep the key private).
+3. Open **3D Map**. Paste the key (`dak_…`) when asked. The addon checks it against the console (both scopes) and stores it.
+4. Done. Terrain and building models stream from GitHub on first use and are cached by your browser.
 
-**Create the key first** (Console → **Settings → API Keys** → create):
+### The API key
 
 | Field | Value |
 |---|---|
 | Name | `MapViewer3D` (any name) |
-| Scope **`maps`** | **Read** – map list, live players, vehicles, storage, locations, hazards, resources, spice |
-| Scope **`bases`** | **Read** – the pieces of each base, shown as 3D buildings |
-| **All other scopes** | **None** (leave everything else untouched) |
-| Expiry | none, or a date you will remember – an expired key stops the map |
+| Scope **`maps`** | **Read**: map list, live players, vehicles, storage, locations, hazards, resources, spice |
+| Scope **`bases`** | **Read**: the pieces of each base, shown as 3D buildings |
+| **All other scopes** | **None** |
+| Expiry | none, or a date you will remember: an expired key stops the map |
 
-- Choose **Read**, never *Read+write*. The viewer only reads.
-- With `maps` missing, the map stays empty; with `bases` missing, bases show as icons but not as 3D buildings.
-- Copy the key (`dak_…`) when the Console shows it – it is displayed **only once**.
-- Revoke or rotate it any time under *Settings → API Keys*; then run the installer again with the new key.
-
-## Install
-
-1. Create the API key as described above.
-2. Install the addon from the console's **Addons** page. It needs **no permissions** itself.
-3. On the machine that runs the console, run the installer that ships in the addon folder:
-
-   ```bash
-   sh runtime/addons/installed/mapviewer3d/docker/install.sh
-   ```
-
-   Everything except the key is detected automatically (stack folder, console port from
-   `.env`, including `ADMIN_BIND_HOST=auto` and `ADMIN_WEB_PORT`). The installer asks for the key once,
-   **checks it against the Console** and refuses to start if it is missing, wrong or lacks `maps: Read` or
-   `bases: Read`. The key is never put on a command line. It is stored
-   and reused on re-runs.
-4. Open **3D Map** in the console. The page finds the viewer on port `8795` of the same host by itself.
-
-By default the viewer is **private** (`127.0.0.1:8795`, only browsers on the server itself).
-For other computers opt in with `MV_ADDR=0.0.0.0:8795` when running the installer: it then sets a
-**viewer password** (browser login, shown once) and you open TCP port `8795` for those browsers.
-Details: [`docker/README.md`](docker/README.md).
-
-## Update / remove
-
-- Update the viewer: delete `runtime/mapviewer3d/app`, run the installer again (the stored key is reused).
-- New key: delete `runtime/mapviewer3d/config.json`, run the installer again and paste the new key.
-- Remove: `docker compose -f runtime/mapviewer3d/docker-compose.yml down`, then delete `runtime/mapviewer3d`.
+Choose **Read**, never *Read+write*. Revoke or rotate the key any time under *Settings → API Keys*; use **Change** in the
+addon's side panel to enter the new one.
 
 ## How it works
 
 ```
-Console → addon page (iframe) → viewer :8795 (companion container, host network)
-                                       └──→ console API (address detected by the installer)
+Browser (addon page inside the console)
+  ├── live data ── GET /api/map/..., /api/bases/... ── same console, Authorization: Bearer <your key>
+  └── terrain, building models ── GET raw.githubusercontent.com / cdn.jsdelivr.net ── branch "cdn", tag data-vN
 ```
 
-The API key stays inside the companion container (`config.json`, owner-only). The browser
-never sees it. The container runs as your user, read-only, without capabilities.
+- **Live data** comes from the console's own API, with the API key and nothing else. Requests are `GET` only and are sent with
+  `credentials: "omit"`, so the browser never attaches the logged-in admin's session. The addon has exactly the rights of that
+  key (`maps: Read`, `bases: Read`). `tests/harness.mjs` is a mock console that records every request lacking the key or
+  carrying a session cookie, so this can be checked in a real browser.
+- **Terrain and models** are static data in branch [`cdn`](https://github.com/dev-prophet-code/MapViewer3D/tree/cdn) of this
+  repository (terrain tiles for Hagga Basin and the Deep Desert layouts, building models). The addon is pinned to a tag
+  (`data-v1`) and **verifies every file**: the SHA-256 of `catalog.json` is built into the addon, the catalog lists the
+  SHA-256 of each map index and model, and each terrain tile is named after the SHA-256 of its content. A mirror that
+  delivers anything else is skipped. Two mirrors are tried (raw.githubusercontent.com, then jsDelivr).
+- **Deep Desert follows the Coriolis cycle.** The console reports the current layout; the addon shows the terrain generated
+  for that layout. A layout that is not in the data release yet falls back to the plain dune template and the panel says so
+  until a new data release is published (see `tools/README.md`).
+- The API key is stored in the addon's private storage in the console (`addon.storage`, permission `files:addon-data`) and
+  held in memory while the page is open. It is never written to `localStorage` and never sent anywhere but this console.
+  The same storage keeps the instance names you choose.
 
 ## Security
 
-- **Private by default.** The viewer listens on `127.0.0.1:8795`; nothing is reachable from the
-  network. Serving it to other computers is an explicit opt-in (`MV_ADDR=0.0.0.0:8795` or one
-  interface, e.g. `MV_ADDR=192.168.1.5:8795`) and then requires a **viewer password** (the installer
-  generates one and stores it in `runtime/mapviewer3d/config.json`; browsers show a login box).
-  Without a password the viewer refuses to start on a network address unless you set
-  `MV_ALLOW_OPEN=1` - not recommended: anyone with the address then sees player names, positions,
-  bases and vehicles. Add a firewall on top where you can.
-- **Least privilege:** the API key only needs `maps: Read` and `bases: Read`. It is stored in
-  `runtime/mapviewer3d/config.json` (owner-only, plain text, like other console secrets). Revoke it
-  under *Settings → API Keys* if the server is ever compromised.
-- **Container:** runs as your user, read-only filesystem, no capabilities, `no-new-privileges`;
-  browser setup inside the viewer is disabled (`-config`, `-no-local-admin`).
-- **Supply chain:** the installer downloads a pinned viewer release and refuses it unless its
-  SHA-256 matches. The viewer loads no code from a CDN and sends a Content-Security-Policy.
-- The addon page itself has a strict CSP and only embeds the viewer address you configured
-  (`http`/`https` only).
+- **Least privilege:** the key only needs `maps: Read` and `bases: Read`; the addon asks for the single console permission
+  `files:addon-data` and nothing else (no database, no players, no rewards).
+- **No session, no write:** only the key is used, only `GET`, never the admin's session cookie.
+- **Verified data:** hash chain from the addon package to every downloaded tile (see above). A corrupted or tampered file is
+  refused, not rendered. `tests/unit.mjs` covers tampered tiles, a tampered catalog and the checksum fallback.
+- **No code from a CDN:** the data files are not code. Scripts (three.js and the viewer) are part of the addon package
+  (`web/vendor`, versions in `web/vendor/README.md`).
+- **Network use:** the addon page contacts this console, `raw.githubusercontent.com` and `cdn.jsdelivr.net`, and nothing else.
+  Requests to GitHub carry no cookies and no referrer.
+- **No server component:** there is no listening port, no container, no stored password, no installer.
 
 Found a problem? See the viewer's [SECURITY.md](https://github.com/dev-prophet-code/MapViewer3D/blob/main/SECURITY.md).
 
-## Notes
+## Upgrading from 0.1.x
 
-- Console served over `https://`? Browsers block the plain-http viewer inside the page.
-  Use **Open in new tab**, or serve the viewer through the same TLS reverse proxy and set its
-  address under *Advanced* on the addon page.
-- The viewer lists what your server reports; positions can lag by seconds to minutes.
+0.1.x ran a companion container (`runtime/mapviewer3d`). It is no longer used. Update the addon in the console, then remove the
+old container and files on the server:
+
+```bash
+docker compose -f runtime/mapviewer3d/docker-compose.yml down
+rm -rf runtime/mapviewer3d
+```
+
+Close TCP port `8795` again if you had opened it for other computers. Then create (or reuse) an API key and enter it in the addon.
 
 ## Files
 
 | Path | Purpose |
 |---|---|
-| `addon.json` | Addon manifest (no permissions) |
-| `web/` | The addon page (embeds the viewer, shows setup help if it is unreachable) |
-| `docker/` | Installer, Compose file and `README.md` of the companion container |
-| `scripts/validate.js`, `scripts/package.sh` | Validation and release packaging (from the addon template) |
+| `addon.json` | Addon manifest (permission `files:addon-data`) |
+| `web/` | The viewer (three.js scene, live layer) and its browser backend: `js/api.js` facade, `js/data.js` verified terrain streaming, `js/console.js` console client with the API key, `js/store.js` private storage |
+| `tools/tilepack.mjs`, `tools/pin-data.mjs` | Cut extracted terrain into the streaming format; pin a data release into the addon. See `tools/README.md` |
+| `tests/unit.mjs` | Data-path tests (tile generator → loader, checksums, tamper checks) |
+| `tests/harness.mjs` | Mock console for trying the addon in a browser without a server |
+| `scripts/validate.js`, `scripts/package.sh`, `scripts/verify-package.sh` | Validation and release packaging |
 
-## Source of the viewer
+## Source of the data
 
-This branch contains **only the addon** (what runs inside the Console). The viewer itself
-(Go server and 3D web UI) lives on the [`main` branch](https://github.com/dev-prophet-code/MapViewer3D);
-the installer downloads its pinned, checksum-verified release package.
+The terrain is generated from the game files with the `extract` tool of the viewer on the [`main` branch](https://github.com/dev-prophet-code/MapViewer3D)
+and cut into tiles by `tools/tilepack.mjs`. The branch `cdn` contains only the result.
 
 MIT licensed. Unofficial fan project, not affiliated with Funcom.

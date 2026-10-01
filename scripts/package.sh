@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
+# Builds the addon package (dist/mapviewer3d-<version>.zip) and checks it.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT_DIR"
 
-if ! command -v node >/dev/null 2>&1; then
-  echo "node is required to validate addon.json." >&2
-  exit 1
-fi
-
-if ! command -v zip >/dev/null 2>&1; then
-  echo "zip is required to package the addon." >&2
-  exit 1
-fi
+command -v node >/dev/null 2>&1 || { echo "node is required." >&2; exit 1; }
+command -v zip >/dev/null 2>&1 || { echo "zip is required to package the addon." >&2; exit 1; }
 
 node scripts/validate.js
 
@@ -21,7 +15,7 @@ ADDON_VERSION="$(node -e "process.stdout.write(require('./addon.json').version)"
 PACKAGE_NAME="${ADDON_ID}-${ADDON_VERSION}.zip"
 
 # The package goes to Linux: CRLF in any shipped file is a build error (Windows checkouts: see .gitattributes).
-if grep -rIl $'\r' addon.json README.md web docker; then
+if grep -rIl $'\r' addon.json README.md web; then
   echo "CRLF line endings in the files above. Re-checkout with LF (git add --renormalize .) and run again." >&2
   exit 1
 fi
@@ -29,7 +23,7 @@ fi
 rm -rf dist
 mkdir -p dist
 
-zip -X -r "dist/${PACKAGE_NAME}" addon.json README.md web docker -x "*.DS_Store" >/dev/null
+zip -X -r "dist/${PACKAGE_NAME}" addon.json README.md web -x "*.DS_Store" >/dev/null
 bash scripts/verify-package.sh "dist/${PACKAGE_NAME}"
 
 echo "Created: dist/${PACKAGE_NAME}"

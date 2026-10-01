@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Verify a PUBLISHED addon package, not the source checkout:
+# Verify a PACKAGE (the ZIP, or the published release asset by URL), not the source checkout:
 #
-#   bash scripts/verify-package.sh dist/mapviewer3d-X.Y.Z.zip          (static checks)
-#   WITH_UPGRADE_TEST=1 bash scripts/verify-package.sh <zip>            (plus the upgrade regression, Linux only)
+#   bash scripts/verify-package.sh dist/mapviewer3d-X.Y.Z.zip
+#   bash scripts/verify-package.sh https://github.com/.../mapviewer3d-X.Y.Z.zip
 #
 # Unpacks the ZIP into a temp folder and checks the files from there:
 #   - no CR (CRLF) byte in any text file,
-#   - `sh -n` on every shell script, `node --check` on the JavaScript,
-#   - addon.json id/version match the file name,
-#   - with WITH_UPGRADE_TEST=1: scripts/test-upgrade.sh against the unpacked docker/ folder.
-# Also accepts a URL (https://...zip): it is downloaded first, so the asset on GitHub can be checked.
+#   - `node --check` on every JavaScript file,
+#   - the package is small (Console limit for addon archives is 50 MiB; we stay far below),
+#     and contains no terrain/mesh data (that is streamed, see README),
+#   - web/js/config.js pins a data tag and a catalog checksum,
+#   - the permission list is exactly files:addon-data (private storage for the key),
+#   - addon.json id/version match the file name.
 set -euo pipefail
 SRC="${1:?usage: verify-package.sh <addon zip or URL>}"
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
@@ -23,6 +24,14 @@ esac
 [ -f "$ZIP" ] || fail "no such file: $ZIP"
 mkdir "$T/x"; unzip -q "$ZIP" -d "$T/x"
 
+SIZE="$(wc -c < "$ZIP" | tr -d ' ')"
+[ "$SIZE" -lt $((10 * 1024 * 1024)) ] || fail "package is $SIZE bytes; expected well below 10 MiB (data is streamed, not shipped)"
+echo "ok:   package size $SIZE bytes"
+if find "$T/x" -type f \( -name '*.u16' -o -name '*.u8' -o -name '*.z' -o -name '*.bin' \) | grep -q .; then
+  fail "package contains terrain/mesh data files"
+fi
+echo "ok:   no terrain/mesh data in the package"
+
 n=0
 while IFS= read -r f; do
   n=$((n + 1))
@@ -31,16 +40,23 @@ done < <(find "$T/x" -type f \( -name '*.sh' -o -name '*.js' -o -name '*.json' -
 [ "$n" -gt 0 ] || fail "package contains no text files?"
 echo "ok:   no CR in $n text files"
 
-for s in "$T"/x/docker/*.sh; do sh -n "$s" || fail "sh -n ${s#"$T/x/"}"; echo "ok:   sh -n ${s#"$T/x/"}"; done
-node --check "$T/x/web/addon.js" && echo "ok:   node --check web/addon.js"
+for f in $(find "$T/x/web" -name '*.js' -not -path '*/vendor/*'); do
+  cp "$f" "$f.mjs"; node --check "$f.mjs" || fail "node --check ${f#"$T/x/"}"; rm "$f.mjs"
+done
+echo "ok:   node --check on the addon's JavaScript"
 
+grep -Eq "DATA_TAG = 'data-v[0-9]+'" "$T/x/web/js/config.js" || fail "config.js does not pin a data tag"
+grep -Eq "CATALOG_SHA256 = '[0-9a-f]{64}'" "$T/x/web/js/config.js" || fail "config.js does not pin the catalog checksum"
+grep -q "CATALOG_SHA256 = '0\{64\}'" "$T/x/web/js/config.js" && fail "catalog checksum is still the placeholder"
+echo "ok:   data tag and catalog checksum pinned"
+
+node -e "
+const m=require('$T/x/addon.json');
+const p=JSON.stringify(m.permissions);
+if(p!==JSON.stringify({files:['addon-data']})){console.error('unexpected permissions',p);process.exit(1)}
+" || fail "permissions must be exactly files:addon-data"
 ID="$(node -e "process.stdout.write(require('$T/x/addon.json').id)")"
 VER="$(node -e "process.stdout.write(require('$T/x/addon.json').version)")"
 case "$(basename "$SRC")" in "$ID-$VER.zip"|pkg.zip) ;; *) fail "file name does not match addon.json ($ID-$VER.zip)" ;; esac
 echo "ok:   addon.json $ID $VER"
-
-if [ "${WITH_UPGRADE_TEST:-}" = 1 ]; then
-  echo "== upgrade regression against the unpacked package"
-  ADDON_DIR="$T/x" sh "$HERE/test-upgrade.sh"
-fi
 echo "PACKAGE OK: $(basename "$SRC")"
