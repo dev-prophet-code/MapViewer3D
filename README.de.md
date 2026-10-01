@@ -1,8 +1,8 @@
 # MapViewer3D-Echtzeitdaten für Dune Docker
 
-[English](README.md)
+[English](README.md) · [Sicherheit](SECURITY.md)
 
-Echtzeit-**Sandwürmer, Gegner, Zivilisten, Fahrzeuge, Sandstürme** (und auf Wunsch **Spieler**) von einem [Dune-Docker](https://github.com/Red-Blink/dune-awakening-selfhost-docker)-Server in einem **MapViewer3D, der auf deinem eigenen PC läuft**.
+Echtzeit-**Sandwürmer, Gegner, Zivilisten, Fahrzeuge, Sandstürme** (und auf Wunsch **Spieler**) von einem [Dune-Docker](https://github.com/Red-Blink/dune-awakening-selfhost-docker)-Server in einem **MapViewer3D, der auf deinem eigenen PC läuft** – immer verschlüsselt, gegen Man-in-the-Middle-Angriffe geschützt und nur für Geräte, die der Server-Admin gekoppelt hat.
 
 > Branch `ddp` von MapViewer3D: in Arbeit, noch nicht Teil eines Releases.
 
@@ -13,129 +13,141 @@ Die Live-Map von Dune Docker liest Postgres. Spieler und Fahrzeuge stehen in der
 Ein *Community-Addon* von Dune Docker kann das nicht: Addons sind Browser-Seiten in der Console mit wenigen freigegebenen API-Rechten, sie können keine Container starten und keine Prozesse sehen. Darum ist das hier ein kleines **eigenes Compose-Projekt**, das neben Dune Docker läuft und daran nichts verändert.
 
 ```
- Dune-Docker-Host                                              dein PC
-┌──────────────────────────────────────────────┐
-│ dune-server-*-Container (Spielprozesse)      │
-│        ▲ nur lesend /proc/<pid>/mem          │
-│ ┌──────┴──────┐ internes  ┌───────────────┐  │  Token   ┌────────────────────┐
-│ │  mvagent    │──Netz─────│    mvgate     │◄─┼──────────│ MapViewer3D        │
-│ │ root, kein  │  (kein    │ Token, IP-    │  │  :8797   │ start -agent …     │
-│ │ Port, kein  │ Internet) │ Liste, TLS,   │  │          │ + Console-API-Key  │
-│ │ Internet    │           │ nur GET       │  │          └────────────────────┘
-│ └─────────────┘           └───────────────┘  │
-└──────────────────────────────────────────────┘
+ Dune-Docker-Host                                                     dein PC
+┌───────────────────────────────────────────────┐
+│ dune-server-*-Container (Spielprozesse)       │
+│        ▲ nur lesend /proc/<pid>/mem           │
+│ ┌──────┴──────┐ internes  ┌────────────────┐  │ securelink ┌──────────────────┐
+│ │  mvagent    │──Netz─────│    mvgate      │◄─┼────────────│ MapViewer3D      │
+│ │ root, kein  │  (kein    │ TLS 1.3, fester│  │ TLS 1.3    │ ab Beta.16:      │
+│ │ Port, kein  │ Internet) │ Schlüssel, ge- │  │ :8797      │  -agent-pair     │
+│ │ Internet    │           │ genseit. Nachw.│  │            │ älter: mvlink    │
+│ └─────────────┘           └────────────────┘  │            └──────────────────┘
+└───────────────────────────────────────────────┘
 ```
 
-- **mvagent** – aus den MapViewer3D-Quellen gebaut (Release-Tag `MV_REF`). `pid: host` lässt ihn die Spielserver-Prozesse der Dune-Docker-Container sehen; zum Lesen ihres Speichers braucht er `SYS_PTRACE` + `DAC_OVERRIDE`. Alle anderen Rechte sind entzogen, das Dateisystem ist schreibgeschützt, er hat **keinen veröffentlichten Port und kein Internet** (internes Netz).
-- **mvgate** – der einzige veröffentlichte Port. Prüft ein Token (Basic oder Bearer), optional eine IP-Liste, sperrt eine IP nach 10 Fehlversuchen für 10 Minuten, leitet nur `GET /stream`, `/healthz`, `/api/objects` weiter, gibt das Token nie weiter, TLS optional. Läuft ohne root.
+- **mvagent** – aus den MapViewer3D-Quellen gebaut (Release-Tag `MV_REF`, geprüft gegen `MV_COMMIT`). `pid: host` lässt ihn die Spielserver-Prozesse der Dune-Docker-Container sehen; zum Lesen ihres Speichers braucht er `SYS_PTRACE` + `DAC_OVERRIDE`. Alle anderen Rechte sind entzogen, das Dateisystem ist schreibgeschützt, er hat **keinen veröffentlichten Port und kein Internet** (internes Netz).
+- **mvgate** – der einzige veröffentlichte Port (8797/TCP). Es spricht **securelink**: nur TLS 1.3, ein eigener Schlüssel, den der Client fest erwartet, und ein gegenseitiger Token-Nachweis, der an die TLS-Sitzung gebunden ist – das Token selbst geht nie über das Netz. Nur angemeldete Clients erreichen die drei lesenden Agent-Adressen. Läuft ohne root. Einzelheiten: [SECURITY.md](SECURITY.md).
+- **mvlink** – optionales Hilfsprogramm auf deinem PC für MapViewer3D-Versionen vor Beta.16 (siehe unten).
 
 ## Voraussetzungen
 
-- Ein laufender Dune-Docker-Host (Linux, Docker mit Compose v2). Unter Docker Desktop/WSL2 genauso: `pid: host` meint dort die Docker-VM, in der auch die Spiel-Container laufen.
-- MapViewer3D **ab Beta.9** auf deinem PC (empfohlen Beta.15), schon mit API-Key an die Console angebunden (`apiBase` + `token`, siehe Haupt-README).
+- Ein laufender Dune-Docker-Host (Linux, Docker mit Compose v2 und BuildKit). Unter Docker Desktop/WSL2 genauso: `pid: host` meint dort die Docker-VM, in der auch die Spiel-Container laufen.
+- MapViewer3D auf deinem PC, mit API-Key an die Console angebunden (`apiBase` + `token`, siehe Haupt-README). **Ab Beta.16** verbindet er sich direkt; ältere Versionen (ab Beta.9) nutzen `mvlink`.
 - Geprüft mit Spiel-Build `2134304`; nach einem Spiel-Update ermittelt der Agent seine Offsets selbst neu (siehe Agent-Doku).
 
-## Installation (auf dem Dune-Docker-Host)
+## 1. Installation (auf dem Dune-Docker-Host)
 
 ```bash
 git clone --branch ddp --depth 1 https://github.com/dev-prophet-code/MapViewer3D.git mapviewer-live
 cd mapviewer-live
 cp .env.example .env
-sed -i "s/^MV_GATE_TOKEN=.*/MV_GATE_TOKEN=$(openssl rand -hex 24)/" .env
 docker compose -f docker-compose.mapviewer-live.yml up -d --build
-docker compose -f docker-compose.mapviewer-live.yml logs -f mvagent
+docker compose -f docker-compose.mapviewer-live.yml logs -f
 ```
 
-Das Agent-Log nennt jeden gefundenen Spielserver-Prozess und wie viele Objekte er liest (Hagga-Becken ≈ 2500, Tiefe Wüste ≈ 250). Die Overmap ist absichtlich „nicht bereit“.
+Beim ersten Start erzeugt mvgate einen eigenen Schlüssel und ein starkes Token in seinem Volume `mvgate-data` und schreibt den Fingerabdruck des Schlüssels (`sha256/…`) ins Log. Das Agent-Log nennt jeden gefundenen Spielserver-Prozess und wie viele Objekte er liest (Hagga-Becken ≈ 2500, Tiefe Wüste ≈ 250). Die Overmap ist absichtlich „nicht bereit“.
 
-Port **8797/TCP** in der Firewall öffnen – am besten nur für die eigene IP (`MV_GATE_ALLOW`), siehe *Sicherheit*.
+Port **8797/TCP** in der Firewall öffnen – am besten nur für die IPs, die ihn brauchen (`MV_GATE_ALLOW`).
 
-## Lokalen MapViewer3D verbinden
+## 2. Koppeln (= freischalten)
 
-Die Agent-Adresse in die Konfigurationsdatei des Viewers (`-config config.json`) schreiben statt auf die Kommandozeile, damit das Token nicht in der Prozessliste steht:
-
-```json
-{
-  "apiBase": "http://DEIN-SERVER:8088",
-  "token": "dak_…",
-  "agentUrl": "https://mv:DEIN_GATE_TOKEN@DEIN-SERVER:8797"
-}
-```
-
-oder für einen schnellen Test:
+Solange der Server-Admin kein Gerät koppelt, kann niemand etwas lesen. Kopplungscode mit dem **öffentlichen** Namen oder der IP des Servers erzeugen:
 
 ```bash
-./start.sh -agent "http://mv:DEIN_GATE_TOKEN@DEIN-SERVER:8797"
+docker compose -f docker-compose.mapviewer-live.yml exec mvgate mvgate -pair dune.example.org
 ```
 
-Der Benutzername (`mv`) ist egal; das Passwort ist das Gate-Token. Der Viewer zeigt dann die Schalter **Sandwürmer (live)**, **Gegner**, **Zivilisten & Händler**, **Fahrzeuge (live)** und die Stürme. Mit `MV_AGENT_PLAYERS=true` bewegen sich Online-Spieler in Echtzeit; der Viewer zeigt nur Spieler, die er den Online-Spielern der Console zuordnen kann.
+Ausgegeben wird eine Zeile `mvlive1:…`. Sie enthält Adresse, Fingerabdruck und Token: **wie ein Passwort behandeln** und nur über einen vertrauenswürdigen Weg weitergeben (nicht in öffentlichen Chats, nicht über unverschlüsseltes HTTP). Alle Codes auf einmal widerrufen:
 
-## Sicherheit
+```bash
+docker compose -f docker-compose.mapviewer-live.yml exec mvgate mvgate -rotate-token
+docker compose -f docker-compose.mapviewer-live.yml restart mvgate
+```
 
-Der Agent sieht Positionen, mit `MV_AGENT_PLAYERS=true` auch die von Spielern. Das Gate-Token ist so schützenswert wie ein Admin-Key der Console.
+## 3. Lokalen MapViewer3D verbinden
 
-Eine Variante wählen, von am besten bis am einfachsten:
+**Ab Beta.16** – den Code in eine Datei (z. B. `pairing.txt`) außerhalb des Programmordners speichern und starten mit
 
-1. **SSH-Tunnel / VPN (kein offener Port).** `MV_GATE_BIND=127.0.0.1` setzen und vom PC aus `ssh -N -L 8797:127.0.0.1:8797 du@server`, dann `agentUrl: "http://mv:TOKEN@127.0.0.1:8797"`.
-2. **TLS im Gate.** `fullchain.pem`/`privkey.pem` für den Servernamen (z. B. Let's Encrypt) nach `./certs`, `MV_GATE_TLS_CERT=/certs/fullchain.pem` und `MV_GATE_TLS_KEY=/certs/privkey.pem` setzen, in `agentUrl` `https://…` verwenden. Ein selbst signiertes Zertifikat geht nicht (der Viewer prüft es).
-3. **Reverse Proxy** (nginx, Caddy, …) mit TLS vor `127.0.0.1:8797` (`MV_GATE_BIND=127.0.0.1`). Achtung: Das Gate sieht dann den Proxy als Absender, IP-Liste und Sperre gelten also für den Proxy – IPs dann im Proxy filtern.
-4. **Einfaches HTTP + IP-Liste** (`MV_GATE_ALLOW=<deine IP>`): Token und Positionen gehen unverschlüsselt durchs Netz. Nur fürs LAN oder zum Testen.
+```bash
+./start.sh -agent-pair /pfad/zu/pairing.txt
+```
 
-Außerdem:
+oder in die Konfigurationsdatei (`-config`) als `"agentPairing": "mvlive1:…"` schreiben, oder `MV_AGENT_PAIR` setzen. Der Viewer fragt das Gate kurz an (höchstens 5 s):
 
-- `MV_AGENT_PLAYERS=false` lassen, solange keine Live-Spieler gebraucht werden.
-- PvP: Würmer und Gegner folgen Spielern, ihre Bewegung kann also verraten, wo Spieler sind. Das Token nicht an Spieler geben.
-- Den Agenten selbst (Port 8796) nie veröffentlichen; die Compose-Datei tut das nicht.
-- Bekannte Lücke: Nach 30 s fehlgeschlagener Verbindung schreibt der Viewer die Agent-Adresse samt Token in sein eigenes lokales Log. Das Log privat halten (Korrektur in MapViewer3D geplant).
-- Token wechseln: `.env` ändern, dann `docker compose -f docker-compose.mapviewer-live.yml up -d`.
+- Antwort und alles stimmt → die Schalter **Sandwürmer (live)**, **Gegner**, **Zivilisten & Händler**, **Fahrzeuge (live)** und die Stürme erscheinen;
+- keine Antwort, falscher Schlüssel oder falsches Token → die Schalter bleiben ausgeblendet, das Log sagt warum (ein falscher Schlüssel wird als möglicher Angriff gemeldet). Alle 10 Minuten fragt er erneut; neue Schalter erscheinen nach dem Neuladen der Seite.
+
+Ohne Kopplungscode fragt der Viewer nur die Dune-Docker-Console, ob sie diese Funktion anbietet (heute nicht), und lässt die Schalter ausgeblendet.
+
+**Ältere Versionen (Beta.9 – Beta.15)** – `mvlink` auf demselben PC starten; es hält den Code und bietet die Daten nur auf `127.0.0.1` an:
+
+```bash
+cd gate && go build -o mvlink ./cmd/mvlink          # Go ab 1.24; oder für andere Systeme bauen, siehe unten
+./mvlink -pair-file /pfad/zu/pairing.txt
+./start.sh -agent http://127.0.0.1:8798
+```
+
+## Sicherheit in Kürze
+
+- Nur TLS 1.3, keine Klartext-Variante; der Client nimmt genau den festgelegten Schlüssel an, keine Zertifizierungsstelle beteiligt.
+- Das Token verlässt den PC nie: Beide Seiten weisen mit einem HMAC nach, dass sie es kennen, gebunden an die TLS-Sitzung – ein mitgeschnittener oder weitergereichter Nachweis ist wertlos.
+- Nicht angemeldete Verbindungen erreichen HTTP nie; 10 Fehlversuche pro Minute sperren die IP für 10 Minuten.
+- `mvagent` hat keinen Port und kein Internet; `mvgate` leitet nur `GET` auf `/stream`, `/healthz`, `/api/objects` weiter.
+- `MV_AGENT_PLAYERS=false` lassen, solange keine Live-Spieler gebraucht werden. Im PvP folgen Würmer und Gegner den Spielern: keine Spieler koppeln.
+- Das Volume `mvgate-data` sichern; geht es verloren, bekommt mvgate einen neuen Schlüssel und alle Geräte müssen neu gekoppelt werden.
+
+Bedrohungsmodell, Protokoll und der Vorschlag für eine Einbindung in Dune Docker: [SECURITY.md](SECURITY.md).
 
 ## Einstellungen (`.env`)
 
 | Variable | Standard | Bedeutung |
 |---|---|---|
-| `MV_GATE_TOKEN` | – (Pflicht) | ≥ 24 Zeichen, kein `:` `@` `/` (steht in einer URL) |
-| `MV_REF` | `beta.15` | MapViewer3D-Release-Tag, aus dem der Agent gebaut wird |
+| `MV_REF` / `MV_COMMIT` | `beta.15` / dessen Commit | MapViewer3D-Release, aus dem der Agent gebaut wird; zeigt das Tag woanders hin, bricht der Bau ab |
 | `MV_AGENT_PLAYERS` | `false` | auch Spieler lesen |
 | `MV_AGENT_HZ` | `10` | Abtastrate bewegter Objekte |
 | `MV_AGENT_CPUS` | `1.0` | CPU-Grenze des Agenten (die Suche liest den ganzen Prozessspeicher) |
 | `MV_AGENT_APPARMOR` | `docker-default` | `unconfined` nur, wenn das Log `permission denied` bei `/proc/<pid>/mem` zeigt |
 | `MV_GATE_ALLOW` | leer = alle | IPs / CIDRs, die verbinden dürfen |
-| `MV_GATE_BIND` / `MV_GATE_PORT` | `0.0.0.0` / `8797` | wo das Gate auf dem Host lauscht |
+| `MV_GATE_BIND` / `MV_GATE_PORT` | `0.0.0.0` / `8797` | wo das Gate auf dem Host lauscht (der Port steht auch im Kopplungscode) |
 | `MV_GATE_MAX_STREAMS` | `8` | gleichzeitige Viewer |
-| `MV_GATE_TLS_CERT` / `MV_GATE_TLS_KEY` | leer | TLS-Dateien im Container (`/certs/…`) |
-| `MV_GATE_CERT_DIR` | `./certs` | Host-Ordner, der unter `/certs` eingehängt wird |
+| `MV_GATE_TOKEN` | leer | leer lassen: mvgate erzeugt selbst ein 256-Bit-Token |
 
 ## Aktualisieren, stoppen, entfernen
 
 ```bash
 git pull                                                     # neue Compose-Datei/Gate
-# neues MapViewer3D-Release: MV_REF in .env setzen, dann
+# neues MapViewer3D-Release: MV_REF und MV_COMMIT in .env setzen, dann
 docker compose -f docker-compose.mapviewer-live.yml up -d --build
-docker compose -f docker-compose.mapviewer-live.yml down     # stoppen und entfernen
+docker compose -f docker-compose.mapviewer-live.yml down     # stoppen (Schlüssel und Token bleiben)
+docker compose -f docker-compose.mapviewer-live.yml down -v  # entfernen samt Schlüssel und Token
 ```
 
-Im Container aktualisiert sich der Agent nie selbst (`-auto-update` wird nicht benutzt); ein neues Release heißt neu bauen mit neuem `MV_REF`.
+Im Container aktualisiert sich der Agent nie selbst; ein neues Release heißt neu bauen.
 
 ## Fehlersuche
 
 | Symptom | Ursache / Lösung |
 |---|---|
 | Agent-Log: keine Spielserver-Prozesse | Dune Docker läuft nicht, oder der Container hat kein `pid: host` (Podman/rootless Docker werden nicht unterstützt) |
-| `permission denied` bei `/proc/<pid>/mem` | AppArmor/SELinux: `MV_AGENT_APPARMOR=unconfined` (AppArmor). Bei SELinux `label=disable` in `security_opt` von `mvagent` ergänzen. `kernel.yama.ptrace_scope=3` verhindert es ganz. |
-| Viewer: `HTTP 401` | falsches Token in `agentUrl` |
-| Viewer: `HTTP 403` | deine IP steht nicht in `MV_GATE_ALLOW` |
-| Viewer: `HTTP 429` | 10 Fehlversuche: 10 Minuten warten |
-| Viewer: TLS-Fehler | Zertifikat passt nicht zum Hostnamen in `agentUrl` oder ist selbst signiert |
+| `permission denied` bei `/proc/<pid>/mem` | AppArmor: `MV_AGENT_APPARMOR=unconfined`. SELinux: `label=disable` in `security_opt` von `mvagent` ergänzen. `kernel.yama.ptrace_scope=3` verhindert es ganz. |
+| Viewer-Log: „keine Antwort“ | Port 8797 zu/falsch weitergeleitet, falscher Host im Kopplungscode, IP nicht in `MV_GATE_ALLOW` oder nach Fehlversuchen gesperrt (10 Minuten warten) |
+| Viewer-Log: „anderer Schlüssel“ | mvgate wurde neu aufgesetzt (Volume weg) → neu koppeln; sonst **sitzt jemand dazwischen**: nicht weitermachen |
+| Viewer-Log: „lehnt den Kopplungscode ab“ | Token wurde gewechselt → neuen Kopplungscode holen |
 | nach einem Spiel-Update alles „nicht bereit“ | im Agent-Log nach „neu bestimmt“ schauen; klappt es nicht, `-blocks/-root/-pos` setzen (Agent-Doku) |
 
-Gate vom PC aus testen: `curl -u mv:TOKEN http://DEIN-SERVER:8797/healthz`.
+Der Container-Healthcheck von mvgate verbindet sich selbst über securelink (`docker compose ps` zeigt `healthy`).
 
 ## Entwicklung
 
 ```bash
-cd gate && go test ./...                         # Gate-Tests
+cd gate && go vet ./... && go test ./...           # securelink, mvgate, mvlink
 docker compose -f docker-compose.mapviewer-live.yml build
+# mvlink für andere Systeme, z. B. Windows:
+cd gate && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o mvlink.exe ./cmd/mvlink
 ```
+
+`gate/securelink` und `backend/securelink` im MapViewer3D-Hauptcode müssen identisch bleiben.
 
 ## Lizenz
 
