@@ -1,6 +1,6 @@
 # Security Policy
 
-Applies to the current release, Dune MapViewer3D Beta.11.
+Applies to the current release, Dune MapViewer3D Beta.12.
 
 ## Reporting a vulnerability
 

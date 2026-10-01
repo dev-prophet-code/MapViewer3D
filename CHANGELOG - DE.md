@@ -14,6 +14,18 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 
 ---
 
+## Beta.12 – 01.10.2026
+
+### Behoben
+
+- **Live-Daten (Sandwürmer, NPCs, Spieler, Fahrzeuge, Stürme) verschwanden.** Der Positions-Agent bestimmt seine Speicher-Offsets neu, wenn ein Map-Prozess keine plausiblen Objekte liefert. Auf kleinen Karten (Story-Räume, Overmap; 9–11 Treffer) kamen dabei falsche Werte heraus (`Pos=0x1F8` statt `0x190`), die **vor** der Prüfung für **alle** Karten übernommen wurden. Danach lasen alle Positionen ca. (1,1), der Viewer zeigte nichts, der Agent meldete aber weiter `ok`. Neu bestimmte Offsets werden jetzt nur übernommen, wenn damit wirklich Objekte gefunden werden, und die Neubestimmung braucht mindestens 30 Stichproben-Treffer. Geprüft auf einem Testserver und auf dem Live-Server (27 Sandwürmer, Spieler, richtige Positionen).
+
+### Hinweise
+
+- Bestehende Installationen: `mvagent` durch den aus diesem Release ersetzen und neu starten. Kontrolle: `curl 127.0.0.1:8796/healthz` muss `"pos":"0x190"` zeigen.
+
+---
+
 ## Beta.11 – 01.10.2026
 
 ### Neu

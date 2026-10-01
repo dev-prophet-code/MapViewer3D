@@ -10,6 +10,18 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ---
 
+## Beta.12 – 10/01/2026
+
+### Fixed
+
+- **Live data (sandworms, NPCs, players, vehicles, storms) disappeared.** The position agent re-derives its memory offsets when a map process yields no plausible objects. On small maps (story rooms, Overmap; 9–11 hits) this produced wrong values (`Pos=0x1F8` instead of `0x190`) and adopted them for **all** maps *before* checking them. From then on every position read as about (1,1) and the viewer showed nothing, while the agent still reported `ok`. Re-derived offsets are now adopted only if they actually yield objects, and the re-derivation needs at least 30 sample hits. Verified on a test server and on the live server (27 sandworms, players, correct positions).
+
+### Notes
+
+- Existing installations: replace `mvagent` with the one from this release and restart it. Check: `curl 127.0.0.1:8796/healthz` must show `"pos":"0x190"`.
+
+---
+
 ## Beta.11 – 10/01/2026
 
 ### New
