@@ -10,8 +10,8 @@ Everything is read-only; nothing is written to the game or the database.
 ## Use
 
 1. In the console open **Settings → API Keys** and create a key (see below). The key is shown only once.
-2. Install **MapViewer3D** on the **Addons** page and approve its single permission (`files:addon-data`, used to keep the key private).
-3. Open **3D Map**. Paste the key (`dak_…`) when asked. The addon checks it against the console (both scopes) and stores it.
+2. Install **MapViewer3D** on the **Addons** page and approve its single permission (`files:addon-data`, used only for the instance names you may choose and to remove a key an older version left behind).
+3. Open **3D Map**. Paste the key (`dak_…`) when asked. The addon checks it against the console (both scopes) and keeps it **in the memory of the page only**: it is never saved, so you enter it again each time you open the addon (your browser's password manager can fill it in).
 4. Done. Terrain and building models stream from GitHub on first use and are cached by your browser.
 
 ### The API key
@@ -47,14 +47,18 @@ Browser (addon page inside the console)
 - **Deep Desert follows the Coriolis cycle.** The console reports the current layout; the addon shows the terrain generated
   for that layout. A layout that is not in the data release yet falls back to the plain dune template and the panel says so
   until a new data release is published (see `tools/README.md`).
-- The API key is stored in the addon's private storage in the console (`addon.storage`, permission `files:addon-data`) and
-  held in memory while the page is open. It is never written to `localStorage` and never sent anywhere but this console.
-  The same storage keeps the instance names you choose.
+- **The API key is never stored.** The console isolates addon storage per addon, not per signed-in user, so anything in
+  `addon.storage` could be read by every user who can reach the addon bridge. The key therefore lives in the memory of the
+  page only: not in `addon.storage`, not in `localStorage` / `sessionStorage` / IndexedDB / the Cache API, and it is sent
+  nowhere but this console. Opening the page directly (outside the normal addon bridge flow) persists nothing either.
+  Switching the language does not reload the page, so the key survives it; closing or reloading the page forgets it.
+  `addon.storage` keeps only the instance names you choose. Version 0.2.1 deletes a key that 0.2.0 left in the shared
+  storage; if you used 0.2.0, revoke that API key in the console and create a new one.
 
 ## Security
 
 - **Least privilege:** the key only needs `maps: Read` and `bases: Read`; the addon asks for the single console permission
-  `files:addon-data` and nothing else (no database, no players, no rewards).
+  `files:addon-data` and nothing else (no database, no players, no rewards). It is used for the instance names, not for the key.
 - **No session, no write:** only the key is used, only `GET`, never the admin's session cookie.
 - **Verified data:** hash chain from the addon package to every downloaded tile (see above). A corrupted or tampered file is
   refused, not rendered. `tests/unit.mjs` covers tampered tiles, a tampered catalog and the checksum fallback.

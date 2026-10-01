@@ -79,11 +79,11 @@
 </div>
 
 <div id="setup" class="modal" hidden>
-  <form id="setupForm" class="dialog" autocomplete="off">
+  <form id="setupForm" class="dialog">
     <h1 data-i18n="setup.title">Connect to your Dune Docker server</h1>
     <p class="muted small" data-i18n="setup.intro"></p>
     <label><span data-i18n="setup.token">API token</span>
-      <input id="setupToken" type="password" placeholder="dak_…" required spellcheck="false" autocomplete="new-password">
+      <input id="setupToken" name="mapviewer3d-api-key" type="password" placeholder="dak_…" required spellcheck="false" autocomplete="current-password">
     </label>
     <div id="setupError" class="error small" hidden></div>
     <div class="btnrow">

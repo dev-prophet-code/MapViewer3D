@@ -23,6 +23,15 @@ export function bindUi({ live, jumpTo, onMap }) {
   for (const tg of TOGGLES) toggle($('liveToggles'), tg.key, t(`toggle.${tg.key}`), tg.on);
   for (const c of CATEGORIES) toggle($('liveCats'), c.key, t(`cat.${c.key}`), false);
 
+  // Sprachwechsel ohne Neuladen: Beschriftung der Schalter tauschen, Zustand behalten
+  window.addEventListener('langchange', () => {
+    for (const l of document.querySelectorAll('#liveToggles .toggle, #liveCats .toggle')) {
+      const key = l.dataset.key;
+      const text = l.parentElement.id === 'liveCats' ? t(`cat.${key}`) : t(`toggle.${key}`);
+      l.lastChild.textContent = text;
+    }
+  });
+
   // Alle Ebenen ein-/ausblenden
   const setAll = (on) => {
     for (const box of document.querySelectorAll('#liveToggles input, #liveCats input')) {

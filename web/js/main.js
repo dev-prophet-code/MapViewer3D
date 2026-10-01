@@ -177,6 +177,19 @@ $('connChange').addEventListener('click', async () => {
   showConnection(status);
   await loadMaps();
 });
+// Sprachwechsel ohne Neuladen (der Key liegt nur im Arbeitsspeicher und ginge verloren):
+// Verbindungsinfo, Kartenliste, Kurzinfo und Live-Ebene neu beschriften, Kamera bleibt stehen.
+window.addEventListener('langchange', async () => {
+  showConnection(await api.setupStatus());
+  if (!entries.length) return;
+  const id = $('map').value;
+  let maps;
+  try { maps = await api.maps(); } catch { return; }
+  entries = fillMaps(maps, id);
+  const next = entries.find((e) => e.id === id) ?? entries[0];
+  $('map').value = next.id;
+  loadMap(next, true);
+});
 $('connNames').addEventListener('click', async () => {
   if (await editNames()) await loadMaps();
 });

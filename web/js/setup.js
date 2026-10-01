@@ -1,5 +1,5 @@
 // Connection setup (API key created in the Dune Docker console) and naming of the server instances.
-// The key is checked, stored in the addon's private storage and never shown again.
+// The key is checked and kept in memory only (never saved anywhere) and never shown again.
 import { api } from './api.js';
 import { t } from './i18n.js';
 

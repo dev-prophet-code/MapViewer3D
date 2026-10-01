@@ -33,6 +33,7 @@ export function initCompass(host, camera, controls) {
   svg.append(rose, el('path', { class: 'compass-pointer', d: 'M42 26 51 52 42 47 33 52Z' }));
   host.replaceChildren(svg);
   host.title = t('compass.tip');
+  window.addEventListener('langchange', () => { host.title = t('compass.tip'); });
   host.setAttribute('role', 'button');
   host.tabIndex = 0;
 

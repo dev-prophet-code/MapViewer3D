@@ -10,7 +10,8 @@
 #   - the package is small (Console limit for addon archives is 50 MiB; we stay far below),
 #     and contains no terrain/mesh data (that is streamed, see README),
 #   - web/js/config.js pins a data tag and a catalog checksum,
-#   - the permission list is exactly files:addon-data (private storage for the key),
+#   - console.js / store.js use no browser storage API (the API key stays in memory),
+#   - the permission list is exactly files:addon-data (instance names, removal of a legacy key),
 #   - addon.json id/version match the file name.
 set -euo pipefail
 SRC="${1:?usage: verify-package.sh <addon zip or URL>}"
@@ -44,6 +45,17 @@ for f in $(find "$T/x/web" -name '*.js' -not -path '*/vendor/*'); do
   cp "$f" "$f.mjs"; node --check "$f.mjs" || fail "node --check ${f#"$T/x/"}"; rm "$f.mjs"
 done
 echo "ok:   node --check on the addon's JavaScript"
+
+# The API key must never be persisted (the console shares addon storage between users).
+for f in console.js store.js; do
+  if sed 's://.*$::' "$T/x/web/js/$f" | grep -Eq 'getItem\(|setItem\(|sessionStorage|indexedDB|caches\.open|document\.cookie'; then
+    fail "web/js/$f uses a browser storage API; the API key must stay in memory only"
+  fi
+done
+if sed 's://.*$::' "$T/x/web/js/console.js" | grep -Eq "store\.put\([^)]*(KEY|token|key)"; then
+  fail "console.js writes the key to the addon storage"
+fi
+echo "ok:   API key is memory-only (no browser storage API in console.js / store.js)"
 
 grep -Eq "DATA_TAG = 'data-v[0-9]+'" "$T/x/web/js/config.js" || fail "config.js does not pin a data tag"
 grep -Eq "CATALOG_SHA256 = '[0-9a-f]{64}'" "$T/x/web/js/config.js" || fail "config.js does not pin the catalog checksum"

@@ -6,15 +6,18 @@
 //    browser never attaches the logged-in admin's session cookie. The addon has exactly the
 //    rights of that key and nothing else.
 //  * Only GET requests are made.
-//  * The key lives in memory and in the addon's own storage (store.js), nowhere else.
+//  * The key lives in memory ONLY. It is never written to the addon storage (shared by every
+//    user of the console), localStorage, sessionStorage, IndexedDB or the Cache API. It has to
+//    be entered again each time the addon page is opened (a password manager can fill it).
 import { store } from './store.js';
 
-const KEY_STORE = 'console.key';
+const LEGACY_KEY = 'console.key'; // versions up to 0.2.0 stored the key here; removed on start
 const LABEL_STORE = 'instance.names';
 const KEY_PATTERN = /^dak_[A-Za-z0-9_-]{8,200}$/;
 const LABEL_PATTERN = /^[\p{L}\p{N} ._\-()/+&]{1,40}$/u;
 
 let token = null;
+let purged = false;
 
 // Errors carry a code the UI translates (err.<code> in i18n.js) and an optional detail.
 function fail(code, detail = '') {
@@ -26,10 +29,13 @@ function fail(code, detail = '') {
 
 // ---------- key ----------
 
+// Nothing is loaded from storage: the key exists only after the user entered it in this page.
+// The first call also deletes a key an older version left in the shared addon storage.
 export async function loadToken() {
-  if (token) return token;
-  const saved = await store.get(KEY_STORE).catch(() => null);
-  if (typeof saved?.token === 'string' && KEY_PATTERN.test(saved.token)) token = saved.token;
+  if (!purged) {
+    purged = true;
+    await store.purgeLegacyKey(LEGACY_KEY);
+  }
   return token;
 }
 
@@ -39,10 +45,9 @@ export const keyId = () => (token ? token.split('_')[1] : '');
 export async function dropToken() {
   token = null;
   cache.clear();
-  await store.remove(KEY_STORE).catch(() => {});
 }
 
-// Checks the key against the console and stores it. Both scopes are verified up front
+// Checks the key against the console and keeps it in memory. Both scopes are verified up front
 // so a key without bases: Read is rejected with a clear message instead of failing later.
 export async function saveToken(candidate) {
   const key = String(candidate ?? '').trim();
@@ -65,11 +70,6 @@ export async function saveToken(candidate) {
   const bases = await probe('/api/bases/0/export');
   if (bases.status === 403) throw fail('token_scope_bases');
   if (bases.status === 401) throw fail('token_rejected');
-  try {
-    await store.put(KEY_STORE, { token: key });
-  } catch (e) {
-    throw fail('save_failed', e.message);
-  }
   token = key;
   cache.clear();
 }

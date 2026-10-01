@@ -1,5 +1,7 @@
 // Übersetzungen der Oberfläche. Standard ist Englisch; die Wahl wird im Browser
-// gespeichert (localStorage) und beim Umschalten wird die Seite neu aufgebaut.
+// gespeichert (localStorage). Beim Umschalten wird die Seite NICHT neu geladen (der API-Key
+// liegt nur im Arbeitsspeicher): die Texte werden getauscht und das Ereignis 'langchange'
+// meldet, dass dynamische Teile neu beschriftet werden müssen.
 //
 // Statische Texte in index.html tragen data-i18n (Text), data-i18n-html (Text mit
 // <br>), data-i18n-ph (Platzhalter) oder data-i18n-title (Tooltip).
@@ -31,8 +33,8 @@ const STRINGS = {
     'conn.change': 'Change',
     'conn.change.tip': 'Replace the API key',
     'conn.delete': 'Remove API key',
-    'conn.delete.tip': 'Remove the stored API key',
-    'conn.delete.confirm': 'Really remove the stored API key? You will have to enter a key again.',
+    'conn.delete.tip': 'Forget the API key (it is only held in memory)',
+    'conn.delete.confirm': 'Forget the API key? You will have to enter it again.',
     'conn.info': 'Console: {server}\nAPI key: dak_{fp}_…',
     'conn.none': 'not connected',
     'help.title': 'Controls',
@@ -61,7 +63,7 @@ const STRINGS = {
     'unit.h': 'h',
     'maps.none': 'No maps available. The terrain data could not be loaded from GitHub.',
     'setup.title': 'Enter your API key',
-    'setup.intro': 'MapViewer3D reads players, bases and resources through the API of this console, using only the API key you enter here. Create it in the console under Settings → API Keys with scope maps = Read and bases = Read (all other scopes None). The key is stored in the addon\'s private storage and is never shown again.',
+    'setup.intro': 'MapViewer3D reads players, bases and resources through the API of this console, using only the API key you enter here. Create it in the console under Settings → API Keys with scope maps = Read and bases = Read (all other scopes None). The key is kept only in the memory of this page and is never saved anywhere (the console shares addon storage between all users). Enter it again each time you open the addon; your browser\'s password manager can fill it in.',
     'setup.server': 'Server (host, IP or URL)',
     'setup.server.ph': 'e.g. 203.0.113.10 or my-server.com',
     'setup.port': 'Console port',
@@ -162,8 +164,8 @@ const STRINGS = {
     'conn.change': 'Ändern',
     'conn.change.tip': 'API-Schlüssel ersetzen',
     'conn.delete': 'API-Schlüssel entfernen',
-    'conn.delete.tip': 'Gespeicherten API-Schlüssel entfernen',
-    'conn.delete.confirm': 'Gespeicherten API-Schlüssel wirklich entfernen? Danach musst du wieder einen Schlüssel eintragen.',
+    'conn.delete.tip': 'API-Schlüssel vergessen (er liegt nur im Arbeitsspeicher)',
+    'conn.delete.confirm': 'API-Schlüssel vergessen? Danach musst du ihn neu eintragen.',
     'conn.info': 'Console: {server}\nAPI-Schlüssel: dak_{fp}_…',
     'conn.none': 'nicht verbunden',
     'help.title': 'Steuerung',
@@ -192,7 +194,7 @@ const STRINGS = {
     'unit.h': 'Std',
     'maps.none': 'Keine Karten verfügbar. Die Geländedaten konnten nicht von GitHub geladen werden.',
     'setup.title': 'API-Schlüssel eintragen',
-    'setup.intro': 'MapViewer3D liest Spieler, Basen und Ressourcen über die API dieser Console, und zwar nur mit dem API-Schlüssel, den du hier einträgst. Erstelle ihn in der Console unter Einstellungen → API-Schlüssel mit Bereich maps = Read und bases = Read (alle anderen Bereiche: None). Der Schlüssel liegt im privaten Speicher des Addons und wird nie wieder angezeigt.',
+    'setup.intro': 'MapViewer3D liest Spieler, Basen und Ressourcen über die API dieser Console, und zwar nur mit dem API-Schlüssel, den du hier einträgst. Erstelle ihn in der Console unter Einstellungen → API-Schlüssel mit Bereich maps = Read und bases = Read (alle anderen Bereiche: None). Der Schlüssel bleibt nur im Arbeitsspeicher dieser Seite und wird nirgends gespeichert (die Console teilt den Addon-Speicher zwischen allen Nutzern). Trage ihn bei jedem Öffnen des Addons neu ein; der Passwortmanager deines Browsers kann ihn ausfüllen.',
     'setup.server': 'Server (Host, IP oder URL)',
     'setup.server.ph': 'z. B. 203.0.113.10 oder mein-server.de',
     'setup.port': 'Port der Console',
@@ -283,7 +285,7 @@ function readLang() {
   return 'en';
 }
 
-export const lang = readLang();
+export let lang = readLang();
 
 // Text zum Schlüssel, {name}-Platzhalter werden ersetzt; fehlt er, gilt Englisch.
 export function t(key, vars = {}) {
@@ -293,8 +295,15 @@ export function t(key, vars = {}) {
 
 export function setLang(l) {
   if (!STRINGS[l] || l === lang) return;
+  lang = l;
   try { localStorage.setItem(STORAGE_KEY, l); } catch { /* nur für diese Sitzung */ }
-  location.reload();
+  if (params.has('lang')) { // ?lang= würde die Wahl beim nächsten Laden überstimmen
+    const u = new URL(location.href);
+    u.searchParams.set('lang', l);
+    history.replaceState(null, '', u);
+  }
+  applyStatic();
+  window.dispatchEvent(new CustomEvent('langchange', { detail: l }));
 }
 
 // Statische Texte der Seite übersetzen und die Sprachauswahl füllen

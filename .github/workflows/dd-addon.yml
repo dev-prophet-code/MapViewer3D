@@ -24,6 +24,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: node scripts/validate.js
+      - name: API key is never persisted (shared addon storage, direct page access, migration)
+        run: node tests/key-storage.mjs
       - name: Data path tests (tile generator -> loader, checksums, tamper checks, SHA-256 fallback)
         run: node tests/unit.mjs
       - name: Pinned data release is reachable and matches the pinned catalog checksum
