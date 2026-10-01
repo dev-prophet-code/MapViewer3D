@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"syscall"
@@ -29,6 +30,7 @@ import (
 
 	"mapviewer3d/agent"
 	"mapviewer3d/server"
+	"mapviewer3d/updater"
 )
 
 func main() {
@@ -50,6 +52,7 @@ func main() {
 	probe := flag.String("probe", "", "Diagnose: Klassen nach Muster suchen (z. B. 'Storm|Coriolis'), Instanzen auflisten und Felder dumpen (mit -pid)")
 	probeDump := flag.Int("probe-dump", 0x500, "Bytes pro Actor, die -probe auswertet (0 = nur auflisten)")
 	once := flag.Bool("once", false, "einmal suchen, Ergebnis als JSON ausgeben und beenden")
+	autoUpdate := flag.Bool("auto-update", os.Getenv("MV_AUTOUPDATE") == "1", "neue Versionen von GitHub automatisch installieren und neu starten (der Agent läuft als root: nur einschalten, wenn GitHub-Releases dieses Projekts vertraut wird; braucht Schreibrecht im Ordner des Programms)")
 	version := flag.Bool("version", false, "Version anzeigen")
 	flag.Parse()
 	if *version {
@@ -114,7 +117,41 @@ func main() {
 		srv.Close()
 	}()
 	go a.Run(ctx)
+	if *autoUpdate {
+		startUpdater(ctx)
+	}
 	if err := srv.Serve(ln); err != nil && ctx.Err() == nil {
 		log.Fatal(err)
 	}
+}
+
+// startUpdater: der Agent ersetzt nur sich selbst (bin/mvagent-linux-<arch> aus dem Update-Paket)
+// und startet sich neu; unter systemd bleibt dabei die PID erhalten.
+func startUpdater(ctx context.Context) {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	if r, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = r
+	}
+	if _, ok := updater.Number(server.Version); !ok {
+		return
+	}
+	u := updater.New(updater.Config{
+		Current: server.Version,
+		Work:    filepath.Dir(exe),
+		Auto:    true,
+		Plan: func(stage string) ([]updater.Op, error) {
+			src := filepath.Join(stage, "bin", "mvagent-linux-"+runtime.GOARCH)
+			if _, err := os.Stat(src); err != nil {
+				return nil, fmt.Errorf("Agent fehlt im Paket: %s", filepath.Base(src))
+			}
+			return []updater.Op{{Src: src, Dest: exe}}, nil
+		},
+		SelfTest: updater.VersionSelfTest("mvagent"),
+		Restart:  func() { updater.RestartSelf(exe, nil) },
+	})
+	go u.Run(ctx)
+	log.Printf("Automatische Updates von GitHub an (Prüfung alle %s)", updater.DefaultInterval)
 }

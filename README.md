@@ -101,6 +101,15 @@ GOOS=windows GOARCH=amd64 go build -o ../bin/mapviewer-windows-amd64.exe ./cmd/m
 
 Rebuilding the maps after a game update (`backend/cmd/extract`) needs the game's pak files and Go with a C compiler (Oodle via cgo). See the German README for the full procedure.
 
+## 🔄 Updates
+
+The viewer asks GitHub for a newer release shortly after start and then every 6 hours. If there is one, a box in the panel shows **Update available: Beta.N**. One click on **Update now** downloads the update package (`MapViewer3D-update-Beta.N.zip`, without map data), verifies its SHA-256 sum against the checksum file of the release, replaces the program, `viewer/`, docs and start scripts (the previous state is kept in `.update/backup-<version>/`) and restarts the viewer; the page reloads by itself. Your credentials and settings (user folder) and `data/` are not touched. Only a browser on the machine itself can start the installation (same rule as the setup screen).
+
+- **Servers:** `-auto-update` (or `MV_AUTOUPDATE=1`, or `"autoUpdate": true` in `-config`) installs without a click. A program built with `-tags paks` (`-paks`) is rebuilt from the source in the package (needs Go and a C++ compiler on the server). With `-public` there is no update display.
+- **Off:** `-no-update-check` or `MV_NO_UPDATE=1`.
+- **Network:** the only request is an anonymous `GET` to `api.github.com` / `github.com`; nothing about you or your server is sent.
+- **Trust:** an update is as trustworthy as the GitHub repository and its release (SHA-256 check, no additional signature). The position agent updates itself only with its own `-auto-update` (it runs as root, so it is off by default).
+
 ## 🔐 Security
 
 Only server address and API token are stored – encrypted with **AES-256-GCM + XChaCha20-Poly1305**, keys derived via **HKDF-SHA512** and bound to machine and user, integrity via **HMAC-SHA512**. The token never reaches the browser; the server listens on `127.0.0.1` only by default (since Beta.7 a network address requires `-password` / `MV_PASSWORD` / `viewerPassword` in `-config`, otherwise it refuses to start unless you pass `-allow-open`) and protects state-changing calls against CSRF. Details and honest limits: [Description-EN.md](Description-EN.md). The setup screen only accepts a browser on the machine itself (loopback address **and** loopback host name); use `-no-local-admin` behind a reverse proxy. Account IDs are stripped from live data for everyone but that local administrator, the server sends a strict Content-Security-Policy, and three.js is vendored (no CDN). Anything reachable on the network shows player names and positions to everyone with the address, so restrict the port (firewall or access protection) or use `-public`. To report a vulnerability, see [SECURITY.md](SECURITY.md).

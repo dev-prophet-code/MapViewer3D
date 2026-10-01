@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -30,6 +31,7 @@ import (
 
 	"mapviewer3d/secure"
 	"mapviewer3d/server"
+	"mapviewer3d/updater"
 )
 
 func main() {
@@ -47,9 +49,11 @@ func main() {
 	public := flag.String("public", "", "öffentlicher Betrieb: JSON mit erlaubten Partitionen und PvE-Quelle (siehe server/public.go)")
 	paks := flag.String("paks", "", "Ordner mit den Spieldateien (.utoc/.ucas): baut das Deep-Desert-Gelände nach jedem Coriolis-Sturm selbst für das neue Layout")
 	agentURL := flag.String("agent", os.Getenv("MV_AGENT"), "Adresse des Positions-Agenten (mvagent), z. B. http://127.0.0.1:8796: zeigt Sandwürmer, Gegner und Fahrzeuge live; alternativ MV_AGENT oder agentUrl in -config")
+	autoUpdate := flag.Bool("auto-update", os.Getenv("MV_AUTOUPDATE") == "1", "neue Versionen von GitHub automatisch installieren und neu starten (Standard: nur anzeigen, Installation per Klick); alternativ MV_AUTOUPDATE=1 oder autoUpdate in -config")
+	noUpdate := flag.Bool("no-update-check", os.Getenv("MV_NO_UPDATE") == "1", "nicht auf GitHub nach neuen Versionen suchen (auch MV_NO_UPDATE=1)")
 	// Ohne Argumente gestartet (Doppelklick im Explorer/Finder): Browser öffnen;
 	// unter Windows zusätzlich das Fenster bei Fehlern offen halten.
-	noArgs := len(os.Args) == 1
+	noArgs := len(os.Args) == 1 && os.Getenv("MV_RESTARTED") == ""
 	doubleClick := runtime.GOOS == "windows" && noArgs
 	open := flag.Bool("open", noArgs, "Browser nach dem Start öffnen")
 	version := flag.Bool("version", false, "Version anzeigen")
@@ -93,6 +97,9 @@ func main() {
 		if *agentURL == "" {
 			*agentURL = cfg.AgentURL
 		}
+		if cfg.AutoUpdate {
+			*autoUpdate = true
+		}
 		log.Printf("Verbindung aus %s", *config)
 		if cfg.Public != nil {
 			log.Printf("Öffentlicher Betrieb: nur Partitionen %v, soweit %s sie als PvE meldet", cfg.Public.Partitions, cfg.Public.ModeSource)
@@ -133,11 +140,21 @@ func main() {
 		log.Printf("Live-Positionen (Würmer, Gegner, Fahrzeuge) vom Agenten %s", *agentURL)
 	}
 
+	var ln net.Listener
+	if !*noUpdate {
+		startUpdater(srv, root, *autoUpdate, func() {
+			if ln != nil {
+				ln.Close()
+			}
+		})
+	}
+
 	srv.SetPassword(*password)
 	if host, _, _ := net.SplitHostPort(*addr); !isLoopback(host) && !srv.HasPassword() && !*allowOpen {
 		fatalf("%s ist im Netz erreichbar, aber ohne Passwort: das würde Spielernamen und Positionen für jeden mit der Adresse zeigen. Passwort setzen (-password, MV_PASSWORD oder viewerPassword in -config), nur lokal (127.0.0.1) starten oder bewusst -allow-open angeben.", *addr)
 	}
-	ln, err := net.Listen("tcp", *addr)
+	var err error
+	ln, err = net.Listen("tcp", *addr)
 	if err != nil {
 		fatalf("%v", err)
 	}
@@ -306,5 +323,39 @@ func openBrowser(url string) {
 	}
 	if err := cmd.Start(); err != nil {
 		log.Printf("Browser öffnen: %v – bitte %s selbst aufrufen", err, url)
+	}
+}
+
+// startUpdater richtet die Update-Prüfung ein (updater/). Download-Installationen zeigen
+// ein Update an und installieren es auf Klick; mit -auto-update geschieht das von selbst.
+// Ein Programm mit -tags paks (Server mit -paks) wird aus dem Quelltext des Pakets neu gebaut.
+func startUpdater(srv *server.Server, root string, auto bool, closeListener func()) {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	if r, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = r
+	}
+	if _, ok := updater.Number(server.Version); !ok {
+		return // Entwicklungsstand ohne Versionsnummer
+	}
+	built := server.AutoBuildAvailable
+	cfg := updater.Config{
+		Current: server.Version,
+		Work:    root,
+		Auto:    auto,
+		Plan:    updater.ViewerPlan(root, exe, built),
+		Restart: func() { updater.RestartSelf(exe, closeListener) },
+	}
+	if built {
+		cfg.Prepare = updater.BuildPrepare(updater.FindGo(), filepath.Join(root, ".update"))
+	}
+	cfg.SelfTest = updater.VersionSelfTest("mapviewer")
+	u := updater.New(cfg)
+	srv.SetUpdater(u)
+	go u.Run(context.Background())
+	if auto {
+		log.Printf("Automatische Updates von GitHub an (Prüfung alle %s)", updater.DefaultInterval)
 	}
 }

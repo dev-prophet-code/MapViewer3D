@@ -11,9 +11,11 @@ import { bindHud, bindUi, showMapInfo } from './ui.js';
 import { initCompass } from './compass.js';
 import { initTheme } from './theme.js';
 import { askForSetup, editNames, showConnection } from './setup.js';
+import { initUpdate } from './update.js';
 import { applyStatic, EMBED, START_MAP, t } from './i18n.js';
 
 applyStatic();
+initUpdate();
 if (EMBED) document.documentElement.classList.add('embed');
 
 const $ = (id) => document.getElementById(id);

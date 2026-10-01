@@ -50,6 +50,7 @@ systemd-Dienst (Agent, läuft als root): siehe [Agent-EN.md](Agent-EN.md#quick-s
 | `-pid` | – | nur diesen Prozess (Diagnose) |
 | `-blocks`, `-root`, `-pos` | Build 2134304 | Offsets von Hand überschreiben |
 | `-once` | – | einmal suchen, JSON ausgeben, beenden |
+| `-auto-update` | aus | neue Releases von GitHub selbst installieren (ersetzt nur `mvagent`, startet neu; unter systemd mit `Restart=always`; der Programmordner muss beschreibbar sein; läuft als root, nur einschalten, wenn man dem Repository vertraut) |
 
 Schnittstelle: `GET /healthz`, `GET /api/objects[?kinds=worm,vehicle,npc,civilian,player,storm,coriolis]` (Quellen tragen `weather` = Start des laufenden/nächsten Coriolis-Zyklus, Unix-ms), `GET /stream` (SSE: `snap` = voller Stand, `pos` = Änderungen `[id,x,y,z]` und verschwundene IDs, alle 20 s ein Lebenszeichen als Kommentarzeile).
 

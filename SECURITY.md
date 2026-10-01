@@ -1,6 +1,6 @@
 # Security Policy
 
-Applies to the current release, Dune MapViewer3D Beta.12.
+Applies to the current release, Dune MapViewer3D Beta.13.
 
 ## Reporting a vulnerability
 
@@ -23,6 +23,10 @@ server's auth token). Players are not output unless `-players` is given; the vie
 live player only when it can match it to an online player the console already shows
 (same partition, nearest distance), so no new names or players appear; in public mode only PvE partitions leave the server. Run it only on
 servers you operate. Details: [docs/Agent-EN.md](docs/Agent-EN.md).
+
+## Updater (Beta.13)
+
+The viewer (and, only with its own `-auto-update`, the position agent) can fetch new releases from GitHub: anonymous `GET` to `api.github.com`/`github.com`, download of `MapViewer3D-update-Beta.N.zip`, SHA-256 check against the release's `.sha256` file, path-escape and link checks while unpacking, a self-test of the new program (`-version`) before the swap, and a backup of the old files for rollback. Download URLs must belong to this repository's release downloads. The installation endpoint is limited to the local administrator (loopback browser, CSRF header; never with `-public`). There is no extra code signature: an update is only as trustworthy as the GitHub repository and its release. Turn it off with `-no-update-check` / `MV_NO_UPDATE=1`. The agent runs as root, so its updater is off unless you pass `-auto-update`.
 
 ## Tip for users
 

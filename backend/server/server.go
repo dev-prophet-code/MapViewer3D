@@ -29,11 +29,12 @@ import (
 
 	"mapviewer3d/mapdata"
 	"mapviewer3d/secure"
+	"mapviewer3d/updater"
 )
 
 // Version steht in der Oberfläche und in CHANGELOG.md; beim Bauen per
 // -ldflags "-X mapviewer3d/server.Version=…" überschreibbar.
-var Version = "Beta.12"
+var Version = "Beta.13"
 
 // PatchQuads ist die Kantenlänge eines Geländestücks in Quads.
 const PatchQuads = 128
@@ -98,6 +99,8 @@ type Server struct {
 	// z. B. hinter einem Reverse-Proxy auf demselben Rechner.
 	NoLocalAdmin bool
 
+	upd *updater.Updater // Update-Prüfung und -Installation; nil = aus
+
 	stripped sync.Map // Pfad → bereinigte Live-Antwort (privacy.go)
 
 	// Automatischer Bau des Deep-Desert-Geländes je Coriolis-Layout (autolayout.go)
@@ -155,6 +158,9 @@ func New(dataDir, webDir, stateDir string, store *secure.Store) *Server {
 	s.mux.HandleFunc("GET /api/agent/{map}/stream", s.agentStream)
 	s.mux.HandleFunc("GET /api/live/{map}/{feed}", s.liveFeed)
 	s.mux.HandleFunc("GET /api/icons/{file}", s.icon)
+	s.mux.HandleFunc("GET /api/update/status", s.updateStatus)
+	s.mux.HandleFunc("POST /api/update/check", s.updateCheck)
+	s.mux.HandleFunc("POST /api/update/install", s.updateInstall)
 	s.mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"version": Version})
 	})

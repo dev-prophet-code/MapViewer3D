@@ -162,3 +162,9 @@ body.panel-hidden #panel { display: none; }
 .keys dt { font-weight: 600; color: var(--accent); }
 .keys dd { margin: 0; }
 :fullscreen #panel { max-height: calc(100% - 24px); }
+
+/* Update-Hinweis */
+.updatebox { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 8px; display: grid; gap: 6px; }
+.updatebox .row { display: flex; gap: 12px; align-items: center; }
+.updatebox a { color: var(--accent); font-size: 12px; }
+.updatebox .err { color: #d9694a; }

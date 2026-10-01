@@ -78,6 +78,15 @@ Browser  ⇄  local viewer server (127.0.0.1)  ⇄  your server's console (API)
   - map images,
   - players, bases and all other live data.
 
+## Updates
+
+The viewer asks GitHub for a newer release shortly after start and then every 6 hours. If there is one, a box in the panel shows **Update available: Beta.N**. One click on **Update now** downloads the update package (`MapViewer3D-update-Beta.N.zip`, without map data), verifies its SHA-256 sum against the checksum file of the release, replaces the program, `viewer/`, docs and start scripts (the previous state is kept in `.update/backup-<version>/`) and restarts the viewer; the page reloads by itself. Your credentials and settings (user folder) and `data/` are not touched. Only a browser on the machine itself can start the installation (same rule as the setup screen).
+
+- **Servers:** `-auto-update` (or `MV_AUTOUPDATE=1`, or `"autoUpdate": true` in `-config`) installs without a click. A program built with `-tags paks` (`-paks`) is rebuilt from the source in the package (needs Go and a C++ compiler on the server). With `-public` there is no update display.
+- **Off:** `-no-update-check` or `MV_NO_UPDATE=1`.
+- **Network:** the only request is an anonymous `GET` to `api.github.com` / `github.com`; nothing about you or your server is sent.
+- **Trust:** an update is as trustworthy as the GitHub repository and its release (SHA-256 check, no additional signature). The position agent updates itself only with its own `-auto-update` (it runs as root, so it is off by default).
+
 ## Security of your credentials
 
 ### What is stored

@@ -130,6 +130,15 @@ Die Oberfläche ist standardmäßig **englisch**. Über die Sprachauswahl oben r
 Panel lässt sie sich auf **Deutsch** umstellen; die Wahl merkt sich der Browser.
 Übersetzungen stehen in `viewer/js/i18n.js`.
 
+## Updates
+
+Der Viewer fragt kurz nach dem Start und dann alle 6 Stunden bei GitHub nach einer neueren Version. Gibt es eine, zeigt ein Kasten im Bedienfeld **Update verfügbar: Beta.N**. Ein Klick auf **Jetzt aktualisieren** lädt das Update-Paket (`MapViewer3D-update-Beta.N.zip`, ohne Kartendaten), prüft seine SHA-256-Summe gegen die Prüfsummen-Datei des Releases, ersetzt Programm, `viewer/`, Doku und Startskripte (der alte Stand bleibt in `.update/backup-<Version>/` erhalten) und startet den Viewer neu; die Seite lädt sich selbst neu. Deine Zugangsdaten und Einstellungen (Benutzerordner) und `data/` bleiben unberührt. Die Installation kann nur ein Browser auf dem Rechner selbst auslösen (gleiche Regel wie bei der Einrichtung).
+
+- **Server:** `-auto-update` (oder `MV_AUTOUPDATE=1`, oder `"autoUpdate": true` in `-config`) installiert ohne Klick. Ein mit `-tags paks` gebautes Programm (`-paks`) wird aus dem Quelltext im Paket neu gebaut (braucht Go und einen C++-Compiler auf dem Server). Mit `-public` gibt es keine Update-Anzeige.
+- **Aus:** `-no-update-check` oder `MV_NO_UPDATE=1`.
+- **Netz:** Die einzige Anfrage ist ein anonymes `GET` an `api.github.com` / `github.com`; nichts über dich oder deinen Server wird gesendet.
+- **Vertrauen:** Ein Update ist so vertrauenswürdig wie das GitHub-Repository und sein Release (SHA-256-Prüfung, keine zusätzliche Signatur). Der Positions-Agent aktualisiert sich nur mit eigenem `-auto-update` (er läuft als root, deshalb standardmäßig aus).
+
 ## Einrichtung beim ersten Start
 
 Der Browser fragt nach:

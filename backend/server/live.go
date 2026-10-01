@@ -30,6 +30,9 @@ type LiveConfig struct {
 	// Adresse des Positions-Agenten (cmd/mvagent), z. B. http://127.0.0.1:8796:
 	// zeigt Sandwürmer, Gegner und Fahrzeuge live.
 	AgentURL string `json:"agentUrl"`
+
+	// Updates automatisch von GitHub installieren (wie -auto-update).
+	AutoUpdate bool `json:"autoUpdate"`
 }
 
 // LoadLiveConfig liest eine feste Konfigurationsdatei (-config). Zugangsdaten

@@ -70,6 +70,7 @@ WantedBy=multi-user.target
 | `-pid` | – | only this process (diagnosis) |
 | `-blocks`, `-root`, `-pos` | build 2134304 | override the offsets by hand |
 | `-once` | – | search once, print JSON, exit |
+| `-auto-update` | off | install new releases from GitHub by itself (only replaces `mvagent`, then restarts; with systemd `Restart=always`; the program folder must be writable; it runs as root, so enable it only if you trust the repository) |
 
 Interface: `GET /healthz`, `GET /api/objects[?kinds=worm,vehicle,npc,civilian,player,storm,coriolis]` (sources carry `weather` = Coriolis cycle start/next, Unix ms), `GET /stream` (SSE: `snap` = full state, `pos` = changes `[id,x,y,z]` and vanished ids, keep-alive comment every 20 s).
 

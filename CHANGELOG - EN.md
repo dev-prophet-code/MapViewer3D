@@ -10,6 +10,18 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ---
 
+## Beta.13 – 10/01/2026
+
+### New
+
+- **Updater.** The viewer checks GitHub for a newer release (shortly after start, then every 6 hours). With a download installation the panel shows **Update available** and **Update now** installs it with one click: download of `MapViewer3D-update-Beta.N.zip` (without map data), SHA-256 check, backup of the old files in `.update/`, replacement of program, `viewer/`, docs and start scripts, restart, and the page reloads by itself. Servers can install by themselves with `-auto-update` (`MV_AUTOUPDATE=1`, `"autoUpdate": true` in `-config`); a program built with `-tags paks` is rebuilt from the package's source. `-no-update-check` turns it off; with `-public` nothing is shown. The position agent has its own `-auto-update` (off by default, it runs as root). The release script builds the update package (`./build-release.sh --update`); a release without it is only announced, not installed. Details: [README](README.md#-updates), [SECURITY.md](SECURITY.md).
+
+### Notes
+
+- Installations before Beta.13 have no updater and must be updated once by hand.
+
+---
+
 ## Beta.12 – 10/01/2026
 
 ### Fixed
