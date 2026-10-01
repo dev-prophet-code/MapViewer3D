@@ -8,7 +8,7 @@
 - **Source:** https://github.com/dev-prophet-code/MapViewer3D (branch `DD-Addon`, MIT)
 - **Release:** https://github.com/dev-prophet-code/MapViewer3D/releases/tag/addon-v0.2.0
 - **Pinned package:** `https://github.com/dev-prophet-code/MapViewer3D/releases/download/addon-v0.2.0/mapviewer3d-0.2.0.zip` (about 350 KB)
-- **SHA-256 (verified by downloading the published asset):** `{{SHA256}}`
+- **SHA-256 (verified by downloading the published asset):** `acde033801b969d9824c53ad1374c288be86d1b3e810597591f622ee8a24764d`
 - **Catalog change:** `addons/mapviewer3d.json` and `index.json`: `version`, `downloadUrl`, `sha256`, `description`, and `permissions` (see below). No new addon file.
 
 ### What it does
