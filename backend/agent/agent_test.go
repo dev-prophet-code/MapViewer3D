@@ -141,7 +141,7 @@ func TestCalibrateNewBuild(t *testing.T) {
 	// Ein neuer Build mit anderen Offsets: der Agent bestimmt sie selbst neu.
 	m, addr := world(0x250, 0x1A8)
 	// weitere Actors, damit die Stichprobe groß genug ist
-	for i := 1; i <= 20; i++ {
+	for i := 1; i <= 40; i++ {
 		a := 0x40000 + uint64(i)*0x2000
 		act := m.seg(a, 0x800)
 		put64(act, 0, 0x5000)
@@ -165,7 +165,7 @@ func TestCalibrateNewBuild(t *testing.T) {
 	put64(m.segs[0x32000], offClass, 0x33000)
 	s := testSource(m)
 	hits := map[uint64][]uint64{0x5000: {addr}}
-	for i := 1; i <= 20; i++ {
+	for i := 1; i <= 40; i++ {
 		hits[0x5000] = append(hits[0x5000], 0x40000+uint64(i)*0x2000)
 	}
 	if len(s.validate(hits, DefaultOffsets)) != 0 {
@@ -175,8 +175,8 @@ func TestCalibrateNewBuild(t *testing.T) {
 	if !ok || o.Root != 0x250 || o.Pos != 0x1A8 {
 		t.Fatalf("Kalibrierung: %+v %v", o, ok)
 	}
-	if got := len(s.validate(hits, o)); got != 21 {
-		t.Fatalf("mit neuen Offsets %d statt 21 Objekte", got)
+	if got := len(s.validate(hits, o)); got != 41 {
+		t.Fatalf("mit neuen Offsets %d statt 41 Objekte", got)
 	}
 }
 

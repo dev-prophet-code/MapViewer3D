@@ -187,11 +187,15 @@ func (s *source) scan() error {
 	}
 	found := s.validate(hits, offs)
 	if len(found) == 0 && nHits > 0 {
+		// Erst prüfen, dann übernehmen: Eine kleine Karte (Story-Räume, Overmap) hat nur
+		// wenige Treffer, aus denen sich falsche Offsets "ableiten" lassen. Wer sie sofort
+		// global setzt, vergiftet alle anderen Karten (alle Positionen ~ (1,1,1)).
 		if o, ok := s.calibrate(actorHits, offs); ok {
-			offs = o
-			s.a.setOffsets(o)
-			log.Printf("[%s] Offsets neu bestimmt: Root=0x%X Pos=0x%X", s.label(), o.Root, o.Pos)
-			found = s.validate(hits, offs)
+			if f := s.validate(hits, o); len(f) > 0 {
+				offs, found = o, f
+				s.a.setOffsets(o)
+				log.Printf("[%s] Offsets neu bestimmt: Root=0x%X Pos=0x%X", s.label(), o.Root, o.Pos)
+			}
 		}
 	}
 	if len(found) == 0 && nHits > 0 {
@@ -342,7 +346,7 @@ func (s *source) calibrate(hits map[uint64][]uint64, offs Offsets) (Offsets, boo
 			}
 		}
 	}
-	if len(sample) < 10 {
+	if len(sample) < 30 {
 		return offs, false
 	}
 	bestRoot, bestN := uint64(0), 0
