@@ -10,6 +10,8 @@ Fahrzeugen, Orten, Gefahren und Ressourcen.
 > Andere Server-Setups werden nicht unterstützt.
 >
 > **Lizenz:** [MIT](LICENSE) – frei nutzbar und anpassbar.
+>
+> ☕ Gefällt dir das Projekt? [Unterstütze es auf Buy Me a Coffee](https://buymeacoffee.com/lafamiliagaming).
 
 ## Sandwürmer, Gegner und Fahrzeuge live (Positions-Agent, seit Beta.9)
 
@@ -33,7 +35,9 @@ Go muss nicht installiert sein: Das Programm liegt für Windows, Linux und macOS
 Mindestens nötig: Windows 10, macOS 13 (Ventura), Linux-Kernel 3.2; die Startskripte
 prüfen das und melden zu alte Systeme.
 
-Nimm das vollständige Paket `MapViewer3D-Beta.N.zip` von der Releases-Seite. `MapViewer3D-update-….zip` ist nur für den eingebauten Updater (ohne Karten) und „Source code“ enthält kein `bin/` und kein `data/`; damit startet der Viewer nicht.
+Nimm `MapViewer3D-Beta.N.zip` (ca. 30 MB) von der Releases-Seite. Selbst der reine „Source code“-Download genügt: Das Startskript lädt das Programm dann vom neuesten Release. Die **Karten sind nicht im Paket**, der Viewer streamt sie von GitHub (siehe unten); du brauchst also eine Internetverbindung.
+
+**Kartendaten kommen per Streaming von GitHub.** Gelände-Kacheln und Bauteil-Modelle liegen im [Branch `cdn`](../../tree/cdn) dieses Repositorys: Der Viewer lädt nur die Kacheln, die du ansiehst, prüft jede gegen die SHA-256-Summen in `catalog.json` und legt sie im Benutzerordner ab. Ein Server hält den Branch nach Spiel-Updates und neuen Coriolis-Layouts selbst aktuell ([docs/CDN-Sync-DE.md](docs/CDN-Sync-DE.md)). Optionen: `-cdn off` (nur ein lokaler Ordner `data/`), `-cdn <Adresse>` (eigener Spiegel), `"cdn"` in `-config`. Ein lokaler Ordner `data/` dient weiterhin als Rückfall (kein Netz, Karten, die der Branch nicht kennt). GitHub sieht beim Laden der Kacheln deine IP-Adresse, sonst wird nichts gesendet.
 
 | System | Start |
 |---|---|
@@ -132,6 +136,10 @@ Die Oberfläche ist standardmäßig **englisch**. Über die Sprachauswahl oben r
 Panel lässt sie sich auf **Deutsch** umstellen; die Wahl merkt sich der Browser.
 Übersetzungen stehen in `viewer/js/i18n.js`.
 
+## Auf der eigenen Webseite nutzen
+
+[`examples/website/`](examples/website/) ist eine kleine Webseite mit fertig eingebautem 3D-Viewer (`<iframe>`), dazu eine `config.example.json`, in die du **deine Server-Adresse und den API-Token** einträgst, ein nginx- und ein systemd-Beispiel und Kommentare dazu, wie der Viewer erkennt, dass er auf demselben Rechner wie der Dune-Docker-Stack läuft, und so die Echtzeit-Daten (Sandwürmer, NPCs, Stürme) aus dem Arbeitsspeicher liest (`"agentUrl"`: eigener Agent-Dienst oder `auto`).
+
 ## Updates
 
 Der Viewer fragt kurz nach dem Start und dann alle 6 Stunden bei GitHub nach einer neueren Version. Gibt es eine, zeigt ein Kasten im Bedienfeld **Update verfügbar: Beta.N**. Ein Klick auf **Jetzt aktualisieren** lädt das Update-Paket (`MapViewer3D-update-Beta.N.zip`, ohne Kartendaten), prüft seine SHA-256-Summe gegen die Prüfsummen-Datei des Releases, ersetzt Programm, `viewer/`, Doku und Startskripte (der alte Stand bleibt in `.update/backup-<Version>/` erhalten) und startet den Viewer neu; die Seite lädt sich selbst neu. Deine Zugangsdaten und Einstellungen (Benutzerordner) und `data/` bleiben unberührt. Die Installation kann nur ein Browser auf dem Rechner selbst auslösen (gleiche Regel wie bei der Einrichtung).
@@ -196,11 +204,9 @@ erneute Passworteingabe merkt.
 - **Live-Daten:** Spieler, Basen (samt Bauteilen für die 3D-Ansicht), Fahrzeuge,
   Lager, Orte, Gefahren, Ressourcen, Spice.
 
-## Was mitgeliefert wird
+## Woher die Karten kommen
 
-Gelände und Bauteil-Geometrie (`data/`) stammen aus den Spieldateien. Sie sind für
-alle Server mit derselben Spielversion gleich und deshalb vorgebaut. Nach einem
-Spielupdate lassen sie sich neu erzeugen:
+Gelände und Bauteil-Geometrie stammen aus den Spieldateien. Sie sind für alle Server mit derselben Spielversion gleich und liegen deshalb fertig im Branch `cdn` (der Viewer streamt sie). Nach einem Spielupdate erzeugt der Sync-Dienst sie neu und aktualisiert den Branch; von Hand geht es so (nur nötig für `-cdn off` oder den Betrieb eines eigenen Spiegels):
 
 ```bash
 # Spieldateien aus dem Spielserver-Container kopieren (ca. 4,3 GB)
@@ -218,7 +224,9 @@ cd backend && go run ./cmd/extract
 | `bin/` | vorgebautes Programm je System (`mapviewer-<system>-<cpu>`) |
 | `backend/` | Go-Modul `mapviewer3d`: Paks lesen, Karten bauen, Server, verschlüsselter Speicher (`secure/`) |
 | `viewer/` | Weboberfläche (three.js) |
-| `data/` | vorgebaute Karten und Bauteil-Katalog |
+| `data/` | optionale lokale Karten (Ausgabe des Extraktors); normalerweise nicht nötig, die Karten kommen aus dem Branch `cdn` |
+| `examples/website/` | **Beispiel-Webseite mit eingebautem Viewer** samt nginx-/systemd-/Konfig-Beispielen ([README](examples/website/README.de.md)) |
+| `deploy/cdn-sync/` | Skript und systemd-Dienste, die den Branch `cdn` aktuell halten ([docs/CDN-Sync-DE.md](docs/CDN-Sync-DE.md)) |
 | *(Benutzerordner)* `MapViewer3D/` | Hauptschlüssel und `state/`: verschlüsselte Zugangsdaten, Instanznamen, Zwischenspeicher – bewusst außerhalb des Projekts |
 
 Eine ausführliche Bauanleitung liegt in den Ordnern „MapViewer3D - DE“ und

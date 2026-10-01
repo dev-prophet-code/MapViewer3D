@@ -28,7 +28,7 @@ func (t *terrain) heightAt(x, y float64) (float64, bool) {
 		x, y int
 		w    float64
 	}{{i, j, (1 - u) * (1 - v)}, {i1, j, u * (1 - v)}, {i, j1, (1 - u) * v}, {i1, j1, u * v}} {
-		if h := t.h[c.y*m.Width+c.x]; h != 0 && c.w > 0 {
+		if h := t.rawHeight(c.x, c.y); h != 0 && c.w > 0 {
 			sum += c.w * (m.MinZ + float64(h-1)*unit)
 			wsum += c.w
 		}
@@ -57,6 +57,9 @@ func (s *Server) sample(w http.ResponseWriter, r *http.Request, t *terrain) {
 }
 
 func (s *Server) buildablesIndex(w http.ResponseWriter, r *http.Request) {
+	if s.buildablesIndexRemote(w, r) {
+		return
+	}
 	f := filepath.Join(s.dataDir, mapdata.DirBuildables, "index.json")
 	if _, err := os.Stat(f); err != nil {
 		writeJSON(w, map[string]any{"rows": map[string]any{}, "meshes": []any{}})
@@ -73,6 +76,9 @@ func (s *Server) buildablesMesh(w http.ResponseWriter, r *http.Request) {
 	file := r.PathValue("file")
 	if !binFile.MatchString(file) {
 		http.NotFound(w, r)
+		return
+	}
+	if s.buildablesMeshRemote(w, r, file) {
 		return
 	}
 	w.Header().Set("Cache-Control", "max-age=3600")

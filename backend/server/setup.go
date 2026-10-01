@@ -349,9 +349,8 @@ func (s *Server) labelsGet(w http.ResponseWriter, r *http.Request) {
 	}
 	custom := s.customLabels()
 	var out []row
-	entries, _ := os.ReadDir(s.dataDir)
-	for _, e := range entries {
-		t, err := s.load(e.Name())
+	for _, name := range s.mapNames() {
+		t, err := s.load(name)
 		if err != nil {
 			continue
 		}

@@ -168,3 +168,7 @@ body.panel-hidden #panel { display: none; }
 .updatebox .row { display: flex; gap: 12px; align-items: center; }
 .updatebox a { color: var(--accent); font-size: 12px; }
 .updatebox .err { color: #d9694a; }
+
+/* Support-Link (dezent) */
+a.hud-btn { text-decoration: none; color: inherit; opacity: .75; }
+a.hud-btn:hover { opacity: 1; border-color: var(--accent); }

@@ -1,0 +1,88 @@
+<!doctype html>
+<!--
+  Beispiel-Webseite mit eingebautem Dune MapViewer3D  /  Example website with the 3D viewer built in
+  ====================================================================================================
+
+  DE: Diese Seite ist absichtlich schlicht. Der Viewer steckt in einem <iframe> (Zeile mit id="viewer").
+      Alles Wichtige steht in ../README.de.md; die drei Dinge, die du anpassen musst:
+        1. VIEWER_URL (unten im Skript): Adresse des Viewers. Am einfachsten wie im Beispiel
+           ../nginx.conf.example: nginx leitet /map/ an den Viewer (127.0.0.1:8795) weiter, dann liegen
+           Seite und Viewer auf DERSELBEN Adresse – nur dann funktionieren die Karten-Knöpfe (postMessage).
+        2. Server-Adresse und API-Token gehören NICHT in diese Seite, sondern in config.json des Viewers
+           (../config.example.json). Der Browser sieht den Token nie.
+        3. Texte, Farben, Logo: frei ändern (assets/site.css).
+
+  EN: Deliberately plain. The viewer sits in an <iframe id="viewer">. See ../README.md. What you must adapt:
+        1. VIEWER_URL (script below): where the viewer lives. Easiest is ../nginx.conf.example: nginx forwards
+           /map/ to the viewer (127.0.0.1:8795), so page and viewer share ONE origin – only then the map
+           buttons (postMessage) work.
+        2. Your server address and API token do NOT belong in this page but in the viewer's config.json
+           (../config.example.json). The browser never sees the token.
+        3. Text, colours, logo: change freely (assets/site.css).
+-->
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mein Dune-Server – Live-Karte</title>
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+  <header>
+    <h1>🏜️ Mein Dune-Server</h1>
+    <nav><a href="#karte">Live-Karte</a> <a href="#info">Info</a></nav>
+  </header>
+
+  <main>
+    <section id="info">
+      <h2>Willkommen</h2>
+      <p>Hier siehst du, wer gerade auf unserem Server unterwegs ist – in 3D, live. Ersetze diesen Text durch deinen eigenen.</p>
+    </section>
+
+    <section id="karte">
+      <h2>Live-Karte</h2>
+      <!-- Karten-Knöpfe: schalten den Viewer per postMessage um (funktioniert nur bei gleicher Adresse, siehe oben) -->
+      <p class="buttons">
+        <button data-map="HaggaBasin">Hagga Basin</button>
+        <button data-map="DeepDesert">Deep Desert</button>
+      </p>
+      <!--
+        ?embed=1   blendet Titelzeile und Verbindungseinstellungen aus (die Verbindung stellt der Betreiber ein)
+        &lang=de   Sprache der Oberfläche (de | en)
+        &map=...   Startkarte (HaggaBasin | DeepDesert); ohne Angabe die erste Karte
+        allow="fullscreen" erlaubt den Vollbild-Knopf des Viewers.
+        Der Viewer meldet sich nicht von selbst als "nicht sichtbar": Sitzt er in einem Tab, der gerade
+        verborgen ist, spart postMessage({type:'dune3d', paused:true}) Rechenzeit (siehe Skript).
+      -->
+      <iframe id="viewer" title="Dune Live-Karte" allow="fullscreen" loading="lazy"></iframe>
+    </section>
+  </main>
+
+  <footer>Karte: <a href="https://github.com/dev-prophet-code/MapViewer3D">Dune MapViewer3D</a></footer>
+
+  <script>
+    // ───────────────────────── Einstellungen / Settings ─────────────────────────
+    // Adresse des Viewers. Mit nginx wie in nginx.conf.example:  '/map/'
+    // Ohne Reverse-Proxy (nur zum Ausprobieren, Viewer läuft lokal): 'http://127.0.0.1:8795/'
+    // → dann gehen die Karten-Knöpfe NICHT (andere Adresse = andere "Origin"), die Karte selbst schon.
+    const VIEWER_URL = '/map/';
+    const LANGUAGE = 'de';           // 'de' oder 'en'
+    const START_MAP = 'HaggaBasin';  // 'HaggaBasin' oder 'DeepDesert'
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    const frame = document.getElementById('viewer');
+    frame.src = `${VIEWER_URL}?embed=1&lang=${LANGUAGE}&map=${START_MAP}`;
+
+    // Karte wechseln: Der Viewer nimmt { type: 'dune3d', map: 'HaggaBasin' | 'DeepDesert' } entgegen,
+    // aber nur von einer Seite mit derselben Origin wie er selbst.
+    document.querySelectorAll('button[data-map]').forEach((b) =>
+      b.addEventListener('click', () =>
+        frame.contentWindow.postMessage({ type: 'dune3d', map: b.dataset.map }, location.origin)));
+
+    // Optional: Viewer anhalten, solange er nicht im Bild ist (spart Akku und Server-Anfragen).
+    new IntersectionObserver(([e]) =>
+      frame.contentWindow?.postMessage({ type: 'dune3d', paused: !e.isIntersecting }, location.origin)
+    ).observe(frame);
+  </script>
+</body>
+</html>

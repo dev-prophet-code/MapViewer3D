@@ -1,0 +1,26 @@
+{
+  "_comment_1": "Kopie als config.json ablegen (AUSSERHALB des Webverzeichnisses und nicht in Git!) und den Viewer damit starten: mapviewer -config /etc/mapviewer/config.json -addr 127.0.0.1:8795",
+  "_comment_2": "Copy as config.json (OUTSIDE the web root, never commit it) and start the viewer with it. JSON has no comments, so the keys starting with _comment are ignored.",
+
+  "_comment_3": "DE: Adresse und Port der Dune-Docker-Console deines Servers (Red-Blink-Stack, Standard-Port 8088). EN: address and port of your server's Dune Docker console.",
+  "apiBase": "http://DEINE-SERVER-IP:8088",
+
+  "_comment_4": "DE: API-Token der Console (beginnt mit dak_). Nur LESE-Rechte für Kartendaten vergeben! Der Token bleibt auf dem Server, der Browser sieht ihn nie. EN: console API token (dak_...), read-only scope.",
+  "token": "dak_HIER_DEIN_TOKEN",
+
+  "_comment_5": "DE: Namen der Instanzen (Partition-Nummer -> Anzeigename). Optional. EN: optional display names of the server instances.",
+  "partitions": { "1": "PvE", "2": "PvP" },
+
+  "_comment_6": "DE: Zugangsschutz für den Viewer (HTTP-Login, Benutzername egal). Setze ihn, wenn die Seite nicht für alle offen sein soll. EN: optional login for the viewer.",
+  "viewerPassword": "",
+
+  "_comment_7": "DE: Echtzeit-Daten (Sandwürmer, NPCs, Fahrzeuge, Stürme) aus dem Arbeitsspeicher des Spielservers. Laufen Viewer UND Dune-Docker auf demselben Rechner, gibt es zwei Wege: (a) empfohlen: den Agenten mvagent als eigenen Dienst starten (mapviewer-agent.service.example) und hier seine Adresse eintragen: http://127.0.0.1:8796  (b) 'auto': der Viewer erkennt den Spiel-Host selbst und startet den Agenten in sich (nur Linux, braucht root – dann läuft der GANZE Viewer als root, für öffentliche Seiten nicht empfohlen). Leer lassen = keine Echtzeit-Daten.",
+  "_comment_8": "EN: Real-time data comes from the game server's memory. When the viewer and the Dune Docker stack share one machine: (a) recommended: run mvagent as its own service and put its address here; (b) 'auto': the viewer detects the game host and runs the agent inside itself (Linux, needs root, so the whole viewer runs as root: not for public sites). Empty = no real-time data.",
+  "agentUrl": "http://127.0.0.1:8796",
+
+  "_comment_9": "DE: Karten kommen standardmäßig per Streaming aus dem Branch 'cdn' auf GitHub ('' oder 'auto'); 'off' = nur lokaler Ordner data/. EN: maps are streamed from the cdn branch on GitHub by default; 'off' = local data/ folder only.",
+  "cdn": "auto",
+
+  "_comment_10": "DE: Updates automatisch von GitHub installieren (der Dienst startet dann neu, systemd 'Restart=always' nötig). EN: install updates from GitHub by itself (needs systemd Restart=always).",
+  "autoUpdate": false
+}

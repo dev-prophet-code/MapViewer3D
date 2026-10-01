@@ -10,15 +10,31 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ---
 
+## Beta.14 – 10/01/2026
+
+### New
+
+- **Map data streams from GitHub.** Terrain tiles and building models are no longer shipped in the package; the viewer streams them from the `cdn` branch of the repository (tile by tile, verified against the SHA-256 sums in `catalog.json`, cached in the user folder, mirror via jsDelivr). The release package shrinks from ~250 MB to ~30 MB, and "Download ZIP" of `main` works: `start.sh` / `start.bat` fetch the program from the latest release. A local `data/` folder still works as a fallback, `-cdn off` uses only it, `-cdn <address>` points to your own mirror (`cdn` in `-config`). The Deep Desert layout builder skips layouts the branch already knows.
+- **The `cdn` branch updates itself.** `deploy/cdn-sync/` (script, systemd timer, `cmd/cdnsync`) cuts the extracted maps into tiles (the Go port is byte-identical to the addon's `tilepack.mjs`) and pushes only what is new; when the game build changes it extracts maps, **all Coriolis layouts** and building models again. Runs on the live server (cca-server). See [docs/CDN-Sync-EN.md](docs/CDN-Sync-EN.md).
+- **Example website** in `examples/website/`: a small page with the viewer built in (`<iframe>`, map buttons via `postMessage`), `config.example.json` for server address and API token, nginx and systemd examples, all commented.
+- **`-agent auto`** (`"agentUrl": "auto"`): the viewer detects that it runs on the game host (Dune server processes visible in `/proc`) and, as root, starts the position agent inside itself; `-agent-players` adds players. Otherwise it logs why there is no real-time data.
+- **Support link:** a small ☕ icon in the viewer and the repository's Sponsor button point to <https://buymeacoffee.com/lafamiliagaming>.
+
+### Fixed
+
+- Start with a missing `data/` folder is no longer an error (see above); the start scripts explain missing programs.
+
+### Notes
+
+- Needs an internet connection (maps and updates). Offline use: keep a local `data/` and start with `-cdn off`.
+
+---
+
 ## Beta.13 – 10/01/2026
 
 ### New
 
 - **Updater.** The viewer checks GitHub for a newer release (shortly after start, then every 6 hours). With a download installation the panel shows **Update available** and **Update now** installs it with one click: download of `MapViewer3D-update-Beta.N.zip` (without map data), SHA-256 check, backup of the old files in `.update/`, replacement of program, `viewer/`, docs and start scripts, restart, and the page reloads by itself. Servers can install by themselves with `-auto-update` (`MV_AUTOUPDATE=1`, `"autoUpdate": true` in `-config`); a program built with `-tags paks` is rebuilt from the package's source. `-no-update-check` turns it off; with `-public` nothing is shown. The position agent has its own `-auto-update` (off by default, it runs as root). The release script builds the update package (`./build-release.sh --update`); a release without it is only announced, not installed. Details: [README](README.md#-updates), [SECURITY.md](SECURITY.md).
-
-### Fixed
-
-- **Start with a missing `data/` folder.** Unpacking the update package or the source code gave only a terse "Ordner fehlt" line. The start scripts and the program now explain what is missing and which package to use.
 
 ### Notes
 

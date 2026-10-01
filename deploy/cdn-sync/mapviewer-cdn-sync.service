@@ -1,0 +1,11 @@
+[Unit]
+Description=MapViewer3D: keep the cdn branch (map data) up to date
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mapviewer-cdn/cdn-sync.sh
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=6h

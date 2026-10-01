@@ -1,0 +1,38 @@
+# Beispiel / example: nginx für die Seite UND den Viewer unter einer Adresse
+# ---------------------------------------------------------------------------------------------
+# DE: Seite und Viewer unter DERSELBEN Adresse (https://meine-seite.de/ und https://meine-seite.de/map/).
+#     Das ist wichtig: Nur dann dürfen die Karten-Knöpfe den Viewer per postMessage steuern, und der Viewer
+#     darf sich in den <iframe> einbetten lassen.
+# EN: Page and viewer under ONE origin (https://my-site.example/ and https://my-site.example/map/).
+#     Needed for the map buttons (postMessage) and for embedding in the iframe.
+#
+# Viewer starten (als Dienst, siehe mapviewer.service.example):
+#   mapviewer -config /etc/mapviewer/config.json -addr 127.0.0.1:8795
+# Er lauscht nur lokal; von außen erreichbar ist er ausschließlich über diesen nginx.
+
+server {
+    listen 80;                       # DE: für HTTPS Zertifikat einrichten (certbot) / EN: add TLS (certbot)
+    server_name meine-seite.de;
+
+    # Die Webseite (Ordner site/ aus diesem Beispiel)
+    root /var/www/meine-seite;
+    index index.html;
+
+    # Der Viewer unter /map/ (der Schrägstrich am Ende ist wichtig)
+    location /map/ {
+        proxy_pass http://127.0.0.1:8795/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+
+        # Live-Daten kommen per Server-Sent-Events: nicht puffern, lange Verbindungen erlauben
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+    }
+}
+
+# DE: Wichtig für die Sicherheit: Der Viewer erkennt an den X-Forwarded-Kopfzeilen, dass die Anfrage von
+#     einem Reverse-Proxy kommt, und erlaubt dann KEINE Einrichtung/Änderung der Zugangsdaten über das Netz
+#     (nur ein Browser direkt auf dem Server selbst darf das). Die Verbindung steht ja in config.json.
+# EN: Security note: the viewer sees the X-Forwarded headers, knows the request came through a proxy and never
+#     lets visitors change the connection settings. The connection lives in config.json anyway.

@@ -72,8 +72,10 @@ Browser  ⇄  local viewer server (127.0.0.1)  ⇄  your server's console (API)
   stored.
 - All requests to your server go through the local viewer server. **The browser
   never sees the token.**
-- Terrain and building geometry ship pre-built. Everything that depends on your
-  server comes live from it:
+- Terrain and building geometry are streamed from the `cdn` branch of the GitHub
+  repository (tile by tile, each checked against the SHA-256 sums of `catalog.json`,
+  cached in your user folder; GitHub sees your IP address, nothing else is sent).
+  Everything that depends on your server comes live from it:
   - active maps and instances,
   - map images,
   - players, bases and all other live data.

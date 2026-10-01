@@ -18,6 +18,7 @@ package server
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -27,6 +28,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"mapviewer3d/cdn"
 	"mapviewer3d/mapdata"
 	"mapviewer3d/secure"
 	"mapviewer3d/updater"
@@ -34,7 +36,7 @@ import (
 
 // Version steht in der Oberfläche und in CHANGELOG.md; beim Bauen per
 // -ldflags "-X mapviewer3d/server.Version=…" überschreibbar.
-var Version = "Beta.13"
+var Version = "Beta.14"
 
 // PatchQuads ist die Kantenlänge eines Geländestücks in Quads.
 const PatchQuads = 128
@@ -66,9 +68,10 @@ type MapInfo struct {
 }
 
 type terrain struct {
-	info MapInfo
-	h    []uint16
-	mat  []uint8
+	info   MapInfo
+	h      []uint16
+	mat    []uint8
+	remote *cdn.Map // Karte aus dem Branch cdn (dann sind h und mat leer)
 }
 
 type Server struct {
@@ -98,6 +101,8 @@ type Server struct {
 	// NoLocalAdmin: nie eine Anfrage als lokaler Administrator behandeln (-no-local-admin),
 	// z. B. hinter einem Reverse-Proxy auf demselben Rechner.
 	NoLocalAdmin bool
+
+	cdn *cdn.Client // Kartendaten aus dem Branch cdn (cdn.go); nil = nur lokal
 
 	upd *updater.Updater // Update-Prüfung und -Installation; nil = aus
 
@@ -212,6 +217,17 @@ func (s *Server) withMap(h func(http.ResponseWriter, *http.Request, *terrain)) h
 }
 
 func (s *Server) load(name string) (*terrain, error) {
+	if s.cdn != nil {
+		if t, err := s.loadRemote(name); err == nil {
+			return t, nil
+		} else if !errors.Is(err, errNotInCatalog) {
+			log.Printf("%s: Katalog nicht erreichbar (%v), nehme lokale Daten", name, err)
+		}
+	}
+	return s.loadLocal(name)
+}
+
+func (s *Server) loadLocal(name string) (*terrain, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := s.mapDir(name)
@@ -254,14 +270,10 @@ func (s *Server) load(name string) (*terrain, error) {
 }
 
 func (s *Server) listMaps(w http.ResponseWriter, r *http.Request) {
-	entries, _ := os.ReadDir(s.dataDir)
 	active := s.activeMaps() // nil = unbekannt, dann alle zeigen
 	var terrains []*terrain
-	for _, e := range entries {
-		if !e.IsDir() || !validName.MatchString(e.Name()) {
-			continue
-		}
-		t, err := s.load(e.Name())
+	for _, name := range s.mapNames() {
+		t, err := s.load(name)
 		if err != nil {
 			continue
 		}
@@ -316,6 +328,10 @@ func (s *Server) patch(w http.ResponseWriter, r *http.Request, t *terrain) {
 	l, px, py := atoi(r, "l"), atoi(r, "x"), atoi(r, "y")
 	if l < 0 || l > t.info.MaxLevel {
 		http.Error(w, "ungültige Ebene", http.StatusBadRequest)
+		return
+	}
+	if t.remote != nil {
+		s.remotePatch(w, r, t, l, px, py)
 		return
 	}
 	step := 1 << l

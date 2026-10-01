@@ -10,6 +10,7 @@ Explore Hagga Basin and Deep Desert with players, bases, vehicles, hazards and r
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-viewer-000000?logo=threedotjs&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Buy Me a Coffee](https://img.shields.io/badge/%E2%98%95-Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/lafamiliagaming)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
 **English** · [Deutsch](README.de.md)
@@ -39,7 +40,7 @@ Explore Hagga Basin and Deep Desert with players, bases, vehicles, hazards and r
 
 ## 🚀 Quick start
 
-1. Download the latest full ZIP (`MapViewer3D-Beta.N.zip`) from the **[Releases](https://github.com/dev-prophet-code/MapViewer3D/releases)** page and unpack it. (Not `MapViewer3D-update-….zip` – that is only for the built-in updater and has no maps – and not "Source code".)
+1. Download `MapViewer3D-Beta.N.zip` (~30 MB) from the **[Releases](https://github.com/dev-prophet-code/MapViewer3D/releases)** page and unpack it. (Even the plain "Source code" download works: the start script fetches the program from the latest release.) The **maps are not in the package** – the viewer streams them from GitHub (see below), so you need an internet connection.
 2. Start it:
 
 | System | Start |
@@ -51,6 +52,8 @@ Explore Hagga Basin and Deep Desert with players, bases, vehicles, hazards and r
 3. Your browser opens <http://127.0.0.1:8795>. Enter your server address, console port (default `8088`) and a **read-only API token** (`dak_…`). The connection is verified immediately; a wrong token is rejected and not stored.
 
 On first start the viewer asks for your console's address and API token; nothing about any server is shipped in the package. To follow the weekly Deep Desert layout automatically, point a server-side viewer at the game files with `-paks <folder with .utoc/.ucas>`; it then builds the terrain of each new Coriolis layout itself. That needs a build with the game-file reader: `cd backend && go build -tags paks -o ../bin/mapviewer-<os>-<arch> ./cmd/mapviewer` (C++ compiler required); the ready-made programs are pure Go and only print this hint.
+
+**Map data streams from GitHub.** Terrain tiles and building models come from the [`cdn` branch](../../tree/cdn) of this repository: the viewer loads only the tiles you look at, checks each one against the SHA-256 checksums in `catalog.json` and caches them in your user folder. A server keeps that branch up to date by itself after game updates and new Coriolis layouts ([docs/CDN-Sync-EN.md](docs/CDN-Sync-EN.md)). Options: `-cdn off` (use a local `data/` folder only), `-cdn <address>` (your own mirror), `"cdn"` in `-config`. A local `data/` folder is still used as a fallback (no network, maps the branch does not know). GitHub sees your IP address when tiles are fetched, nothing else is sent.
 
 Detailed notes on Windows SmartScreen, macOS Gatekeeper and running on a server (systemd example, `-addr`, `-remote-setup`, `-state`, `-keydir`) are in the [German README](README.de.md#starten) and the [English description](Description-EN.md).
 
@@ -80,12 +83,14 @@ Browser (three.js)  ⇄  local viewer server (Go, 127.0.0.1)  ⇄  your server's
 | `backend/` | Go module `mapviewer3d`: pak/IoStore reading, map building, HTTP server, encrypted storage (`secure/`), position agent (`agent/`, `cmd/mvagent`) |
 | `docs/` | Documentation of the position agent |
 | `viewer/` | Web UI (three.js) |
-| `data/` | Pre-built terrain and building catalog *(in release ZIP only – see below)* |
-| `bin/` | Pre-built binaries per OS/CPU *(in release ZIP only)* |
-| `start.*` | Launch scripts |
+| `bin/` | Pre-built binaries per OS/CPU *(in the release ZIP; fetched by the start script if missing)* |
+| `data/` | optional local maps (extractor output); normally not needed, the maps stream from the `cdn` branch |
+| `start.*`, `download-program.ps1` | Launch scripts (fetch the program if it is missing) |
+| `examples/website/` | **Example website with the viewer built in**, plus nginx/systemd/config examples ([README](examples/website/README.md)) |
+| `deploy/cdn-sync/` | Script and systemd units that keep the `cdn` branch up to date ([docs/CDN-Sync-EN.md](docs/CDN-Sync-EN.md)) |
 
 > [!IMPORTANT]
-> Terrain data (~350 MB) and binaries are too large for git. They are shipped in the **release ZIP**, not in the repository. A plain `git clone` contains the source code only.
+> Binaries are too large for git and ship in the **release ZIP**; the terrain data (~400 MB) lives in the **`cdn` branch** and is streamed. A plain `git clone` or "Download ZIP" of `main` contains the source code only – `start.sh` / `start.bat` fetch the program, the viewer streams the maps.
 
 ## 🛠️ Build from source
 
@@ -100,6 +105,10 @@ GOOS=windows GOARCH=amd64 go build -o ../bin/mapviewer-windows-amd64.exe ./cmd/m
 `./start.sh --build` builds and starts the viewer for your own system in one step.
 
 Rebuilding the maps after a game update (`backend/cmd/extract`) needs the game's pak files and Go with a C compiler (Oodle via cgo). See the German README for the full procedure.
+
+## 🌐 Use it on your own website
+
+[`examples/website/`](examples/website/) is a small website with the 3D viewer already built in (an `<iframe>`), plus a `config.example.json` where you enter **your server address and API token**, an nginx and systemd example, and comments on how the viewer notices that it runs on the same machine as the Dune Docker stack so it can read the real-time data (sandworms, NPCs, storms) from memory (`"agentUrl"`: separate agent service, or `auto`).
 
 ## 🔄 Updates
 
@@ -117,6 +126,10 @@ Only server address and API token are stored – encrypted with **AES-256-GCM + 
 ## 📜 Changelog
 
 [CHANGELOG - EN.md](<CHANGELOG - EN.md>) · [CHANGELOG - DE.md](<CHANGELOG - DE.md>)
+
+## ☕ Support
+
+If you like the project, you can [buy me a coffee](https://buymeacoffee.com/lafamiliagaming) – the same link sits as a small ☕ icon in the viewer.
 
 ## 📄 License
 

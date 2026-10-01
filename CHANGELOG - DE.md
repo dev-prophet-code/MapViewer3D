@@ -14,15 +14,31 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 
 ---
 
+## Beta.14 – 01.10.2026
+
+### Neu
+
+- **Kartendaten kommen per Streaming von GitHub.** Gelände-Kacheln und Bauteil-Modelle liegen nicht mehr im Paket; der Viewer streamt sie aus dem Branch `cdn` des Repositorys (Kachel für Kachel, gegen die SHA-256-Summen aus `catalog.json` geprüft, im Benutzerordner zwischengespeichert, Spiegel über jsDelivr). Das Release-Paket schrumpft von ca. 250 MB auf ca. 30 MB, und „Download ZIP“ von `main` funktioniert: `start.sh` / `start.bat` laden das Programm vom neuesten Release. Ein lokaler Ordner `data/` dient weiter als Rückfall, `-cdn off` nutzt nur ihn, `-cdn <Adresse>` zeigt auf einen eigenen Spiegel (`cdn` in `-config`). Der Bau der Deep-Desert-Layouts überspringt Layouts, die der Branch schon kennt.
+- **Der Branch `cdn` aktualisiert sich selbst.** `deploy/cdn-sync/` (Skript, systemd-Timer, `cmd/cdnsync`) schneidet die extrahierten Karten in Kacheln (der Go-Port ist byte-identisch zum `tilepack.mjs` des Addons) und überträgt nur Neues; ändert sich der Spielbuild, werden Karten, **alle Coriolis-Layouts** und Bauteil-Modelle neu extrahiert. Läuft auf dem Live-Server (cca-server). Siehe [docs/CDN-Sync-DE.md](docs/CDN-Sync-DE.md).
+- **Beispiel-Webseite** in `examples/website/`: eine kleine Seite mit eingebautem Viewer (`<iframe>`, Karten-Knöpfe per `postMessage`), `config.example.json` für Server-Adresse und API-Token, nginx- und systemd-Beispiele, alles kommentiert.
+- **`-agent auto`** (`"agentUrl": "auto"`): Der Viewer erkennt, dass er auf dem Spiel-Host läuft (Dune-Serverprozesse im `/proc` sichtbar), und startet als root den Positions-Agenten in sich selbst; `-agent-players` nimmt Spieler dazu. Sonst meldet er im Log, warum es keine Echtzeit-Daten gibt.
+- **Support-Link:** Ein kleines ☕-Symbol im Viewer und der Sponsor-Knopf des Repositorys führen zu <https://buymeacoffee.com/lafamiliagaming>.
+
+### Behoben
+
+- Der Start ohne Ordner `data/` ist kein Fehler mehr (siehe oben); die Startskripte erklären ein fehlendes Programm.
+
+### Hinweise
+
+- Braucht eine Internetverbindung (Karten und Updates). Offline: lokalen Ordner `data/` behalten und mit `-cdn off` starten.
+
+---
+
 ## Beta.13 – 01.10.2026
 
 ### Neu
 
 - **Updater.** Der Viewer prüft bei GitHub auf eine neuere Version (kurz nach dem Start, dann alle 6 Stunden). Bei einer Download-Installation zeigt das Bedienfeld **Update verfügbar**, **Jetzt aktualisieren** installiert es per Klick: Download von `MapViewer3D-update-Beta.N.zip` (ohne Kartendaten), SHA-256-Prüfung, Sicherung der alten Dateien in `.update/`, Austausch von Programm, `viewer/`, Doku und Startskripten, Neustart, die Seite lädt sich selbst neu. Server installieren mit `-auto-update` selbst (`MV_AUTOUPDATE=1`, `"autoUpdate": true` in `-config`); ein mit `-tags paks` gebautes Programm wird aus dem Quelltext im Paket neu gebaut. `-no-update-check` schaltet es ab; mit `-public` wird nichts angezeigt. Der Positions-Agent hat ein eigenes `-auto-update` (standardmäßig aus, er läuft als root). Das Release-Skript baut das Update-Paket (`./build-release.sh --update`); ein Release ohne dieses Paket wird nur gemeldet, nicht installiert. Details: [README](README.de.md#updates), [SECURITY.md](SECURITY.md).
-
-### Behoben
-
-- **Start ohne Ordner `data/`.** Wer das Update-Paket oder den Quelltext entpackte, bekam nur eine knappe Zeile „Ordner fehlt“. Die Startskripte und das Programm erklären jetzt, was fehlt und welches Paket zu nehmen ist.
 
 ### Hinweise
 

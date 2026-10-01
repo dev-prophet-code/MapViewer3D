@@ -174,3 +174,8 @@ func moduleRegions(regs []Region, base uint64) []Region {
 	}
 	return out
 }
+
+// GameProcesses zählt die laufenden Map-Prozesse des Spielservers im (Host-)/proc:
+// größer 0 heißt, dieser Rechner ist der Spiel-Host (Docker-Container teilen den Prozessraum
+// des Hosts, deshalb sieht man sie hier).
+func GameProcesses(procRoot string) int { return len(findTargets(procRoot)) }

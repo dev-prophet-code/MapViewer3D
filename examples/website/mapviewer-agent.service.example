@@ -1,0 +1,28 @@
+# /etc/systemd/system/mapviewer-agent.service  – Beispiel / example
+# DE: Der Positions-Agent liest NUR LESEND den Arbeitsspeicher der Spielserver-Prozesse (/proc/<pid>/mem) und
+#     liefert Sandwürmer, NPCs, Fahrzeuge, Stürme (und mit -players die Spieler) in Echtzeit. Dafür braucht er root
+#     auf dem Rechner, auf dem der Dune-Docker-Stack läuft (also dem SELBEN Rechner wie die Spielserver; die
+#     Container teilen sich den Prozessraum des Hosts). Er lauscht nur auf 127.0.0.1, der Viewer holt dort ab:
+#     in config.json:  "agentUrl": "http://127.0.0.1:8796"
+#     Details und Sicherheit: docs/Agent-DE.md
+# EN: The position agent only READS the game processes' memory (/proc/<pid>/mem) and delivers sandworms, NPCs,
+#     vehicles, storms (and with -players the players) in real time. It needs root on the machine that runs the
+#     Dune Docker stack (the SAME machine as the game servers; containers share the host's process space).
+#     It listens on 127.0.0.1 only; the viewer reads from there. Details: docs/Agent-EN.md
+[Unit]
+Description=Dune MapViewer3D position agent (read-only)
+After=docker.service
+
+[Service]
+ExecStart=/opt/MapViewer3D/bin/mvagent-linux-amd64 -addr 127.0.0.1:8796 -players
+Restart=always
+RestartSec=10
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+PrivateTmp=yes
+RestrictAddressFamilies=AF_INET AF_UNIX
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

@@ -16,6 +16,7 @@ export const START_MAP = params.get('map');
 const STRINGS = {
   en: {
     'language': 'Language',
+    'support.tip': 'Support the project (Buy Me a Coffee)',
     'map': 'Map',
     'jump.title': 'Jump to',
     'jump.nobody': 'Nobody online',
@@ -179,6 +180,7 @@ const STRINGS = {
   },
   de: {
     'language': 'Sprache',
+    'support.tip': 'Projekt unterstützen (Buy Me a Coffee)',
     'map': 'Karte',
     'jump.title': 'Springen zu',
     'jump.nobody': 'Niemand online',

@@ -1,0 +1,30 @@
+# /etc/systemd/system/mapviewer.service  – Beispiel / example
+# DE: Der Viewer als Dienst. Läuft als eigener, unprivilegierter Benutzer (NICHT root); die Echtzeit-Daten
+#     liefert der Agent als eigener Dienst (mapviewer-agent.service.example).
+# EN: The viewer as a service, as an unprivileged user (NOT root). Real-time data comes from the agent service.
+[Unit]
+Description=Dune MapViewer3D
+After=network.target
+
+[Service]
+User=mapviewer
+Group=mapviewer
+WorkingDirectory=/opt/MapViewer3D
+# Pfad zur passenden Programmdatei (z. B. mapviewer-linux-amd64 oder -arm64) / path to the matching binary
+ExecStart=/opt/MapViewer3D/bin/mapviewer-linux-amd64 -config /etc/mapviewer/config.json -addr 127.0.0.1:8795 -state /var/lib/mapviewer/state -keydir /var/lib/mapviewer/key
+# Zum Selbst-Aktualisieren: Restart=always lässt den Dienst nach dem Update wieder starten.
+# For self-updates: Restart=always brings the service back after an update.
+Restart=always
+RestartSec=5
+
+# Härtung / hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+# DE: Ohne -auto-update reicht Lesezugriff auf /opt/MapViewer3D. Mit -auto-update (oder "autoUpdate": true) muss der
+#     Dienst dort schreiben dürfen: ReadWritePaths=/opt/MapViewer3D
+ReadWritePaths=/var/lib/mapviewer /opt/MapViewer3D
+
+[Install]
+WantedBy=multi-user.target

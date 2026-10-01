@@ -23,9 +23,9 @@ func packageBinary(prefix string) string {
 
 // Targets, die der Viewer neben dem Programm austauscht, sofern sie am Ziel existieren
 // (eine Server-Installation hat z. B. kein docs/ und keine README).
-var viewerDirs = []string{"viewer", "docs", "backend"}
+var viewerDirs = []string{"viewer", "docs", "backend", "examples", "deploy"}
 var viewerFiles = []string{"README.md", "README.de.md", "CHANGELOG - DE.md", "CHANGELOG - EN.md",
-	"Description-EN.md", "LICENSE", "start.sh", "start.command", "start.bat"}
+	"Description-EN.md", "LICENSE", "start.sh", "start.command", "start.bat", "download-program.ps1"}
 
 // ViewerPlan: das laufende Programm (exe) und die Oberfläche werden ersetzt. Mit built
 // stammt das Programm aus Prepare (stage/bin/mapviewer, selbst gebaut), sonst aus dem

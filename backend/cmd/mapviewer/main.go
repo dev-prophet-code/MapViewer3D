@@ -30,6 +30,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"mapviewer3d/agent"
+	"mapviewer3d/cdn"
 	"mapviewer3d/secure"
 	"mapviewer3d/server"
 	"mapviewer3d/updater"
@@ -49,7 +51,9 @@ func main() {
 	config := flag.String("config", "", "feste Konfigurationsdatei (apiBase, token, partitions, public) statt Einrichtung im Browser")
 	public := flag.String("public", "", "öffentlicher Betrieb: JSON mit erlaubten Partitionen und PvE-Quelle (siehe server/public.go)")
 	paks := flag.String("paks", "", "Ordner mit den Spieldateien (.utoc/.ucas): baut das Deep-Desert-Gelände nach jedem Coriolis-Sturm selbst für das neue Layout")
-	agentURL := flag.String("agent", os.Getenv("MV_AGENT"), "Adresse des Positions-Agenten (mvagent), z. B. http://127.0.0.1:8796: zeigt Sandwürmer, Gegner und Fahrzeuge live; alternativ MV_AGENT oder agentUrl in -config")
+	agentURL := flag.String("agent", os.Getenv("MV_AGENT"), "Adresse des Positions-Agenten (mvagent), z. B. http://127.0.0.1:8796: zeigt Sandwürmer, Gegner und Fahrzeuge live; auto = erkennt den Spiel-Host (Linux, root) und startet den Agenten selbst; alternativ MV_AGENT oder agentUrl in -config")
+	cdnFlag := flag.String("cdn", envOr("MV_CDN", "auto"), "Kartendaten (Gelände, Bauteil-Modelle): auto = aus dem Branch cdn auf GitHub streamen (ein Ordner data/ dient als Rückfall), off = nur den lokalen Ordner data/ nutzen, oder eine eigene Adresse (z. B. https://…/cdn/); alternativ MV_CDN oder cdn in -config")
+	agentPlayers := flag.Bool("agent-players", false, "nur mit -agent auto: der eingebaute Agent liest auch Spieler (Echtzeit-Positionen der Online-Spieler)")
 	autoUpdate := flag.Bool("auto-update", os.Getenv("MV_AUTOUPDATE") == "1", "neue Versionen von GitHub automatisch installieren und neu starten (Standard: nur anzeigen, Installation per Klick); alternativ MV_AUTOUPDATE=1 oder autoUpdate in -config")
 	noUpdate := flag.Bool("no-update-check", os.Getenv("MV_NO_UPDATE") == "1", "nicht auf GitHub nach neuen Versionen suchen (auch MV_NO_UPDATE=1)")
 	// Ohne Argumente gestartet (Doppelklick im Explorer/Finder): Browser öffnen;
@@ -67,13 +71,12 @@ func main() {
 	if _, err := os.Stat(*web); err != nil {
 		fatalf("Ordner fehlt: %s (Pfad mit -web angeben)", *web)
 	}
-	if _, err := os.Stat(*data); err != nil {
-		fatalf("Der Ordner data/ mit den Karten fehlt: %s\n"+
-			"→ Das ist der Fall, wenn nur das Update-Paket (MapViewer3D-update-….zip) oder der Quelltext von GitHub entpackt wurde.\n"+
-			"  Bitte das vollständige Paket MapViewer3D-Beta.N.zip von https://github.com/%s/releases laden und entpacken\n"+
-			"  (oder den Ordner data/ aus diesem Paket hierher kopieren; mit -data kann ein anderer Pfad angegeben werden).\n"+
-			"The maps folder data/ is missing: unpack the full package MapViewer3D-Beta.N.zip from the Releases page (not the update package or the source code), or copy its data/ folder here.",
-			*data, updater.DefaultRepo)
+	if *cdnFlag == "off" {
+		if _, err := os.Stat(*data); err != nil {
+			fatalf("Der Ordner data/ mit den Karten fehlt: %s (-cdn off braucht ihn).\n"+
+				"Ohne -cdn off streamt der Viewer die Karten aus dem Branch cdn auf GitHub.\n"+
+				"The maps folder data/ is missing: %s (-cdn off needs it). Without -cdn off the viewer streams the maps from the cdn branch on GitHub.", *data, *data)
+		}
 	}
 	if *state == "" {
 		dir, err := userStateDir()
@@ -106,6 +109,9 @@ func main() {
 		}
 		if cfg.AutoUpdate {
 			*autoUpdate = true
+		}
+		if cfg.CDN != "" && os.Getenv("MV_CDN") == "" && *cdnFlag == "auto" {
+			*cdnFlag = cfg.CDN
 		}
 		log.Printf("Verbindung aus %s", *config)
 		if cfg.Public != nil {
@@ -140,6 +146,9 @@ func main() {
 		log.Printf("Deep Desert: Gelände für neue Coriolis-Layouts wird aus %s selbst gebaut", *paks)
 	}
 
+	if *agentURL == "auto" {
+		*agentURL = startEmbeddedAgent(*agentPlayers)
+	}
 	if *agentURL != "" {
 		if err := srv.UseAgent(*agentURL); err != nil {
 			fatalf("-agent: %v", err)
@@ -147,6 +156,17 @@ func main() {
 		log.Printf("Live-Positionen (Würmer, Gegner, Fahrzeuge) vom Agenten %s", *agentURL)
 	}
 
+	switch *cdnFlag {
+	case "off":
+		log.Printf("Karten nur aus dem lokalen Ordner %s", *data)
+	default:
+		var bases []string
+		if *cdnFlag != "auto" {
+			bases = []string{*cdnFlag}
+		}
+		srv.SetCDN(cdn.NewClient(filepath.Join(*state, "cdncache"), bases...))
+		log.Printf("Karten werden aus dem Branch cdn auf GitHub gestreamt (Zwischenspeicher: %s)", filepath.Join(*state, "cdncache"))
+	}
 	var ln net.Listener
 	var restarting atomic.Bool
 	if !*noUpdate {
@@ -374,4 +394,35 @@ func startUpdater(srv *server.Server, root string, auto bool, closeListener func
 	if auto {
 		log.Printf("Automatische Updates von GitHub an (Prüfung alle %s)", updater.DefaultInterval)
 	}
+}
+
+// startEmbeddedAgent erkennt, ob der Viewer auf dem Spiel-Host läuft (gleicher Rechner wie der
+// Dune-Docker-Stack: dessen Map-Prozesse erscheinen im /proc des Hosts), und startet dann den
+// Positions-Agenten im selben Programm. Das braucht root (der Agent liest /proc/<pid>/mem) –
+// bei einer öffentlichen Webseite besser den Agenten als eigenen Dienst starten (mvagent) und
+// dem Viewer nur dessen Adresse geben. Liefert die lokale Adresse des Agenten oder "".
+func startEmbeddedAgent(players bool) string {
+	if runtime.GOOS != "linux" {
+		log.Printf("-agent auto: der Agent läuft nur unter Linux auf dem Spiel-Host – keine Echtzeit-Daten")
+		return ""
+	}
+	n := agent.GameProcesses("/proc")
+	if n == 0 {
+		log.Printf("-agent auto: keine Dune-Spielserver-Prozesse auf diesem Rechner gefunden (der Viewer läuft nicht auf dem Spiel-Host) – keine Echtzeit-Daten")
+		return ""
+	}
+	if os.Geteuid() != 0 {
+		log.Printf("-agent auto: %d Spielserver-Prozesse gefunden, aber der Viewer läuft nicht als root und darf deren Speicher nicht lesen – Echtzeit-Daten aus. Mit sudo starten oder mvagent als eigenen Dienst einrichten (docs/Agent-DE.md)", n)
+		return ""
+	}
+	a := agent.New(agent.Config{ProcRoot: "/proc", Offsets: agent.DefaultOffsets, Players: players})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		log.Printf("-agent auto: %v", err)
+		return ""
+	}
+	go a.Run(context.Background())
+	go http.Serve(ln, a.Handler())
+	log.Printf("-agent auto: %d Spielserver-Prozesse gefunden, Positions-Agent läuft im Viewer (Echtzeit-Daten an)", n)
+	return "http://" + ln.Addr().String()
 }

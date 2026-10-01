@@ -21,3 +21,9 @@ mapimage.png
 /build-release.sh
 /check-clean.sh
 .update/
+
+# Local helper files (never part of the repository or the packages)
+/PR-Text-RedBlink.md
+/Discord-Post.md
+/Discord-Screenshots/
+/GitHubVersion/

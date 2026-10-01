@@ -262,12 +262,20 @@ func (s *Server) publicBaseAllowed(id string) bool {
 	return false
 }
 
-// mapNames: Kartenordner im Datenverzeichnis.
+// mapNames: Karten des Katalogs (Branch cdn) und Kartenordner im Datenverzeichnis, ohne Doppelte.
 func (s *Server) mapNames() []string {
-	entries, _ := os.ReadDir(s.dataDir)
+	seen := map[string]bool{}
 	var out []string
+	for _, n := range s.remoteNames() {
+		if !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+	entries, _ := os.ReadDir(s.dataDir)
 	for _, e := range entries {
-		if e.IsDir() && validName.MatchString(e.Name()) && e.Name() != mapdata.DirBuildables {
+		if e.IsDir() && validName.MatchString(e.Name()) && e.Name() != mapdata.DirBuildables && !seen[e.Name()] {
+			seen[e.Name()] = true
 			out = append(out, e.Name())
 		}
 	}

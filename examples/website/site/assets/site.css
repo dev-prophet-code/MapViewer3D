@@ -1,0 +1,15 @@
+/* Schlichtes Beispiel-Design – frei änderbar / plain example styling, change freely */
+:root { color-scheme: dark; --bg: #14110d; --fg: #eadfc8; --accent: #e0a84a; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+header { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid #3a3226; }
+header h1 { margin: 0; font-size: 20px; color: var(--accent); }
+nav a { color: var(--fg); margin-left: 16px; text-decoration: none; }
+nav a:hover { color: var(--accent); }
+main { max-width: 1200px; margin: 0 auto; padding: 20px; }
+h2 { color: var(--accent); }
+.buttons button { background: #2a2419; color: var(--fg); border: 1px solid #4a4030; border-radius: 8px; padding: 8px 14px; cursor: pointer; margin-right: 8px; }
+.buttons button:hover { border-color: var(--accent); }
+#viewer { width: 100%; height: min(75vh, 760px); border: 1px solid #3a3226; border-radius: 12px; background: #0b0a08; }
+footer { text-align: center; padding: 24px; color: #8a7d68; font-size: 13px; }
+footer a { color: inherit; }

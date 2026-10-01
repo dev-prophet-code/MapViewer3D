@@ -65,6 +65,9 @@ func (s *Server) ensureLayout() {
 		return
 	}
 	dir := layoutDir(s.dataDir, n)
+	if s.cdnHas(filepath.Base(dir)) {
+		return // der Branch cdn kennt das Layout schon, kein eigener Bau nötig
+	}
 	if _, err := os.Stat(filepath.Join(dir, mapdata.FileMeta)); err == nil {
 		s.pruneLayouts(n)
 		return

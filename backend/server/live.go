@@ -33,6 +33,9 @@ type LiveConfig struct {
 
 	// Updates automatisch von GitHub installieren (wie -auto-update).
 	AutoUpdate bool `json:"autoUpdate"`
+
+	// Kartendaten: leer/"auto" = aus dem Branch cdn streamen, "off" = nur lokal, sonst eigene Adresse.
+	CDN string `json:"cdn"`
 }
 
 // LoadLiveConfig liest eine feste Konfigurationsdatei (-config). Zugangsdaten

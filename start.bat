@@ -1,5 +1,5 @@
 @echo off
-rem Dune MapViewer3D Beta.13 - Start fuer Windows 10/11 (macOS/Linux: start.sh) - ohne Go.
+rem Dune MapViewer3D Beta.14 - Start fuer Windows 10/11 (macOS/Linux: start.sh) - ohne Go.
 rem Weitere Argumente gehen an das Programm, z. B.:  start.bat -addr 0.0.0.0:8795
 setlocal
 chcp 65001 >nul
@@ -16,8 +16,8 @@ set "ARCH=amd64"
 if /I "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "ARCH=arm64"
 if /I "%PROCESSOR_ARCHITEW6432%"=="ARM64" set "ARCH=arm64"
 set "BIN=%~dp0bin\mapviewer-windows-%ARCH%.exe"
+if not exist "%BIN%" if exist "%~dp0download-program.ps1" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0download-program.ps1"
 if not exist "%BIN%" goto missing
-if not exist "%~dp0data" goto nodata
 rem Aus dem Internet geladene Dateien sperrt Windows (SmartScreen); Sperre fuer
 rem Programm und Skript loesen, damit der Start nicht still scheitert.
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPath '%~dp0bin' | Unblock-File" >nul 2>&1
@@ -29,13 +29,6 @@ exit /b 0
 :missing
 echo Programm fehlt: %BIN%
 echo Bitte das vollstaendige Paket herunterladen und entpacken (nicht direkt aus dem ZIP starten).
-pause
-exit /b 1
-
-:nodata
-echo Der Ordner data\ mit den Karten fehlt.
-echo Bitte das vollstaendige Paket MapViewer3D-Beta.N.zip von der Releases-Seite auf GitHub entpacken
-echo (nicht das Update-Paket und nicht den Quelltext) oder den Ordner data\ aus dem vollstaendigen Paket hierher kopieren.
 pause
 exit /b 1
 
