@@ -53,6 +53,7 @@ function render(res) {
 }
 
 async function install() {
+  const before = (await get())?.status?.current;
   box.replaceChildren(el('div', t('update.downloading'), 'small'));
   try {
     const r = await fetch('/api/update/install', { method: 'POST', headers: { 'X-MapViewer': '1' } });
@@ -61,17 +62,18 @@ async function install() {
     box.replaceChildren(el('div', t('update.error', { error: String(e.message || e) }), 'small err'));
     return;
   }
-  watch();
+  watch(before);
 }
 
 // Der Server startet nach der Installation neu: warten, bis er wieder da ist, dann neu laden.
-function watch() {
+// Der Neustart ist oft schneller als die Abfrage-Pause; deshalb gilt auch die geänderte Version als Zeichen.
+function watch(before) {
   clearInterval(timer);
   let down = false;
   timer = setInterval(async () => {
     const res = await get();
     if (!res) { down = true; box.replaceChildren(el('div', t('update.restarting'), 'small')); return; }
-    if (down) { location.reload(); return; }
+    if (down || (before && res.status?.current && res.status.current !== before)) { location.reload(); return; }
     render(res);
     if (res.status?.state === 'error') { clearInterval(timer); startPolling(); }
   }, 2000);
