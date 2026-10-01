@@ -11,6 +11,10 @@ Fahrzeugen, Orten, Gefahren und Ressourcen.
 >
 > **Lizenz:** [MIT](LICENSE) – frei nutzbar und anpassbar.
 
+## Addon für die Dune Docker Console (ohne Server-Installation)
+
+Für Server mit dem Red-Blink-Stack gibt es zusätzlich ein **Addon für die Dune Docker Console** (Branch [`DD-Addon`](https://github.com/dev-prophet-code/MapViewer3D/tree/DD-Addon), in der Konsole unter *Addons*). Es braucht **nichts auf dem Server**: Der Viewer läuft komplett in der Addon-Seite. Addon installieren, **3D Map** öffnen, einen in der Konsole erstellten API-Schlüssel eintragen (*Settings → API Keys*, Bereiche `maps: Read` und `bases: Read`), fertig. Die Live-Daten kommen nur mit diesem Schlüssel aus der Konsolen-API (nie mit der Admin-Sitzung); Gelände und Gebäudemodelle werden aus dem Branch [`cdn`](https://github.com/dev-prophet-code/MapViewer3D/tree/cdn) dieses Repositorys gestreamt und gegen eingebaute Prüfsummen geprüft. Diese Seite beschreibt den eigenständigen Viewer (lokaler Go-Server); das Addon hat ein eigenes README.
+
 ## Starten
 
 Go muss nicht installiert sein: Das Programm liegt für Windows, Linux und macOS

@@ -53,6 +53,10 @@ On first start the viewer asks for your console's address and API token; nothing
 
 Detailed notes on Windows SmartScreen, macOS Gatekeeper and running on a server (systemd example, `-addr`, `-remote-setup`, `-state`, `-keydir`) are in the [German README](README.de.md#starten) and the [English description](Description-EN.md).
 
+## 🧩 Dune Docker Console addon (no server install)
+
+For servers running the Red-Blink stack there is also an **addon for the Dune Docker Console** (branch [`DD-Addon`](https://github.com/dev-prophet-code/MapViewer3D/tree/DD-Addon), listed in the console's *Addons* page). It needs **nothing on the server**: the viewer runs entirely inside the addon page. Install it, open **3D Map**, enter an API key created in the console (*Settings → API Keys*, scopes `maps: Read` and `bases: Read`), done. Live data comes from the console API with that key only (never the admin session); terrain and building models stream from branch [`cdn`](https://github.com/dev-prophet-code/MapViewer3D/tree/cdn) of this repository and are checked against built-in checksums. This page describes the standalone viewer (local Go server); the addon has its own README.
+
 ## 🧱 Architecture
 
 ```
