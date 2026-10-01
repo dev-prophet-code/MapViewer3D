@@ -38,8 +38,8 @@ systemd-Dienst (Agent, läuft als root): siehe [Agent-EN.md](Agent-EN.md#quick-s
 | `-addr` | `127.0.0.1:8796` | lokale Schnittstelle (**ohne Login**: auf Loopback lassen; andere Adressen nur mit `-allow-open`) |
 | `-hz` | 10 | Abtastrate der aktiven Objekte (die Quelle liefert höchstens ~20 Hz) |
 | `-workers` | 4 | parallele Scan-Worker (immer nur ein Scan zugleich, ~1–4 s je Prozess) |
-| `-rescan` | 5m | volle Discovery in diesem Abstand (neue Spawns erscheinen dann) |
-| `-rescan-min` | 30s | auf Anforderung höchstens so oft (Wurm/Fahrzeug verschwunden) |
+| `-rescan` | 30m | volle Discovery in diesem Abstand (neue Spawns erscheinen dann; ein voller Scan liest den ganzen Prozessspeicher und ist deshalb bewusst selten) |
+| `-rescan-min` | 1m | auf Anforderung höchstens so oft (ein Sandwurm verschwand = ein neuer entstand) |
 | `-players` | aus | auch Spieler ausgeben (Datenschutz: aus) |
 | `-pid` | – | nur diesen Prozess (Diagnose) |
 | `-blocks`, `-root`, `-pos` | Build 2134304 | Offsets von Hand überschreiben |
@@ -52,7 +52,7 @@ Schnittstelle: `GET /healthz`, `GET /api/objects[?kinds=worm,vehicle,npc,civilia
 1. **Vtables.** Der Agent öffnet die laufende Binary (`/proc/<pid>/exe`) und liest die Symbole `_ZTV<Länge><Klasse>` der dynamischen Symboltabelle. Zur Laufzeit beginnt ein Objekt mit dem Zeiger `Modulbasis + Symbol + 0x10` (Itanium-ABI); die Modulbasis steht in `/proc/<pid>/maps` (ASLR).
 2. **Discovery.** Er durchsucht den beschreibbaren privaten Speicher in 16-MB-Blöcken (4 Worker, je eigener Dateideskriptor) nach 8-Byte-ausgerichteten Werten, die einer dieser Vtables entsprechen. Jeder Treffer ist ein Kandidat.
 3. **Namen und Plausibilität.** Namen kommen aus dem `FNamePool` der Engine; der Klassenname liefert den Blueprint (z. B. `BP_Crea_SandwormArrakis_C`). Ein Treffer zählt nur, wenn der Klassenname gültig ist, das Objekt kein `Default__…` und nicht als zerstört markiert ist, `RootComponent` gültig ist und die Position plausibel (|x|,|y| 1 … 3 000 000 cm). Das filtert Geistertreffer aus freigegebenem Heap und Klassenstandards.
-4. **Tracking.** Danach wird nur noch die Weltposition gelesen (`RootComponent + Pos`, 3 × double, cm, ~20 µs je Objekt): aktive Objekte (Würmer, Fahrzeuge, alles, was sich in den letzten 10 s bewegt hat) mit `-hz`, alle anderen einmal je Sekunde samt Gültigkeitsprüfung (Vtable noch da, nicht zerstört). Verschwindet ein Wurm oder Fahrzeug, folgt eine neue Discovery.
+4. **Tracking.** Danach wird nur noch die Weltposition gelesen (`RootComponent + Pos`, 3 × double, cm, ~20 µs je Objekt): aktive Objekte (Würmer, Fahrzeuge, alles, was sich in den letzten 10 s bewegt hat) mit `-hz`, alle anderen alle 2 Sekunden samt Gültigkeitsprüfung (Vtable noch da, nicht zerstört). Verschwindet ein Sandwurm (oder 25 Objekte auf einmal), folgt eine neue Discovery.
 
 | Feld | Build 2064155 | **Build 2134304** (Standard) |
 |---|---|---|
@@ -77,6 +77,6 @@ Gemessen auf einem Live-Server (Build 2134304): Hagga Basin ~2550 Objekte in 3,4
 ## Grenzen
 
 - Offsets sind buildabhängig (siehe oben); nach einem großen Update im Log nach der Meldung „neu bestimmt“ sehen.
-- Neue Spawns erscheinen bei der nächsten Discovery (`-rescan`, Standard 5 Minuten; sofort, wenn ein verfolgter Wurm/ein Fahrzeug verschwindet). Gegner in Spielernähe kommen daher manchmal verspätet.
-- Positionen sind kein atomarer Schnappschuss; Objekte können zwischen zwei Lesezugriffen verschwinden (sie werden jede Sekunde geprüft).
+- Neue Spawns erscheinen bei der nächsten Discovery (`-rescan`, Standard 30 Minuten; früher, wenn ein verfolgter Sandwurm verschwindet). Neue Fahrzeuge und Gegner, die in Spielernähe entstehen, kommen daher manchmal verspätet; verschwundene Fahrzeuge fallen binnen 2 Sekunden weg.
+- Positionen sind kein atomarer Schnappschuss; Objekte können zwischen zwei Lesezugriffen verschwinden (sie werden alle 2 Sekunden geprüft).
 - Der Scan belastet kurz die Speicherbandbreite (4 Worker, ein Prozess nach dem anderen).

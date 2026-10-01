@@ -47,6 +47,7 @@ type source struct {
 	scanMs  int64
 	scanAt  time.Time
 	removed []uint32
+	fast    []uint32 // IDs, die mit voller Rate gelesen werden (aktive Objekte)
 	classMu sync.Mutex
 	classes map[uint64]string
 }
@@ -296,6 +297,17 @@ func (s *source) calibrate(hits map[uint64][]uint64, offs Offsets) (Offsets, boo
 	return Offsets{Blocks: offs.Blocks, Root: bestRoot, Pos: bestPos}, true
 }
 
+// rebuildFast legt fest, welche Objekte mit voller Rate gelesen werden: alles außer
+// stehenden Gegnern und Zivilisten. Der Aufrufer hält s.mu.
+func (s *source) rebuildFast(now time.Time) {
+	s.fast = s.fast[:0]
+	for id, o := range s.objs {
+		if !isNPC(o.Kind) || now.Sub(o.moved) < activeFor {
+			s.fast = append(s.fast, id)
+		}
+	}
+}
+
 // merge gleicht die Discovery mit den bekannten Objekten ab: gleiche Objekte behalten ihre ID.
 func (s *source) merge(found map[uint64]*Obj) {
 	s.mu.Lock()
@@ -321,4 +333,5 @@ func (s *source) merge(found map[uint64]*Obj) {
 		}
 	}
 	s.objs = next
+	s.rebuildFast(time.Now())
 }

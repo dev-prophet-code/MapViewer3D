@@ -58,8 +58,8 @@ WantedBy=multi-user.target
 | `-addr` | `127.0.0.1:8796` | local interface (**no login**: keep it on loopback; other addresses need `-allow-open`) |
 | `-hz` | 10 | sampling rate of active objects (the source delivers at most ~20 Hz) |
 | `-workers` | 4 | parallel scan workers (one scan at a time, ~1–4 s per process) |
-| `-rescan` | 5m | full discovery interval (new spawns show up then) |
-| `-rescan-min` | 30s | at most this often on demand (a worm/vehicle vanished) |
+| `-rescan` | 30m | full discovery interval (new spawns show up then; a full scan reads the whole process memory, so it is deliberately rare) |
+| `-rescan-min` | 1m | at most this often on demand (a sandworm vanished = a new one spawned) |
 | `-players` | off | also output players (privacy: off) |
 | `-pid` | – | only this process (diagnosis) |
 | `-blocks`, `-root`, `-pos` | build 2134304 | override the offsets by hand |
@@ -72,7 +72,7 @@ Interface: `GET /healthz`, `GET /api/objects[?kinds=worm,vehicle,npc,civilian]`,
 1. **Vtables.** The agent opens the running binary (`/proc/<pid>/exe`) and reads the `_ZTV<len><class>` symbols of the dynamic symbol table. At run time an object starts with the pointer `module base + symbol + 0x10` (Itanium ABI); the module base comes from `/proc/<pid>/maps` (ASLR).
 2. **Discovery.** It scans the writable private memory in 16 MB blocks (4 workers, own file descriptor each) for 8-byte aligned values equal to one of those vtables. Every hit is a candidate object.
 3. **Names and plausibility.** Names come from the engine's `FNamePool`; the class name gives the blueprint (e.g. `BP_Crea_SandwormArrakis_C`). A hit counts only if its class name is valid, the object is not a `Default__…` object and not flagged destroyed, `RootComponent` is valid and the position is plausible (|x|,|y| 1 … 3 000 000 cm). This removes ghost hits from freed heap and class defaults.
-4. **Tracking.** After discovery only the world position is read (`RootComponent + pos`, 3 × double, cm, ~20 µs per object): active objects (worms, vehicles, anything that moved in the last 10 s) at `-hz`, all others once per second together with a validity check (vtable still there, not destroyed). A vanished worm or vehicle triggers a new discovery.
+4. **Tracking.** After discovery only the world position is read (`RootComponent + pos`, 3 × double, cm, ~20 µs per object): active objects (worms, vehicles, anything that moved in the last 10 s) at `-hz`, all others every 2 seconds together with a validity check (vtable still there, not destroyed). A vanished sandworm (or 25 vanished objects at once) triggers a new discovery.
 
 | Field | Build 2064155 | **Build 2134304** (default) |
 |---|---|---|
@@ -97,6 +97,6 @@ Measured on a live server (build 2134304): Hagga Basin ~2550 objects in 3.4 s (2
 ## Limits
 
 - Offsets are build specific (see above); after a big update check the agent log for the "re-determined" message.
-- New spawns appear at the next discovery (`-rescan`, default 5 minutes; immediately when a tracked worm/vehicle vanishes). Enemies near players are therefore sometimes late.
-- Positions are not an atomic snapshot; objects can vanish between two reads (they are validated every second).
+- New spawns appear at the next discovery (`-rescan`, default 30 minutes; sooner when a tracked sandworm vanishes). New vehicles and enemies that spawn near players can therefore be late; vehicles that disappear are removed within 2 seconds.
+- Positions are not an atomic snapshot; objects can vanish between two reads (they are validated every 2 seconds).
 - The scan briefly uses memory bandwidth (4 workers, one process at a time).

@@ -44,10 +44,10 @@ func (c *Config) defaults() {
 		c.Workers = 4
 	}
 	if c.Rescan <= 0 {
-		c.Rescan = 5 * time.Minute
+		c.Rescan = 30 * time.Minute
 	}
 	if c.RescanMin <= 0 {
-		c.RescanMin = 30 * time.Second
+		c.RescanMin = time.Minute
 	}
 	if c.Supervise <= 0 {
 		c.Supervise = 15 * time.Second
@@ -216,10 +216,16 @@ type tracked struct {
 	moved      time.Time
 }
 
-const activeFor = 10 * time.Second
+const (
+	activeFor = 10 * time.Second // so lange gilt ein Objekt nach einer Bewegung als aktiv
+	slowEvery = 2 * time.Second  // alle Objekte lesen und auf Gültigkeit prüfen
+)
 
-// trackLoop liest mit Hz die Positionen aktiver Objekte (Würmer, Fahrzeuge, Spieler,
-// und alles, was sich zuletzt bewegt hat); einmal je Sekunde alle Objekte samt Gültigkeitsprüfung.
+func isNPC(kind string) bool { return kind == "npc" || kind == "civilian" }
+
+// trackLoop liest mit Hz die Positionen der aktiven Objekte (Würmer, Fahrzeuge, Spieler
+// und alles, was sich zuletzt bewegt hat); alle slowEvery Sekunden alle Objekte samt
+// Gültigkeitsprüfung. Steht alles still, kostet ein Takt fast nichts.
 func (a *Agent) trackLoop(ctx context.Context) {
 	tk := time.NewTicker(time.Duration(float64(time.Second) / a.cfg.Hz))
 	defer tk.Stop()
@@ -229,7 +235,7 @@ func (a *Agent) trackLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case now := <-tk.C:
-			slow := now.Sub(lastSlow) >= time.Second
+			slow := now.Sub(lastSlow) >= slowEvery
 			if slow {
 				lastSlow = now
 			}
@@ -254,9 +260,19 @@ func (a *Agent) tick(now time.Time, slow bool) {
 			s.mu.Unlock()
 			continue
 		}
-		list := make([]tracked, 0, len(s.objs))
-		for _, o := range s.objs {
-			list = append(list, tracked{o.ID, o.Addr, o.Root, o.Vtab, o.Kind, o.X, o.Y, o.Z, o.moved})
+		var list []tracked
+		if slow {
+			list = make([]tracked, 0, len(s.objs))
+			for _, o := range s.objs {
+				list = append(list, tracked{o.ID, o.Addr, o.Root, o.Vtab, o.Kind, o.X, o.Y, o.Z, o.moved})
+			}
+		} else {
+			list = make([]tracked, 0, len(s.fast))
+			for _, id := range s.fast {
+				if o := s.objs[id]; o != nil {
+					list = append(list, tracked{o.ID, o.Addr, o.Root, o.Vtab, o.Kind, o.X, o.Y, o.Z, o.moved})
+				}
+			}
 		}
 		gone = append(gone, s.removed...)
 		s.removed = nil
@@ -268,24 +284,20 @@ func (a *Agent) tick(now time.Time, slow bool) {
 			x, y, z float64
 		}
 		var ups []upd
-		critical := false
+		wormGone := false
 		for _, o := range list {
-			active := (o.kind != "npc" && o.kind != "civilian") || now.Sub(o.moved) < activeFor
-			if !active && !slow {
-				continue
-			}
 			if slow {
 				ai, ok := readActor(s.mem, o.addr, offs.Root)
 				if !ok || ai.vtab != o.vtab || ai.flags&(rfBeginDestroyed|rfFinishDestroy) != 0 || ai.root != o.root {
 					dead = append(dead, o.id)
-					critical = critical || (o.kind != "npc" && o.kind != "civilian")
+					wormGone = wormGone || o.kind == "worm"
 					continue
 				}
 			}
 			x, y, z, ok := readVec(s.mem, o.root, offs.Pos)
 			if !ok {
 				dead = append(dead, o.id)
-				critical = critical || (o.kind != "npc" && o.kind != "civilian")
+				wormGone = wormGone || o.kind == "worm"
 				continue
 			}
 			if math.Abs(x-o.x)+math.Abs(y-o.y)+math.Abs(z-o.z) >= 2 {
@@ -293,7 +305,7 @@ func (a *Agent) tick(now time.Time, slow bool) {
 				delta = append(delta, [4]float64{float64(o.id), math.Round(x), math.Round(y), math.Round(z)})
 			}
 		}
-		if len(ups) > 0 || len(dead) > 0 {
+		if len(ups) > 0 || len(dead) > 0 || slow {
 			s.mu.Lock()
 			for _, u := range ups {
 				if o := s.objs[u.id]; o != nil {
@@ -304,9 +316,14 @@ func (a *Agent) tick(now time.Time, slow bool) {
 				delete(s.objs, id)
 				gone = append(gone, id)
 			}
+			if slow || len(dead) > 0 || len(ups) > 0 {
+				s.rebuildFast(now)
+			}
 			s.mu.Unlock()
 		}
-		if critical || len(dead) >= 25 {
+		// Ein verschwundener Wurm heißt: ein neuer ist entstanden. Viele verschwundene Objekte
+		// (Gegner, Fahrzeuge) lösen ebenfalls eine neue Suche aus; einzelne warten auf die nächste.
+		if wormGone || len(dead) >= 25 {
 			s.requestRescan()
 		}
 	}
