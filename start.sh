@@ -1,5 +1,5 @@
 #!/bin/sh
-# Dune MapViewer3D Beta.10 - Start fuer macOS und Linux (Windows: start.bat) - ohne Go.
+# Dune MapViewer3D Beta.11 - Start fuer macOS und Linux (Windows: start.bat) - ohne Go.
 # Das passende Programm liegt vorgebaut in bin/. Weitere Argumente gehen an das
 # Programm, z. B.:  ./start.sh -addr 0.0.0.0:8795
 # ./start.sh --build baut das Programm vorher selbst (braucht Go ≥ 1.26).

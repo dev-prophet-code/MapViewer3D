@@ -16,7 +16,15 @@ var classKinds = map[string]string{
 	"ADuneOrnithopter":          "vehicle",
 	"AWheeledVehiclePawn":       "vehicle",
 	"ADunePlayerCharacter":      "player",
+	"ASandStormBase":            "storm",    // Sandsturm (Actor entsteht nur, solange ein Sturm läuft)
+	"ACoriolisBase":             "coriolis", // Coriolis-Sturm
 }
+
+// classCoriolisSub ist das Subsystem mit dem Coriolis-Zeitplan (kein Actor, keine Position).
+const classCoriolisSub = "UCoriolisSubsystem"
+
+// weatherKind: Arten, die der schnelle Sturm-Scan sucht.
+func isStorm(kind string) bool { return kind == "storm" || kind == "coriolis" }
 
 // vtableAddrs liest die Vtable-Symbole (_ZTV<Länge><Klasse>) der gesuchten
 // Klassen aus der dynamischen Symboltabelle der Binary: Klasse → Symboladresse.
@@ -37,7 +45,7 @@ func vtableAddrs(path string) (map[string]uint64, error) {
 			continue
 		}
 		if cls, ok := demangleVtable(s.Name); ok {
-			if _, want := classKinds[cls]; want {
+			if _, want := classKinds[cls]; want || cls == classCoriolisSub {
 				out[cls] = s.Value
 			}
 		}

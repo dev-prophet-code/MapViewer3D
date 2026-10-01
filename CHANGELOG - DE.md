@@ -14,6 +14,21 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 
 ---
 
+## Beta.11 – 01.10.2026
+
+### Neu
+
+- **Sandstürme und Coriolis-Zeitplan live.** Der Positions-Agent liest jetzt auch Sandstürme (`ASandStormBase`, Schalter *Sandstürme (live)*) mit Position und **Fahrtrichtung** (Weltrotation; an allen neun Sandwürmern eines Testservers gegen die Bewegungsrichtung geprüft) und den **Coriolis-Zyklus** (Start des laufenden und des nächsten Zyklus aus dem `CoriolisSubsystem` des Spiels; stimmt mit dem Server-Log auf die Minute überein). Der 3D-Viewer zeichnet einen Sturm als ineinanderliegende, animierte Ellipsenwände (Böenfront, Sturmwand, Kern) mit wirbelndem Sand, Richtungspfeil und Symbol, dazu einen Countdown bis zum nächsten Coriolis-Sturm in der Statuszeile. Die Form folgt den Datenassets des Spiels (`StormZoneData_*`, `Level3_Settings`); die Größe je Karte ist aus den Spieldaten **abgeleitet** (Tiefe Wüste: volle Stufe-3-Skalierung; Hagga-Becken: halbe Länge 3000 m aus dem Routenrand) und noch nicht an einem laufenden Sturm gemessen. Der Coriolis-Sturm selbst ist nur ein Ringmarker, weil das Spiel dafür keine feste Form vorgibt.
+- **Kurze Sturmsuche.** Ein Sturm existiert nur, solange er läuft; auf die volle Discovery (30 min) zu warten, zeigte ihn viel zu spät. Der Agent sucht deshalb alle 3 Minuten nur nach Sturm-Objekten (`-storm-scan`, negativ = aus); das ist billiger als eine volle Discovery.
+- **Diagnosemodus `mvagent -probe 'Storm|Coriolis' -pid N`.** Listet alle Klassen, deren Vtable-Symbol zum Muster passt, ihre Instanzen und einen kommentierten Felddump je Actor; zum Erkunden unbekannter Spielobjekte.
+
+### Hinweise
+
+- Beim Bauen lief kein Sandsturm; der Live-Pfad des Sturm-*Objekts* wurde mit simulierten Daten und Unit-Tests geprüft, nicht an einem echten Sturm. Der Coriolis-Zeitplan und der Richtungs-Offset wurden an einem laufenden Server geprüft.
+- Sandstürme entstehen alle 45–60 min im Hagga-Becken und 55–65 min in der Tiefen Wüste (`DA_SandstormSettings_*`); sie werden nicht vorhergesagt, nur angezeigt, solange es sie gibt.
+
+---
+
 ## Beta.10 – 01.10.2026
 
 ### Neu

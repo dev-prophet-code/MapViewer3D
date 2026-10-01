@@ -29,6 +29,7 @@ type Config struct {
 	RescanMin time.Duration // frühestens so oft auf Anforderung neu scannen
 	Supervise time.Duration // Prozesserkennung (Neustarts, neue Partitionen)
 	Players   bool          // auch Spieler ausgeben (aus: Datenschutz)
+	StormScan time.Duration // kurze Suche nach Sandstürmen, 0 = Standard (3 min), <0 = aus
 	OnlyPID   int           // nur diesen Prozess (Diagnose), 0 = alle
 	Offsets   Offsets       // Standard: Build 2134304
 }
@@ -48,6 +49,9 @@ func (c *Config) defaults() {
 	}
 	if c.RescanMin <= 0 {
 		c.RescanMin = time.Minute
+	}
+	if c.StormScan == 0 {
+		c.StormScan = 3 * time.Minute
 	}
 	if c.Supervise <= 0 {
 		c.Supervise = 15 * time.Second
@@ -157,6 +161,7 @@ func (a *Agent) syncTargets(ctx context.Context) {
 		changed = true
 		log.Printf("[%s] neuer Map-Prozess", s.label())
 		go a.runSource(ctx, s)
+		go a.stormLoop(ctx, s)
 	}
 	a.mu.Unlock()
 	if changed {
@@ -203,6 +208,37 @@ func (a *Agent) runSource(ctx context.Context, s *source) {
 					return
 				}
 			}
+		}
+	}
+}
+
+// stormLoop sucht regelmäßig nur nach Sturm-Objekten (billiger als die volle Discovery).
+func (a *Agent) stormLoop(ctx context.Context, s *source) {
+	if a.cfg.StormScan < 0 {
+		return
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.cancel:
+			return
+		case <-time.After(a.cfg.StormScan):
+		}
+		select {
+		case a.sem <- struct{}{}:
+		case <-ctx.Done():
+			return
+		case <-s.cancel:
+			return
+		}
+		changed, err := s.scanStorms()
+		<-a.sem
+		if err != nil {
+			continue
+		}
+		if changed {
+			a.publishSnapshot()
 		}
 	}
 }
@@ -344,6 +380,8 @@ type SrcInfo struct {
 	ScanMs    int64  `json:"scanMs"`
 	AgeMs     int64  `json:"ageMs"`
 	Reason    string `json:"reason,omitempty"`
+
+	Weather *Weather `json:"weather,omitempty"`
 }
 
 type ObjOut struct {
@@ -354,6 +392,7 @@ type ObjOut struct {
 	X     float64 `json:"x"`
 	Y     float64 `json:"y"`
 	Z     float64 `json:"z"`
+	Yaw   float64 `json:"yaw,omitempty"` // nur Stürme, Grad
 }
 
 type Snapshot struct {
@@ -375,13 +414,13 @@ func (a *Agent) snapshot() Snapshot {
 	for i, s := range srcs {
 		s.mu.RLock()
 		info := SrcInfo{PID: s.t.PID, Map: s.t.Map, Partition: s.t.Partition, Ready: s.ready, Count: len(s.objs),
-			Scans: s.scans, ScanMs: s.scanMs, Reason: s.reason}
+			Scans: s.scans, ScanMs: s.scanMs, Reason: s.reason, Weather: s.weather}
 		if !s.scanAt.IsZero() {
 			info.AgeMs = time.Since(s.scanAt).Milliseconds()
 		}
 		if s.ready {
 			for _, o := range s.objs {
-				snap.Objects = append(snap.Objects, ObjOut{o.ID, o.Kind, o.Class, i, math.Round(o.X), math.Round(o.Y), math.Round(o.Z)})
+				snap.Objects = append(snap.Objects, ObjOut{o.ID, o.Kind, o.Class, i, math.Round(o.X), math.Round(o.Y), math.Round(o.Z), o.Yaw})
 			}
 		}
 		s.mu.RUnlock()

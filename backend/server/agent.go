@@ -329,7 +329,8 @@ type agentRow struct {
 	X    float64 `json:"x"`
 	Y    float64 `json:"y"`
 	Z    float64 `json:"z"`
-	PL   any     `json:"pl,omitempty"` // Spieler: Kennung des Spielers in der Console
+	Yaw  float64 `json:"yaw,omitempty"` // Stürme: Ausrichtung/Fahrtrichtung in Grad (0 = +X)
+	PL   any     `json:"pl,omitempty"`  // Spieler: Kennung des Spielers in der Console
 }
 
 type agentView struct {
@@ -339,6 +340,8 @@ type agentView struct {
 	Gen       uint64     `json:"gen"`
 	T         int64      `json:"t"`
 	Rows      []agentRow `json:"objects"`
+	// Weather: Coriolis-Zeitplan (Unix-ms, UTC) der Karte, falls bekannt
+	Weather *agent.Weather `json:"weather,omitempty"`
 }
 
 func (l *agentLink) view(f agentFilter) agentView {
@@ -357,9 +360,15 @@ func (l *agentLink) view(f agentFilter) agentView {
 	for _, o := range l.objs {
 		switch {
 		case f.ok(o):
-			v.Rows = append(v.Rows, agentRow{ID: o.ID, Kind: o.Kind, Cls: o.Class, Part: o.part, X: math.Round(o.X), Y: math.Round(o.Y), Z: math.Round(o.Z)})
+			v.Rows = append(v.Rows, agentRow{ID: o.ID, Kind: o.Kind, Cls: o.Class, Part: o.part, X: math.Round(o.X), Y: math.Round(o.Y), Z: math.Round(o.Z), Yaw: o.Yaw})
 		case o.Kind == "player" && o.mapN == f.mapName && f.partOK(o):
 			live = append(live, o)
+		}
+	}
+	for _, src := range l.snap.Sources {
+		if src.Map == f.mapName && src.Weather != nil && (f.part < 0 || src.Partition == f.part) && (!f.restrict || f.allowed[src.Partition]) {
+			v.Weather = src.Weather
+			break
 		}
 	}
 	matched := matchPlayers(live, f.players)

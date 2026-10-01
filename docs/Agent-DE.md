@@ -45,11 +45,13 @@ systemd-Dienst (Agent, läuft als root): siehe [Agent-EN.md](Agent-EN.md#quick-s
 | `-rescan` | 30m | volle Discovery in diesem Abstand (neue Spawns erscheinen dann; ein voller Scan liest den ganzen Prozessspeicher und ist deshalb bewusst selten) |
 | `-rescan-min` | 1m | auf Anforderung höchstens so oft (ein Sandwurm verschwand = ein neuer entstand) |
 | `-players` | aus | auch Spieler lesen (nötig für Live-Spieler; Datenschutz: standardmäßig aus) |
+| `-storm-scan` | 3m | kurze Suche nur nach Sandsturm-Objekten (negativ = aus); ein Sturm existiert nur, solange er läuft |
+| `-probe` | – | Diagnose: Klassen nach Muster, ihre Instanzen und ein kommentierter Felddump (mit `-pid`) |
 | `-pid` | – | nur diesen Prozess (Diagnose) |
 | `-blocks`, `-root`, `-pos` | Build 2134304 | Offsets von Hand überschreiben |
 | `-once` | – | einmal suchen, JSON ausgeben, beenden |
 
-Schnittstelle: `GET /healthz`, `GET /api/objects[?kinds=worm,vehicle,npc,civilian]`, `GET /stream` (SSE: `snap` = voller Stand, `pos` = Änderungen `[id,x,y,z]` und verschwundene IDs, alle 20 s ein Lebenszeichen als Kommentarzeile).
+Schnittstelle: `GET /healthz`, `GET /api/objects[?kinds=worm,vehicle,npc,civilian,player,storm,coriolis]` (Quellen tragen `weather` = Start des laufenden/nächsten Coriolis-Zyklus, Unix-ms), `GET /stream` (SSE: `snap` = voller Stand, `pos` = Änderungen `[id,x,y,z]` und verschwundene IDs, alle 20 s ein Lebenszeichen als Kommentarzeile).
 
 ## So funktioniert es
 

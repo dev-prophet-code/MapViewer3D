@@ -251,3 +251,80 @@ func TestPlausibleWorld(t *testing.T) {
 		}
 	}
 }
+
+// ── Stürme und Coriolis ────────────────────────────────────────────────────
+
+func ticks(unixSec int64) int64 { return (unixSec + 62135596800) * 10_000_000 }
+
+func TestReadWeather(t *testing.T) {
+	m := newFake()
+	sub := m.seg(0x40000, 0x400)
+	put64(sub, 0, 0x6000)
+	put32(sub, offFlags, 0)
+	// 2026-09-29 05:00 UTC und 2026-10-06 05:00 UTC an einem beliebigen Offset
+	put64(sub, 0xB0, uint64(ticks(1790571600)))
+	put64(sub, 0xB8, uint64(ticks(1791176400)))
+	s := testSource(m)
+	s.vtSub = 0x6000
+	s.readWeather(map[uint64][]uint64{0x6000: {0x40000}})
+	if s.weather == nil || s.weather.CoriolisStart != 1790571600*1000 || s.weather.CoriolisNext != 1791176400*1000 {
+		t.Fatalf("Zeitplan falsch: %+v", s.weather)
+	}
+	// Default-Objekt liefert nichts
+	s.weather = nil
+	put32(sub, offFlags, rfClassDefault)
+	s.readWeather(map[uint64][]uint64{0x6000: {0x40000}})
+	if s.weather != nil {
+		t.Fatal("Default-Objekt darf keinen Zeitplan liefern")
+	}
+	// Zufallsdaten (kein gültiges Paar) ergeben keinen Zeitplan
+	put32(sub, offFlags, 0)
+	put64(sub, 0xB0, 12345)
+	put64(sub, 0xB8, 67890)
+	s.readWeather(map[uint64][]uint64{0x6000: {0x40000}})
+	if s.weather != nil {
+		t.Fatalf("ungültige Werte dürfen nicht als Zeitplan gelten: %+v", s.weather)
+	}
+}
+
+func TestReadYaw(t *testing.T) {
+	m := newFake()
+	root := m.seg(0x50000, 0x400)
+	s := testSource(m)
+	// 90° um Z: (0,0,sin45,cos45) → Yaw 90
+	putF(root, offRot, 0)
+	putF(root, offRot+8, 0)
+	putF(root, offRot+16, math.Sin(math.Pi/4))
+	putF(root, offRot+24, math.Cos(math.Pi/4))
+	if y := s.readYaw(0x50000); math.Abs(y-90) > 0.1 {
+		t.Fatalf("Yaw = %v, erwartet 90", y)
+	}
+	// kein Einheitsquaternion → 0
+	putF(root, offRot+24, 3)
+	if y := s.readYaw(0x50000); y != 0 {
+		t.Fatalf("ungültiges Quaternion muss 0 ergeben, bekam %v", y)
+	}
+}
+
+func TestMergeStormsKeepsOthers(t *testing.T) {
+	m, _ := world(0x238, 0x190)
+	s := testSource(m)
+	worm := &Obj{ID: 1, Addr: 0x30000, Kind: "worm", Vtab: 0x5000}
+	oldStorm := &Obj{ID: 2, Addr: 0x99000, Kind: "storm", Vtab: 0x7000, Root: 1}
+	s.a.nextID.Store(10)
+	s.objs = map[uint32]*Obj{1: worm, 2: oldStorm}
+	newStorm := &Obj{Addr: 0x98000, Kind: "storm", Vtab: 0x7000, Root: 2, X: 5, Y: 6}
+	if !s.mergeStorms(map[uint64]*Obj{0x98000: newStorm}) {
+		t.Fatal("Änderung nicht erkannt")
+	}
+	if s.objs[1] == nil || s.objs[2] != nil || s.objs[11] == nil || len(s.objs) != 2 {
+		t.Fatalf("Würmer müssen bleiben, alter Sturm weg, neuer da: %+v", s.objs)
+	}
+	if len(s.removed) != 1 || s.removed[0] != 2 {
+		t.Fatalf("entfernter Sturm fehlt in removed: %v", s.removed)
+	}
+	// unveränderter Stand: keine Änderung
+	if s.mergeStorms(map[uint64]*Obj{0x98000: {Addr: 0x98000, Kind: "storm", Vtab: 0x7000, Root: 2, X: 7, Y: 8}}) {
+		t.Fatal("gleicher Sturm darf nicht als Änderung gelten")
+	}
+}

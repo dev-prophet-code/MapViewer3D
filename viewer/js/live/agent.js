@@ -13,10 +13,12 @@ import { api } from '../api.js';
 import { t } from '../i18n.js';
 import { dotTexture, label, vehicleModel } from './models.js';
 import { iconFor, iconSprite, spriteScale } from './icons.js';
+import { stormModel, coriolisModel } from './storm.js';
 
 // Schalter dieser Ebene (Namen in i18n.js unter toggle.<key>)
 export const AGENT_TOGGLES = [
   { key: 'worms', on: true },
+  { key: 'storms', on: true },
   { key: 'npcs', on: false },
   { key: 'civilians', on: false },
   { key: 'liveVehicles', on: false },
@@ -24,12 +26,12 @@ export const AGENT_TOGGLES = [
 
 const FOLLOW = 10;            // 1/s: wie schnell Marker ihrem Ziel folgen (≈ 100 ms)
 const POLL_MS = 3000;         // Rückfall ohne Strom
-const LABEL_RANGE = { worm: 8000, vehicle: 450 };
+const LABEL_RANGE = { worm: 8000, vehicle: 450, storm: 1e6, coriolis: 1e6 };
 const CLOUD = {
   npcs: { color: 0xff5a4d, size: 5 },
   civilians: { color: 0x4dd2c6, size: 5 },
 };
-const KIND_TOGGLE = { worm: 'worms', npc: 'npcs', civilian: 'civilians', vehicle: 'liveVehicles' };
+const KIND_TOGGLE = { worm: 'worms', storm: 'storms', coriolis: 'storms', npc: 'npcs', civilian: 'civilians', vehicle: 'liveVehicles' };
 
 // Blueprint-Name → lesbarer Name ("BP_Npc_SoldierBase_Character_Baked_C" → Soldat)
 const NAMES = [
@@ -64,6 +66,7 @@ export class AgentLayer {
     this.connected = false;
     this.lastEvent = 0;
     this.gen = 0;
+    this.weather = null;      // { coriolisStart, coriolisNext } (Unix-ms), aus dem Speicher des Spielservers
   }
 
   start(map, partition) {
@@ -117,6 +120,7 @@ export class AgentLayer {
     this.lastEvent = Date.now();
     this.connected = v.connected !== false;
     this.gen = v.gen ?? 0;
+    this.weather = v.weather ?? null;
     this.items = new Map((v.objects ?? []).map((o) => [o.i, o]));
     this.livePos.clear();
     for (const o of this.items.values()) if (o.k === 'player') this.applyPlayer(o);
@@ -172,7 +176,7 @@ export class AgentLayer {
     const seen = new Set();
     const byCloud = { npcs: [], civilians: [] };
     for (const o of this.items.values()) {
-      if (o.k === 'worm' || o.k === 'vehicle') {
+      if (o.k === 'worm' || o.k === 'vehicle' || o.k === 'storm' || o.k === 'coriolis') {
         seen.add(o.i);
         const m = this.movers.get(o.i) ?? this.makeMover(o);
         this.aim(m, o, !m.placed);
@@ -194,6 +198,14 @@ export class AgentLayer {
       lab.position.y = 60;
       icon = iconSprite(iconFor('worm'));
       icon.position.y = 20;
+    } else if (o.k === 'storm' || o.k === 'coriolis') {
+      obj = o.k === 'storm' ? stormModel(this.map) : coriolisModel();
+      const h = obj.userData.height;
+      lab = label(t(o.k === 'storm' ? 'agent.name.storm' : 'agent.name.coriolis'), { color: '#ffd9a0', size: 30 });
+      lab.position.y = h + 120;
+      icon = iconSprite(iconFor('storm', { coriolis: o.k === 'coriolis' }));
+      icon.position.y = h + 40;
+      obj.rotation.y = Math.PI / 2 - ((o.yaw ?? 0) * Math.PI) / 180; // Fahrtrichtung aus der Weltrotation (UE: 0° = +X)
     } else {
       const subtype = this.vehicleType(o.c);
       obj = vehicleModel(subtype);
@@ -203,7 +215,7 @@ export class AgentLayer {
       icon.position.y = 2;
     }
     obj.add(lab, icon);
-    const m = { obj, label: lab, icon, kind: o.k, id: o.i, target: new THREE.Vector3(), placed: false, heading: 0 };
+    const m = { obj, label: lab, icon, kind: o.k, id: o.i, target: new THREE.Vector3(), placed: false, heading: obj.rotation.y };
     this.movers.set(o.i, m);
     this.group.add(obj);
     return m;
@@ -217,7 +229,8 @@ export class AgentLayer {
       m.placed = true;
     } else {
       const dx = p.x - m.target.x, dz = p.z - m.target.z;
-      if (dx * dx + dz * dz > 0.25) m.heading = Math.atan2(dx, dz);
+      // Stürme ziehen langsam: erst ab einigen Metern Weg die Richtung aus der Bewegung nehmen
+      if (dx * dx + dz * dz > (m.kind === 'storm' || m.kind === 'coriolis' ? 25 : 0.25)) m.heading = Math.atan2(dx, dz);
     }
     m.target.copy(p);
   }
@@ -293,7 +306,8 @@ export class AgentLayer {
       const d = Math.hypot(m.obj.position.x - cam.x, m.obj.position.z - cam.z);
       m.label.visible = d < LABEL_RANGE[m.kind];
       // das Symbol nur aus der Ferne; nah stehen Modell und Name
-      m.icon.visible = m.kind === 'worm' || d > 60;
+      m.icon.visible = m.kind === 'worm' || m.kind === 'storm' || m.kind === 'coriolis' || d > 60;
+      m.obj.userData.tick?.(dt);
     }
     for (const c of Object.values(this.clouds)) {
       if (c.dirty) { c.points.geometry.attributes.position.needsUpdate = true; c.dirty = false; }
@@ -320,7 +334,7 @@ export class AgentLayer {
   }
 
   counts() {
-    const c = { worm: 0, npc: 0, civilian: 0, vehicle: 0 };
+    const c = { worm: 0, npc: 0, civilian: 0, vehicle: 0, storm: 0, coriolis: 0 };
     for (const o of this.items.values()) c[o.k] = (c[o.k] ?? 0) + 1;
     return c;
   }
@@ -330,7 +344,22 @@ export class AgentLayer {
     if (!this.connected && !this.items.size) return t('agent.off');
     const c = this.counts();
     const age = this.connected && this.lastEvent ? '' : t('agent.stale');
-    return t('agent.status', { worms: c.worm, npcs: c.npc + c.civilian }) + age;
+    let s = t('agent.status', { worms: c.worm, npcs: c.npc + c.civilian }) + age;
+    if (c.storm) s += ` · ${t('agent.storms', { n: c.storm })}`;
+    const w = this.weatherText();
+    return w ? `${s}\n${w}` : s;
+  }
+
+  // Coriolis-Zeitplan: Countdown bis zum nächsten Zyklus (aus dem Speicher des Spielservers)
+  weatherText() {
+    const w = this.weather;
+    if (!w?.coriolisNext) return '';
+    if (this.items && [...this.items.values()].some((o) => o.k === 'coriolis')) return t('agent.coriolis.active');
+    const ms = w.coriolisNext - Date.now();
+    if (ms <= 0) return t('agent.coriolis.due');
+    const d = Math.floor(ms / 864e5), h = Math.floor((ms % 864e5) / 36e5), m = Math.floor((ms % 36e5) / 6e4);
+    const when = new Date(w.coriolisNext).toLocaleString(undefined, { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return t('agent.coriolis.next', { in: d ? `${d} d ${h} h` : `${h} h ${m} min`, when });
   }
 }
 

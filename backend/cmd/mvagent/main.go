@@ -42,10 +42,13 @@ func main() {
 	flag.DurationVar(&cfg.RescanMin, "rescan-min", time.Minute, "frühestens so oft auf Anforderung (verschwundener Wurm) neu suchen")
 	flag.DurationVar(&cfg.Supervise, "supervise", 15*time.Second, "Intervall der Prozesserkennung")
 	flag.BoolVar(&cfg.Players, "players", false, "auch Spieler ausgeben (Standard aus: Datenschutz)")
+	flag.DurationVar(&cfg.StormScan, "storm-scan", 3*time.Minute, "kurze Suche nach Sandstürmen in diesem Abstand (negativ = aus)")
 	flag.IntVar(&cfg.OnlyPID, "pid", 0, "nur diesen Prozess (Diagnose)")
 	blocks := flag.String("blocks", "", "FNamePool-Offset (Standard 0x174125A8, Build 2134304)")
 	root := flag.String("root", "", "Offset von AActor::RootComponent (Standard 0x238)")
 	pos := flag.String("pos", "", "Offset der Weltposition im RootComponent (Standard 0x190)")
+	probe := flag.String("probe", "", "Diagnose: Klassen nach Muster suchen (z. B. 'Storm|Coriolis'), Instanzen auflisten und Felder dumpen (mit -pid)")
+	probeDump := flag.Int("probe-dump", 0x500, "Bytes pro Actor, die -probe auswertet (0 = nur auflisten)")
 	once := flag.Bool("once", false, "einmal suchen, Ergebnis als JSON ausgeben und beenden")
 	version := flag.Bool("version", false, "Version anzeigen")
 	flag.Parse()
@@ -72,6 +75,15 @@ func main() {
 	}
 	if os.Geteuid() != 0 {
 		log.Printf("Achtung: kein root – /proc/<pid>/mem anderer Benutzer ist dann nicht lesbar")
+	}
+	if *probe != "" {
+		if cfg.OnlyPID == 0 {
+			log.Fatalf("-probe braucht -pid")
+		}
+		if err := agent.Probe(cfg.ProcRoot, cfg.OnlyPID, *probe, *probeDump, cfg.Offsets, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
 	}
 	a := agent.New(cfg)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

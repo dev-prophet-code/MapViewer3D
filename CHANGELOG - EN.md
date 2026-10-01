@@ -10,6 +10,21 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ---
 
+## Beta.11 – 10/01/2026
+
+### New
+
+- **Sandstorms and the Coriolis schedule, live.** The position agent now also reads sandstorms (`ASandStormBase`, shown as *Sandstorms (live)*) with position and **heading** (world rotation; checked against the movement direction of all nine sandworms on a test server) and the **Coriolis cycle** (start of the running and of the next cycle, read from the game's `CoriolisSubsystem`; matches the server log to the minute). The 3D viewer draws a storm as nested, animated ellipse walls (gust front, storm wall, core) with swirling sand, heading arrow and icon, plus a countdown to the next Coriolis storm in the status line. The shape follows the game's data assets (`StormZoneData_*`, `Level3_Settings`); the size per map is **derived** from the game data (Deep Desert: full level-3 scale; Hagga Basin: half-length 3000 m from the route margin) and not yet measured on a running storm. The Coriolis storm itself is only a ring marker, because the game gives no fixed shape for it.
+- **A short storm scan.** A storm only exists while it runs, so waiting for the full discovery (30 min) would show it far too late. The agent therefore searches for storm objects only every 3 minutes (`-storm-scan`, negative = off); this is cheaper than a full discovery.
+- **Probe mode `mvagent -probe 'Storm|Coriolis' -pid N`.** Lists all classes whose vtable symbol matches a pattern, their instances and an annotated field dump of each actor; for exploring unknown game objects.
+
+### Notes
+
+- No sandstorm was running while this was built, so the live path of the storm *object* was verified with simulated data and unit tests, not on a real storm. The Coriolis schedule and the heading offset were verified on a running server.
+- Sandstorms spawn every 45–60 min on Hagga Basin and 55–65 min on Deep Desert (`DA_SandstormSettings_*`); they are not predicted, only shown while they exist.
+
+---
+
 ## Beta.10 – 10/01/2026
 
 ### New

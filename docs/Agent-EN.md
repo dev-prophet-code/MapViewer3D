@@ -65,11 +65,13 @@ WantedBy=multi-user.target
 | `-rescan` | 30m | full discovery interval (new spawns show up then; a full scan reads the whole process memory, so it is deliberately rare) |
 | `-rescan-min` | 1m | at most this often on demand (a sandworm vanished = a new one spawned) |
 | `-players` | off | also read players (needed for live players; privacy: off by default) |
+| `-storm-scan` | 3m | short search for sandstorm objects only (negative = off); a storm exists only while it runs |
+| `-probe` | – | diagnosis: list classes by pattern, their instances and an annotated field dump (with `-pid`) |
 | `-pid` | – | only this process (diagnosis) |
 | `-blocks`, `-root`, `-pos` | build 2134304 | override the offsets by hand |
 | `-once` | – | search once, print JSON, exit |
 
-Interface: `GET /healthz`, `GET /api/objects[?kinds=worm,vehicle,npc,civilian]`, `GET /stream` (SSE: `snap` = full state, `pos` = changes `[id,x,y,z]` and vanished ids, keep-alive comment every 20 s).
+Interface: `GET /healthz`, `GET /api/objects[?kinds=worm,vehicle,npc,civilian,player,storm,coriolis]` (sources carry `weather` = Coriolis cycle start/next, Unix ms), `GET /stream` (SSE: `snap` = full state, `pos` = changes `[id,x,y,z]` and vanished ids, keep-alive comment every 20 s).
 
 ## How it works
 
