@@ -48,6 +48,7 @@ func main() {
 	} else if *push {
 		run(*repo, "git", "fetch", "origin", *branch)
 		run(*repo, "git", "reset", "--hard", "origin/"+*branch)
+		run(*repo, "git", "clean", "-fdq") // Reste eines früheren Laufs (z. B. ohne -push)
 	}
 	opt := cdn.PackOptions{Data: *data, Out: *repo, State: *state, Log: log.Printf}
 	if *only != "" {

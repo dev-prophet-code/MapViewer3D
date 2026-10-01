@@ -59,21 +59,32 @@ func Pack(o PackOptions) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", name, err)
 		}
-		_, haveIdx := os.Stat(filepath.Join(o.Out, "m", name+".json"))
-		if state[name] == sig && haveIdx == nil {
+		// Übersprungen wird nur, wenn der Stand der Karte gleich ist UND der Index im Zielordner noch der
+		// ist, den wir damals geschrieben haben (ein zurückgesetzter Index muss neu entstehen).
+		cur := indexSum(o.Out, name)
+		if state[name] == sig+"|"+cur && cur != "" {
 			o.logf("%s: unverändert", name)
 			continue
 		}
 		if err := packMap(o, name); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
 		}
-		state[name] = sig
+		state[name] = sig + "|" + indexSum(o.Out, name)
 		saveState(o.State, state)
 	}
 	if err := packBuildables(o); err != nil {
 		return fmt.Errorf("buildables: %w", err)
 	}
 	return writeCatalog(o)
+}
+
+// indexSum: Prüfsumme des geschriebenen Karten-Index ("" = fehlt).
+func indexSum(out, name string) string {
+	b, err := os.ReadFile(filepath.Join(out, "m", name+".json"))
+	if err != nil {
+		return ""
+	}
+	return sha(b)
 }
 
 func saveState(path string, st map[string]string) {
