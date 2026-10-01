@@ -136,7 +136,7 @@ Die Oberfläche ist standardmäßig **englisch**. Über die Sprachauswahl oben r
 Panel lässt sie sich auf **Deutsch** umstellen; die Wahl merkt sich der Browser.
 Übersetzungen stehen in `viewer/js/i18n.js`.
 
-## Auf der eigenen Webseite nutzen
+## Auf der eigenen Webseite nutzen (mit Echtzeit-Daten)
 
 [`examples/website/`](examples/website/) ist eine kleine Webseite mit fertig eingebautem 3D-Viewer (`<iframe>`), dazu eine `config.example.json`, in die du **deine Server-Adresse und den API-Token** einträgst, ein nginx- und ein systemd-Beispiel und Kommentare dazu, wie der Viewer erkennt, dass er auf demselben Rechner wie der Dune-Docker-Stack läuft, und so die Echtzeit-Daten (Sandwürmer, NPCs, Stürme) aus dem Arbeitsspeicher liest (`"agentUrl"`: eigener Agent-Dienst oder `auto`).
 

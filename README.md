@@ -106,7 +106,7 @@ GOOS=windows GOARCH=amd64 go build -o ../bin/mapviewer-windows-amd64.exe ./cmd/m
 
 Rebuilding the maps after a game update (`backend/cmd/extract`) needs the game's pak files and Go with a C compiler (Oodle via cgo). See the German README for the full procedure.
 
-## 🌐 Use it on your own website
+## 🌐 Use it on your own website (with real-time data)
 
 [`examples/website/`](examples/website/) is a small website with the 3D viewer already built in (an `<iframe>`), plus a `config.example.json` where you enter **your server address and API token**, an nginx and systemd example, and comments on how the viewer notices that it runs on the same machine as the Dune Docker stack so it can read the real-time data (sandworms, NPCs, storms) from memory (`"agentUrl"`: separate agent service, or `auto`).
 

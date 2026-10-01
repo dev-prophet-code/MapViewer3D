@@ -20,6 +20,10 @@ NPCs, enemies and sandworms are **not in the database** (the tables hold spawner
 
 Start the agent with `-players` and the viewer moves the console's online players in real time (10 Hz, smooth) instead of every 5 s. The agent has no names: the viewer server matches each live player to a console player of the same partition by nearest distance (console positions are a few seconds old, so up to 300 m apart is accepted; each console player is used once) and re-matches every 3 s. Two players standing right next to each other can swap for a moment. Without `-players` nothing changes.
 
+## On your own website
+
+A complete example (site with the viewer built in, nginx, systemd, config with server address and token, and the `agentUrl` options `http://127.0.0.1:8796` or `auto`) is in [examples/website/](../examples/website/README.md).
+
 ## Quick start
 
 ```bash

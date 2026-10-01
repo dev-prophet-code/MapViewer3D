@@ -20,6 +20,10 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 
 - **Ein zweiter Start scheitert nicht mehr mit „address already in use“.** Läuft der Viewer schon (z. B. zweiter Doppelklick auf `start.command`), öffnet der neue Start den laufenden im Browser und beendet sich; belegt ein anderes Programm den Port, sagt die Meldung das und wie man einen anderen Port wählt.
 
+### Hinweise
+
+- Zur Erinnerung: Die Beispiel-Webseite für die eigene Seite (samt Anleitung, wie die Echtzeit-Daten darauf kommen) ist seit Beta.14 dabei: `examples/website/`, siehe [README](README.de.md#auf-der-eigenen-webseite-nutzen-mit-echtzeit-daten).
+
 ---
 
 ## Beta.14 – 01.10.2026

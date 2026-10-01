@@ -16,6 +16,10 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 - **Second start no longer fails with "address already in use".** If the viewer is already running (e.g. a second double-click on `start.command`), the new start now opens the running one in the browser and exits; if another program holds the port, the message says so and how to pick another port.
 
+### Notes
+
+- Reminder: the example website for your own site (including how to get the real-time data onto it) arrived in Beta.14: `examples/website/`, see [README](README.md#-use-it-on-your-own-website-with-real-time-data).
+
 ---
 
 ## Beta.14 – 10/01/2026

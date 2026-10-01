@@ -20,6 +20,10 @@ NPCs, Gegner und Sandwürmer stehen **nicht in der Datenbank** (dort liegen nur 
 
 Mit `-players` gestartet, bewegt der Viewer die Online-Spieler der Console in Echtzeit (10 Hz, flüssig) statt alle 5 s. Der Agent kennt keine Namen: Der Viewer-Server ordnet jeden Echtzeitspieler einem Console-Spieler derselben Partition nach kleinstem Abstand zu (Console-Positionen sind einige Sekunden alt, bis 300 m Abstand gelten; jeder Console-Spieler nur einmal) und ordnet alle 3 s neu zu. Zwei Spieler dicht beieinander können kurz vertauscht werden. Ohne `-players` ändert sich nichts.
 
+## Auf der eigenen Webseite
+
+Ein vollständiges Beispiel (Seite mit eingebautem Viewer, nginx, systemd, Konfiguration mit Server-Adresse und Token sowie den `agentUrl`-Optionen `http://127.0.0.1:8796` oder `auto`) liegt in [examples/website/](../examples/website/README.de.md).
+
 ## Schnellstart
 
 ```bash

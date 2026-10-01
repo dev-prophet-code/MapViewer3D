@@ -80,6 +80,10 @@ Browser  ⇄  local viewer server (127.0.0.1)  ⇄  your server's console (API)
   - map images,
   - players, bases and all other live data.
 
+## Use it on your own website (with real-time data)
+
+`examples/website/` is a ready example: a small website with the 3D viewer built in (`<iframe>`, map buttons via `postMessage`), a `config.example.json` where you enter **your server address and API token** (the token stays on the server, the browser never sees it), and nginx and systemd examples, all commented. It also shows how to get the **real-time data** (sandworms, NPCs, vehicles, storms, players) onto your site: they live only in the game processes' memory, so the position agent has to run **on the same machine (root) as the Dune Docker stack**. Either run `mvagent` as a separate service and enter its address as `agentUrl`, or set `"agentUrl": "auto"`: the viewer then recognises that it runs on the game host and starts the agent itself. See [examples/website/README.md](examples/website/README.md) and [docs/Agent-EN.md](docs/Agent-EN.md).
+
 ## Updates
 
 The viewer asks GitHub for a newer release shortly after start and then every 6 hours. If there is one, a box in the panel shows **Update available: Beta.N**. One click on **Update now** downloads the update package (`MapViewer3D-update-Beta.N.zip`, without map data), verifies its SHA-256 sum against the checksum file of the release, replaces the program, `viewer/`, docs and start scripts (the previous state is kept in `.update/backup-<version>/`) and restarts the viewer; the page reloads by itself. Your credentials and settings (user folder) and `data/` are not touched. Only a browser on the machine itself can start the installation (same rule as the setup screen).
