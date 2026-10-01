@@ -36,7 +36,7 @@ import (
 
 // Version steht in der Oberfläche und in CHANGELOG.md; beim Bauen per
 // -ldflags "-X mapviewer3d/server.Version=…" überschreibbar.
-var Version = "Beta.15"
+var Version = "Beta.16"
 
 // PatchQuads ist die Kantenlänge eines Geländestücks in Quads.
 const PatchQuads = 128
@@ -84,6 +84,9 @@ type Server struct {
 
 	agentMu sync.RWMutex
 	agent   *agentLink // Live-Positionen aus dem Agenten (agent.go); nil = aus
+	// liveKick weckt die Abfrage nach Echtzeitdaten (livediscovery.go) nach einer
+	// neuen Einrichtung der Console.
+	liveKick chan struct{}
 
 	liveMu     sync.RWMutex
 	liveProxy  *liveProxy    // nil, solange keine Zugangsdaten eingerichtet sind
@@ -130,12 +133,16 @@ func (s *Server) setLive(cfg *LiveConfig) {
 		return
 	}
 	s.liveProxy = newLiveProxy(cfg)
+	select {
+	case s.liveKick <- struct{}{}:
+	default:
+	}
 }
 
 // New erstellt den Server. Sind im Store Zugangsdaten gespeichert, wird die
 // Verbindung zur Console sofort hergestellt; sonst bleibt die Einrichtung offen.
 func New(dataDir, webDir, stateDir string, store *secure.Store) *Server {
-	s := &Server{dataDir: dataDir, mux: http.NewServeMux(), maps: map[string]*terrain{}, store: store, stateDir: stateDir}
+	s := &Server{dataDir: dataDir, mux: http.NewServeMux(), maps: map[string]*terrain{}, store: store, stateDir: stateDir, liveKick: make(chan struct{}, 1)}
 	if store == nil {
 		// feste Konfiguration (-config), siehe UseConfig
 	} else if c, err := store.Load(); err == nil {

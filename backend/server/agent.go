@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"mapviewer3d/agent"
+	"mapviewer3d/securelink"
 )
 
 type agentObj struct {
@@ -53,6 +54,10 @@ type agentEvent struct {
 type agentLink struct {
 	base string
 	stop context.CancelFunc
+	// client und label: normaler Agent = http.Client, gekoppeltes mvgate =
+	// securelink; label erscheint im Log (ohne Zugangsdaten).
+	client *http.Client
+	label  string
 
 	mu        sync.RWMutex
 	snap      agent.Snapshot
@@ -71,13 +76,27 @@ func (s *Server) UseAgent(base string) error {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("Agent-Adresse %q: erwartet http://host:port", base)
 	}
+	s.startAgent(u.String(), &http.Client{}, u.Redacted())
+	return nil
+}
+
+// UseAgentPairing verbindet den Server über securelink mit dem mvgate eines
+// Dune-Docker-Hosts (TLS 1.3, festgelegter Schlüssel, Token verlässt den Rechner nie).
+func (s *Server) UseAgentPairing(p securelink.Pairing) {
+	s.startAgent("https://mvgate", &http.Client{Transport: securelink.Transport(p)}, p.String())
+}
+
+func (s *Server) startAgent(base string, client *http.Client, label string) {
 	ctx, cancel := context.WithCancel(context.Background())
-	l := &agentLink{base: u.String(), objs: map[uint32]*agentObj{}, subs: map[chan agentEvent]struct{}{}, stop: cancel}
+	l := &agentLink{base: base, client: client, label: label, objs: map[uint32]*agentObj{}, subs: map[chan agentEvent]struct{}{}, stop: cancel}
 	s.agentMu.Lock()
+	old := s.agent
 	s.agent = l
 	s.agentMu.Unlock()
+	if old != nil {
+		old.stop()
+	}
 	go l.run(ctx)
-	return nil
 }
 
 // StopAgent trennt die Verbindung zum Agenten (Tests, Beenden).
@@ -104,7 +123,7 @@ func (l *agentLink) run(ctx context.Context) {
 		}
 		l.mu.Unlock()
 		if err != nil && backoff >= 30*time.Second {
-			log.Printf("Agent %s: %v", l.base, err)
+			log.Printf("Agent %s: %v", l.label, err)
 		}
 		select {
 		case <-ctx.Done():
@@ -131,7 +150,7 @@ func (l *agentLink) connect(parent context.Context) error {
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, l.base+"/stream", nil)
 	req.Header.Set("Accept", "text/event-stream")
-	resp, err := (&http.Client{}).Do(req)
+	resp, err := l.client.Do(req)
 	if err != nil {
 		return err
 	}

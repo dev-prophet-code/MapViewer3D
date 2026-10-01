@@ -31,6 +31,10 @@ type LiveConfig struct {
 	// zeigt Sandwürmer, Gegner und Fahrzeuge live.
 	AgentURL string `json:"agentUrl"`
 
+	// Kopplungscode (mvlive1:…) eines mvgate auf einem Dune-Docker-Host
+	// (Branch ddp): Echtzeitdaten über securelink. Wie ein Passwort behandeln.
+	AgentPairing string `json:"agentPairing"`
+
 	// Updates automatisch von GitHub installieren (wie -auto-update).
 	AutoUpdate bool `json:"autoUpdate"`
 
