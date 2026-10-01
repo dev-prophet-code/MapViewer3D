@@ -64,10 +64,16 @@ func main() {
 		fmt.Println("Dune MapViewer3D", server.Version)
 		return
 	}
-	for _, d := range []string{*data, *web} {
-		if _, err := os.Stat(d); err != nil {
-			fatalf("Ordner fehlt: %s (Pfade mit -data/-web angeben)", d)
-		}
+	if _, err := os.Stat(*web); err != nil {
+		fatalf("Ordner fehlt: %s (Pfad mit -web angeben)", *web)
+	}
+	if _, err := os.Stat(*data); err != nil {
+		fatalf("Der Ordner data/ mit den Karten fehlt: %s\n"+
+			"→ Das ist der Fall, wenn nur das Update-Paket (MapViewer3D-update-….zip) oder der Quelltext von GitHub entpackt wurde.\n"+
+			"  Bitte das vollständige Paket MapViewer3D-Beta.N.zip von https://github.com/%s/releases laden und entpacken\n"+
+			"  (oder den Ordner data/ aus diesem Paket hierher kopieren; mit -data kann ein anderer Pfad angegeben werden).\n"+
+			"The maps folder data/ is missing: unpack the full package MapViewer3D-Beta.N.zip from the Releases page (not the update package or the source code), or copy its data/ folder here.",
+			*data, updater.DefaultRepo)
 	}
 	if *state == "" {
 		dir, err := userStateDir()

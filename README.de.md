@@ -33,6 +33,8 @@ Go muss nicht installiert sein: Das Programm liegt für Windows, Linux und macOS
 Mindestens nötig: Windows 10, macOS 13 (Ventura), Linux-Kernel 3.2; die Startskripte
 prüfen das und melden zu alte Systeme.
 
+Nimm das vollständige Paket `MapViewer3D-Beta.N.zip` von der Releases-Seite. `MapViewer3D-update-….zip` ist nur für den eingebauten Updater (ohne Karten) und „Source code“ enthält kein `bin/` und kein `data/`; damit startet der Viewer nicht.
+
 | System | Start |
 |---|---|
 | Windows | Doppelklick auf `start.bat` |

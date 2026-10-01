@@ -39,7 +39,7 @@ Explore Hagga Basin and Deep Desert with players, bases, vehicles, hazards and r
 
 ## 🚀 Quick start
 
-1. Download the latest ZIP from the **[Releases](https://github.com/dev-prophet-code/MapViewer3D/releases)** page and unpack it.
+1. Download the latest full ZIP (`MapViewer3D-Beta.N.zip`) from the **[Releases](https://github.com/dev-prophet-code/MapViewer3D/releases)** page and unpack it. (Not `MapViewer3D-update-….zip` – that is only for the built-in updater and has no maps – and not "Source code".)
 2. Start it:
 
 | System | Start |

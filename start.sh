@@ -40,6 +40,8 @@ if [ "${1:-}" = "--build" ]; then
 fi
 [ -f "$bin" ] || fail "Programm fehlt: $bin – vollständiges Paket laden und entpacken oder mit Go bauen: sh start.sh --build"
 
+[ -d data ] || fail "Der Ordner data/ mit den Karten fehlt. Bitte das vollständige Paket MapViewer3D-Beta.N.zip von der Releases-Seite auf GitHub entpacken (nicht das Update-Paket und nicht den Quelltext) oder den Ordner data/ aus dem vollständigen Paket hierher kopieren."
+
 # Ausführrechte gehen beim Entpacken mit manchen Programmen verloren – auch
 # für die Skripte, damit start.command danach wieder per Doppelklick geht
 chmod +x "$bin" start.sh start.command 2>/dev/null || true
