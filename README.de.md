@@ -52,7 +52,11 @@ Port **8797/TCP** in der Firewall öffnen – am besten nur für die IPs, die ih
 
 ## 2. Koppeln (= freischalten)
 
-Solange der Server-Admin kein Gerät koppelt, kann niemand etwas lesen. Kopplungscode mit dem **öffentlichen** Namen oder der IP des Servers erzeugen:
+Solange der Server-Admin kein Gerät koppelt, kann niemand etwas lesen.
+
+**In der Dune-Docker-Console** (sobald die Einbindung aus [dune-docker-integration/](dune-docker-integration/README.md) Teil von Dune Docker ist): **Settings → MapViewer3D Live Data** → öffentliche Adresse eintragen → **Create Pairing Code**. Der Code wird einmal angezeigt; **Revoke All Pairings** macht alle Codes ungültig. Die Oberfläche ist, wie die ganze Console, auf Englisch.
+
+**Auf der Host-Shell** – Kopplungscode mit dem **öffentlichen** Namen oder der IP des Servers erzeugen:
 
 ```bash
 docker compose -f docker-compose.mapviewer-live.yml exec mvgate mvgate -pair dune.example.org

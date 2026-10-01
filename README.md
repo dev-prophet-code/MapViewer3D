@@ -52,7 +52,11 @@ Open port **8797/TCP** in the firewall – ideally only for the IPs that need it
 
 ## 2. Pair (= unlock)
 
-Nothing can be read until the server admin pairs a client. Create the pairing code with the **public** name or IP of the server:
+Nothing can be read until the server admin pairs a client.
+
+**In the Dune Docker Console** (once the integration in [dune-docker-integration/](dune-docker-integration/README.md) is part of Dune Docker): **Settings → MapViewer3D Live Data** → enter the public address → **Create Pairing Code**. The code is shown once; **Revoke All Pairings** invalidates every code.
+
+**On the host shell** – create the pairing code with the **public** name or IP of the server:
 
 ```bash
 docker compose -f docker-compose.mapviewer-live.yml exec mvgate mvgate -pair dune.example.org

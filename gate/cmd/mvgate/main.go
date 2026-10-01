@@ -5,6 +5,7 @@
 //
 //	mvgate                       serve
 //	mvgate -pair host[:port]     print the pairing code for MapViewer3D
+//	mvgate -pin                  print the key fingerprint (no secret) and exit
 //	mvgate -rotate-token         new token (old pairing codes stop working after a restart)
 //	mvgate -healthcheck          container health check
 package main
@@ -43,6 +44,7 @@ type config struct {
 
 func main() {
 	pair := flag.String("pair", "", "print the pairing code for this public host[:port] and exit")
+	pinOnly := flag.Bool("pin", false, "print the key fingerprint (sha256/…, not secret) and exit")
 	rotate := flag.Bool("rotate-token", false, "create a new token and exit (restart mvgate afterwards)")
 	health := flag.Bool("healthcheck", false, "check the local gate and exit")
 	flag.Parse()
@@ -69,6 +71,10 @@ func main() {
 	id, err := securelink.LoadOrCreateIdentity(cfg.State)
 	if err != nil {
 		log.Fatal(err)
+	}
+	if *pinOnly {
+		fmt.Println(securelink.Pin(id.Leaf))
+		return
 	}
 	if cfg.Token == "" {
 		if cfg.Token, err = securelink.LoadOrCreateToken(filepath.Join(cfg.State, "token")); err != nil {

@@ -58,14 +58,14 @@ mvlive1:<base64url({"v":1,"a":"host:port","p":"sha256/…","t":"<token>"})>
 
 It carries the address, the pin and the token. Whoever creates it must be the server admin (shell on the host, or the admin console if Dune Docker integrates this). It must reach the user over a trusted channel, never over plain HTTP.
 
-### Integration into Dune Docker (proposal)
+### Integration into Dune Docker
 
-If Dune Docker takes this over, the console would "unlock" the feature like this; nothing in the protocol changes:
+Implemented as a ready-to-merge patch in [dune-docker-integration/](dune-docker-integration/README.md) (Settings → **MapViewer3D Live Data**); nothing in the protocol changes:
 
 1. **Capability.** The console knows whether the `mapviewer-live` stack runs (container `mvgate` healthy) and shows a *Live data (MapViewer3D)* card in its admin UI. For API keys it answers
    `GET /api/mapviewer-live/status` → `200 application/json {"available":true,"version":1}`; without the feature the route does not exist (404). Nothing is announced to unauthenticated clients, and this answer never contains the token, the address or the pin.
-2. **Pair.** An admin with the matching console permission clicks *Create pairing code*; the console runs `mvgate -pair <public host>` in the container and shows the code **once** (copy button, no storage in the browser, audit log entry). The console is served over HTTPS for this or used on the LAN/through a tunnel – a pairing code shown over plain HTTP is only as safe as that connection.
-3. **Revoke.** *Revoke all pairings* runs `mvgate -rotate-token` and restarts `mvgate`; every old code stops working.
+2. **Pair.** An admin (`settings:write`, which API keys can never hold) clicks *Create Pairing Code*; the console runs `mvgate -pair <public address>` in the container and shows the code **once** (copy button, no storage, `cache-control: no-store`; the audit row records only address and fingerprint). Over plain HTTP the console warns first – a pairing code shown over plain HTTP is only as safe as that connection; use HTTPS, the LAN or a tunnel.
+3. **Revoke.** *Revoke All Pairings* runs `mvgate -rotate-token` and restarts `mvgate`; every old code stops working.
 4. Optional later: one token per paired device (named, revocable individually), stored in the gate volume.
 
 The console never needs the token for anything else, and the viewer never needs a console session for the live data.
