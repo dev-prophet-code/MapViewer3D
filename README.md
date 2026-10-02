@@ -67,6 +67,8 @@ Open port **8797/TCP** (ideally only for your own IP: `MV_TLS_ALLOW`). On the fi
 - **`MV_TLS_FULL=true`** also forwards the Console web UI and login, so you can open the whole Console encrypted (needed for the Console addon over HTTPS). That exposes the admin login on this port – only with `MV_TLS_ALLOW`, and think twice if your Console is deliberately not public.
 - A Console that is already behind your own reverse proxy with a real certificate (Caddy/nginx + Let's Encrypt) needs no `mvtls`.
 
+**Native in Dune Docker (patch 2 in [dune-docker-integration/](dune-docker-integration/README.md)):** the Dune Docker installer then starts this front door itself and prints the address and the **key fingerprint** below the first admin password; the same value is shown in **Settings → Encrypted API Access** (with an on/off switch) and by `dune encrypted-api fingerprint`. Without that patch, run the container of this stack as described above.
+
 **The viewer finds it by itself.** When MapViewer3D (Beta.16+) is connected to a Console over plain HTTP, it asks port 8797 of the same host (a TLS handshake without sending any token, plus `GET /mvtls`). If `mvtls` answers, the viewer shows its **fingerprint** and asks you to compare it with the output of `mvtls -pin` on the server. **That comparison is what keeps a man in the middle out**, so it is a deliberate click, not automatic. After you confirm, the viewer pins the key, sends the token only over the encrypted connection, and from then on uses it for all Console traffic (maps, bases, icons, Realtime Data). If you already know the fingerprint (`-api-pin`), it switches without asking.
 
 ## 2. Grant "Realtime Data" to an API key

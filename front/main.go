@@ -115,7 +115,7 @@ func main() {
 		mode = "FULL CONSOLE (web UI and login are exposed on this port too)"
 	}
 	log.Printf("mvtls: https://%s -> %s; mode: %s; allow list: %d entries", cfg.Addr, cfg.Upstream, mode, len(cfg.Allow))
-	log.Printf("mvtls: key fingerprint %s – compare it in MapViewer3D before you accept it (docker compose … exec mvtls mvtls -pin)", pinOf(id.Leaf))
+	log.Printf("mvtls: key fingerprint %s – compare it with the one a client shows before you confirm it (show it again: mvtls -pin; on Dune Docker: dune encrypted-api fingerprint)", pinOf(id.Leaf))
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) && ctx.Err() == nil {
 		log.Fatal(err)
 	}

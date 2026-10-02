@@ -1,0 +1,2135 @@
+From 91b6c808a0a3a92d1581d447bb5cb99979a52a44 Mon Sep 17 00:00:00 2001
+From: Stefan Schaefer <stefanschaefer@BlackGuard.fritz.box>
+Date: Fri, 2 Oct 2026 12:31:32 +0200
+Subject: [PATCH] Encrypted API access: optional HTTPS front door for the
+ Console API, fingerprint in the installer and in Settings
+
+A small container (runtime/tls-front, docker-compose.tls-front.yml) serves the
+Console API over HTTPS with its own long-lived ECDSA key in front of the
+unchanged Console, for tools that use API keys (for example MapViewer3D).
+Clients pin the key; nothing else changes for anybody.
+
+- API door by default: GET/HEAD /api/* and /images/maps/* only, Bearer dak_ key
+  required, no cookies, no web UI, auth/settings/setup/discord routes blocked;
+  rejected keys counted per client address (the Console only sees 127.0.0.1)
+- installer: starts it on a new install (DUNE_ENCRYPTED_API=0 skips) and prints
+  the address and the KEY FINGERPRINT next to the first admin password; the
+  choice in runtime/generated/tls-front.env survives re-running the installer
+- Settings -> Encrypted API Access: status, switch, address, key fingerprint with
+  Copy (GET/POST /api/settings/encrypted-api, settings:read/write); the Console
+  reads only the certificate, never the private key
+- dune encrypted-api enable|disable|status|fingerprint (runtime/scripts/tls-front.sh)
+- tests: encryptedApi.test.js (12, real certificate, pin checked with openssl),
+  tls-front-script-test.sh (docker mock), EncryptedApiSection.test.tsx (4),
+  Go tests of the front door; CI builds the image
+- docs/console/encrypted-api.md, README port table, docs index
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ .github/workflows/ci.yml                      |   4 +
+ README.md                                     |   1 +
+ console/api/src/actions.js                    |   4 +
+ console/api/src/server.js                     |  22 +
+ console/api/src/services/encryptedApi.js      | 134 +++++
+ console/api/test/encryptedApi.test.js         | 137 +++++
+ console/api/test/fixtures/tls-front-cert.pem  |  11 +
+ console/web/src/api/encryptedApi.ts           |  18 +
+ .../settings/EncryptedApiSection.test.tsx     |  62 ++
+ .../features/settings/EncryptedApiSection.tsx | 122 ++++
+ .../src/features/settings/SettingsPanel.tsx   |   6 +
+ console/web/src/styles.css                    |   5 +
+ docker-compose.tls-front.yml                  |  38 ++
+ docs/README.md                                |   1 +
+ docs/console/encrypted-api.md                 |  87 +++
+ install.sh                                    |  48 ++
+ runtime/scripts/dune                          |   6 +
+ runtime/scripts/tls-front.sh                  | 171 ++++++
+ runtime/tls-front/Dockerfile                  |  17 +
+ runtime/tls-front/go.mod                      |   3 +
+ runtime/tls-front/main.go                     | 528 ++++++++++++++++++
+ runtime/tls-front/main_test.go                | 310 ++++++++++
+ tests/tls-front-script-test.sh                |  89 +++
+ 23 files changed, 1824 insertions(+)
+ create mode 100644 console/api/src/services/encryptedApi.js
+ create mode 100644 console/api/test/encryptedApi.test.js
+ create mode 100644 console/api/test/fixtures/tls-front-cert.pem
+ create mode 100644 console/web/src/api/encryptedApi.ts
+ create mode 100644 console/web/src/features/settings/EncryptedApiSection.test.tsx
+ create mode 100644 console/web/src/features/settings/EncryptedApiSection.tsx
+ create mode 100644 docker-compose.tls-front.yml
+ create mode 100644 docs/console/encrypted-api.md
+ create mode 100755 runtime/scripts/tls-front.sh
+ create mode 100644 runtime/tls-front/Dockerfile
+ create mode 100644 runtime/tls-front/go.mod
+ create mode 100644 runtime/tls-front/main.go
+ create mode 100644 runtime/tls-front/main_test.go
+ create mode 100755 tests/tls-front-script-test.sh
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index d488616..121b5e8 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -108,6 +108,8 @@ jobs:
+           python3 -c 'from cryptography.hazmat.primitives.ciphers.aead import AESGCM'
+       - name: Test readiness with configured service ports
+         run: bash tests/ready-configured-ports-test.sh
++      - name: Test the encrypted API access script
++        run: bash tests/tls-front-script-test.sh
+       - name: Test stable farm readiness gating
+         run: bash tests/farm-readiness-test.sh
+       - name: Test database updater role restoration
+@@ -234,6 +236,8 @@ jobs:
+       # 2.2.40 while db.sh required 2.3 for --aead-algo: every check was green.
+       - name: Build the console image
+         run: docker build -f console/api/Dockerfile -t dune-console:ci .
++      - name: Build the encrypted front door image (go vet and its tests run in the build)
++        run: docker build -t dune-tls-front:ci runtime/tls-front
+       - name: Check the runtime it actually ships
+         run: |
+           set -euo pipefail
+diff --git a/README.md b/README.md
+index 9f11e71..5bea948 100644
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,7 @@ For public/internet hosting, forward these ports:
+ | `31983` | TCP | RabbitMQ Game HTTP Endpoint |
+ | `7777-7810` | UDP | Game Traffic |
+ | `32000-32015` | UDP | Optional direct public-directory latency probes; relay remains available when closed |
++| `8797` | TCP | Optional encrypted API access (HTTPS) for tools such as MapViewer3D; see [Encrypted API access](docs/console/encrypted-api.md) |
+ 
+ Keep database and internal admin ports private. Do not expose the Web UI to untrusted users.
+ 
+diff --git a/console/api/src/actions.js b/console/api/src/actions.js
+index b9bb90d..f9a5286 100644
+--- a/console/api/src/actions.js
++++ b/console/api/src/actions.js
+@@ -177,6 +177,10 @@ export const ROUTE_ACTIONS = {
+   // storms from the optional MapViewer3D position agent. Read-only, its own
+   // namespace so an API key gets it only when "Realtime Data" is granted;
+   // player positions additionally need players:read.
++  // Encrypted API access (services/encryptedApi.js): the optional HTTPS front door. Shows its state and
++  // key fingerprint and turns it on or off. Settings, so never reachable with an API key.
++  "GET /api/settings/encrypted-api":           "settings:read",
++  "POST /api/settings/encrypted-api":          "settings:write",
+   "GET /api/realtime/healthz":                 "realtime:read",
+   "GET /api/realtime/objects":                 "realtime:read",
+   "GET /api/realtime/stream":                  "realtime:read",
+diff --git a/console/api/src/server.js b/console/api/src/server.js
+index b854d5e..bbc0965 100644
+--- a/console/api/src/server.js
++++ b/console/api/src/server.js
+@@ -41,6 +41,7 @@ import { createTarHeader, tarArchiveLength, tarPadding, TAR_TRAILER_BYTES, creat
+ import { createMemoryBalancer } from "./services/memoryBalancer.js";
+ import { collectContainerHealth } from "./services/containerHealth.js";
+ import { createRealtime, RealtimeError } from "./services/realtime.js";
++import { createEncryptedApi, EncryptedApiError } from "./services/encryptedApi.js";
+ import { parseMemorySwapStatus } from "./services/memorySwap.js";
+ import { createDeathPoller } from "./deathPoller.js";
+ import { updateEnvFileValue as updateEnvValue } from "./services/envFile.js";
+@@ -169,6 +170,7 @@ function shouldNoteApiKeyAuthThrottle(failureKey, at = Date.now()) {
+ }
+ const apiKeys = createApiKeyStore({ file: config.apiKeysFile });
+ const realtime = createRealtime();
++const encryptedApi = createEncryptedApi({ repoRoot: config.repoRoot });
+ // Proof that a restore was previewed, for the apply that follows it. In memory
+ // beside the sessions it is keyed by -- see the module header for why it is not
+ // persisted.
+@@ -958,6 +960,8 @@ async function handleApi(req, res) {
+     return json(res, 200, { keys: apiKeys.list() });
+   }
+   if (path === "/api/settings/api-keys" && req.method === "POST") return apiKeyCreateRoute(req, res);
++  if (path === "/api/settings/encrypted-api" && req.method === "GET") return encryptedApiRoute(res, () => encryptedApi.status());
++  if (path === "/api/settings/encrypted-api" && req.method === "POST") return encryptedApiToggleRoute(req, res);
+   if (path === "/api/realtime/healthz" && req.method === "GET") return realtimeRoute(res, () => realtime.health());
+   if (path === "/api/realtime/objects" && req.method === "GET") return realtimeRoute(res, () => realtime.objects({ allowPlayers: principalMay(req, "players:read") }));
+   if (path === "/api/realtime/stream" && req.method === "GET") return realtimeStreamRoute(req, res);
+@@ -2726,6 +2730,24 @@ function principalMay(req, action) {
+   return !req.authApiKey || apiKeys.allows(req.authApiKey, action);
+ }
+ 
++async function encryptedApiRoute(res, action) {
++  try {
++    return json(res, 200, await action(), { "cache-control": "no-store" });
++  } catch (error) {
++    if (error instanceof EncryptedApiError) return json(res, error.status, { error: error.message });
++    throw error;
++  }
++}
++
++async function encryptedApiToggleRoute(req, res) {
++  const body = await readJson(req);
++  return encryptedApiRoute(res, async () => {
++    const status = await encryptedApi.setEnabled(body?.enabled);
++    audit(config, req, body.enabled ? "settings.encrypted-api-enable" : "settings.encrypted-api-disable", { port: status.port });
++    return status;
++  });
++}
++
+ async function realtimeRoute(res, action) {
+   try {
+     return json(res, 200, await action(), { "cache-control": "no-store" });
+diff --git a/console/api/src/services/encryptedApi.js b/console/api/src/services/encryptedApi.js
+new file mode 100644
+index 0000000..e7a1895
+--- /dev/null
++++ b/console/api/src/services/encryptedApi.js
+@@ -0,0 +1,134 @@
++// Encrypted API access: the optional front door (runtime/tls-front, docker-compose.tls-front.yml)
++// that serves the Console API over HTTPS with its own long-lived key, so tools such as
++// MapViewer3D can reach the Console without sending the API key in clear text. The front door
++// forwards only `GET /api/*` with an API key to the unchanged Console (no web UI, no cookies).
++//
++// This service shows its state and fingerprint in Settings and turns it on and off. Clients pin
++// the fingerprint of the KEY (SHA-256 of the certificate's public key, "sha256/<base64url>"); the
++// admin compares it with what the client shows. The Console only reads the certificate (public);
++// the private key stays in runtime/generated/tls-front and is never read here.
++import { execFile } from "node:child_process";
++import { X509Certificate, createHash } from "node:crypto";
++import { existsSync, readFileSync } from "node:fs";
++import { resolve } from "node:path";
++
++export const TLS_FRONT_CONTAINER = "dune-tls-front";
++export const TLS_FRONT_DEFAULT_PORT = 8797;
++const CERT_PATH = ["runtime", "generated", "tls-front", "front-cert.pem"];
++const ENV_PATH = ["runtime", "generated", "tls-front.env"];
++const SCRIPT_PATH = ["runtime", "scripts", "tls-front.sh"];
++const COMPOSE_FILE = "docker-compose.tls-front.yml";
++const ENABLE_TIMEOUT_MS = 10 * 60 * 1000; // the first start builds the image
++
++export class EncryptedApiError extends Error {
++  constructor(message, status = 409) {
++    super(message);
++    this.name = "EncryptedApiError";
++    this.status = status;
++  }
++}
++
++// "sha256/" + base64url(SHA-256(SubjectPublicKeyInfo)), the same value the front door and its
++// clients compute.
++export function fingerprintOfCertificate(pem) {
++  const spki = new X509Certificate(pem).publicKey.export({ type: "spki", format: "der" });
++  return `sha256/${createHash("sha256").update(spki).digest("base64url")}`;
++}
++
++export function parseTlsFrontEnv(text) {
++  const out = {};
++  for (const line of String(text || "").split(/\r?\n/)) {
++    const match = /^(DUNE_TLS_FRONT_[A-Z_]+)=(.*)$/.exec(line.trim());
++    if (match) out[match[1]] = match[2].trim();
++  }
++  const port = Number(out.DUNE_TLS_FRONT_PORT);
++  return {
++    enabled: out.DUNE_TLS_FRONT_ENABLED === "true",
++    port: Number.isInteger(port) && port >= 1 && port <= 65535 ? port : TLS_FRONT_DEFAULT_PORT
++  };
++}
++
++export function createEncryptedApi({ repoRoot, run = execFileOutput, exists = existsSync, read = readFileSync } = {}) {
++  let busy = false;
++
++  function settings() {
++    const path = resolve(repoRoot, ...ENV_PATH);
++    try {
++      return parseTlsFrontEnv(read(path, "utf8"));
++    } catch {
++      return { enabled: false, port: TLS_FRONT_DEFAULT_PORT };
++    }
++  }
++
++  function fingerprint() {
++    try {
++      return fingerprintOfCertificate(read(resolve(repoRoot, ...CERT_PATH), "utf8"));
++    } catch {
++      return "";
++    }
++  }
++
++  async function container() {
++    try {
++      const out = await run("docker", ["inspect", "--format", "{{.State.Status}}\t{{if .State.Health}}{{.State.Health.Status}}{{end}}", TLS_FRONT_CONTAINER], { timeout: 10_000 });
++      const [state, health] = String(out).trim().split("\t");
++      return { exists: true, state: (state || "").toLowerCase(), health: (health || "").toLowerCase() };
++    } catch {
++      return { exists: false, state: "", health: "" };
++    }
++  }
++
++  return {
++    // Settings section. Contains no secret: the fingerprint is public by design.
++    async status() {
++      const available = exists(resolve(repoRoot, COMPOSE_FILE)) && exists(resolve(repoRoot, ...SCRIPT_PATH));
++      const { enabled, port } = settings();
++      if (!available) return { available: false, enabled: false, running: false, state: "", health: "", port, fingerprint: "" };
++      const c = await container();
++      return {
++        available: true,
++        enabled,
++        running: c.exists && c.state === "running",
++        state: c.state,
++        health: c.health,
++        port,
++        fingerprint: fingerprint()
++      };
++    },
++
++    // Turns the front door on (builds and starts it) or off. Serialized: a second call while the
++    // first one builds is refused instead of queued.
++    async setEnabled(enabled) {
++      if (typeof enabled !== "boolean") throw new EncryptedApiError("Send { \"enabled\": true } or { \"enabled\": false }.", 400);
++      if (!exists(resolve(repoRoot, COMPOSE_FILE)) || !exists(resolve(repoRoot, ...SCRIPT_PATH))) {
++        throw new EncryptedApiError("This installation does not include the encrypted API access.", 404);
++      }
++      if (busy) throw new EncryptedApiError("The encrypted API access is being changed. Try again in a moment.", 409);
++      busy = true;
++      try {
++        await run(resolve(repoRoot, ...SCRIPT_PATH), [enabled ? "enable" : "disable"], {
++          cwd: repoRoot,
++          encoding: "utf8",
++          timeout: ENABLE_TIMEOUT_MS,
++          stdio: ["ignore", "pipe", "pipe"]
++        });
++      } catch {
++        throw new EncryptedApiError(enabled
++          ? "The encrypted API access could not be started. Check the Docker build output with: dune encrypted-api enable"
++          : "The encrypted API access could not be stopped.", 502);
++      } finally {
++        busy = false;
++      }
++      return this.status();
++    }
++  };
++}
++
++function execFileOutput(file, args, options = {}) {
++  return new Promise((resolvePromise, rejectPromise) => {
++    execFile(file, args, { maxBuffer: 4 * 1024 * 1024, shell: false, ...options }, (error, stdout) => {
++      if (error) rejectPromise(error);
++      else resolvePromise(stdout || "");
++    });
++  });
++}
+diff --git a/console/api/test/encryptedApi.test.js b/console/api/test/encryptedApi.test.js
+new file mode 100644
+index 0000000..47aab02
+--- /dev/null
++++ b/console/api/test/encryptedApi.test.js
+@@ -0,0 +1,137 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join, resolve } from "node:path";
++import { createEncryptedApi, EncryptedApiError, fingerprintOfCertificate, parseTlsFrontEnv } from "../src/services/encryptedApi.js";
++import { actionForRoute } from "../src/actions.js";
++
++// The certificate and the pin below were produced by the front door itself (dune-tls-front -pin) and
++// checked with openssl: openssl x509 -pubkey | openssl pkey -pubin -outform der | sha256 | base64url.
++const CERT = readFileSync(new URL("./fixtures/tls-front-cert.pem", import.meta.url), "utf8");
++const PIN = "sha256/gY-8xrfZUMTXC8eigcmXP1JbNuz-z7dulO6y2P4GgUg";
++
++function installation({ cert = true, env = "", compose = true, script = true } = {}) {
++  const root = mkdtempSync(join(tmpdir(), "tlsfront-"));
++  mkdirSync(join(root, "runtime", "scripts"), { recursive: true });
++  mkdirSync(join(root, "runtime", "generated", "tls-front"), { recursive: true });
++  if (compose) writeFileSync(join(root, "docker-compose.tls-front.yml"), "name: x\n");
++  if (script) writeFileSync(join(root, "runtime", "scripts", "tls-front.sh"), "#!/bin/sh\n");
++  if (cert) writeFileSync(join(root, "runtime", "generated", "tls-front", "front-cert.pem"), CERT);
++  if (env) writeFileSync(join(root, "runtime", "generated", "tls-front.env"), env);
++  return root;
++}
++
++const dockerRunning = (state = "running", health = "healthy") => async (file, args) => {
++  if (file === "docker" && args[0] === "inspect") return `${state}\t${health}\n`;
++  throw new Error(`unexpected ${file} ${args.join(" ")}`);
++};
++
++test("the fingerprint is the SHA-256 of the certificate's public key, as the front door computes it", () => {
++  assert.equal(fingerprintOfCertificate(CERT), PIN);
++});
++
++test("env file parsing falls back to safe defaults", () => {
++  assert.deepEqual(parseTlsFrontEnv("DUNE_TLS_FRONT_ENABLED=true\nDUNE_TLS_FRONT_PORT=9443\n"), { enabled: true, port: 9443 });
++  assert.deepEqual(parseTlsFrontEnv("DUNE_TLS_FRONT_ENABLED=false\nDUNE_TLS_FRONT_PORT=70000\n"), { enabled: false, port: 8797 });
++  assert.deepEqual(parseTlsFrontEnv("garbage; rm -rf /\n"), { enabled: false, port: 8797 });
++  assert.deepEqual(parseTlsFrontEnv(""), { enabled: false, port: 8797 });
++});
++
++test("status shows state, port and fingerprint when the front door runs", async () => {
++  const root = installation({ env: "DUNE_TLS_FRONT_ENABLED=true\nDUNE_TLS_FRONT_PORT=8797\n" });
++  const status = await createEncryptedApi({ repoRoot: root, run: dockerRunning() }).status();
++  assert.deepEqual(status, { available: true, enabled: true, running: true, state: "running", health: "healthy", port: 8797, fingerprint: PIN });
++});
++
++test("the fingerprint is still shown while the container is stopped (the key stays)", async () => {
++  const root = installation({ env: "DUNE_TLS_FRONT_ENABLED=false\n" });
++  const run = async () => { throw new Error("No such container"); };
++  const status = await createEncryptedApi({ repoRoot: root, run }).status();
++  assert.equal(status.enabled, false);
++  assert.equal(status.running, false);
++  assert.equal(status.fingerprint, PIN);
++});
++
++test("no certificate yet means an empty fingerprint, not an error", async () => {
++  const root = installation({ cert: false });
++  const status = await createEncryptedApi({ repoRoot: root, run: dockerRunning() }).status();
++  assert.equal(status.fingerprint, "");
++});
++
++test("a broken certificate file does not break the page", async () => {
++  const root = installation({ cert: false });
++  writeFileSync(join(root, "runtime", "generated", "tls-front", "front-cert.pem"), "not a certificate");
++  assert.equal((await createEncryptedApi({ repoRoot: root, run: dockerRunning() }).status()).fingerprint, "");
++});
++
++test("an installation without the feature reports it as not available", async () => {
++  const root = installation({ compose: false, script: false });
++  const status = await createEncryptedApi({ repoRoot: root, run: dockerRunning() }).status();
++  assert.equal(status.available, false);
++  assert.equal(status.fingerprint, "");
++  await assert.rejects(createEncryptedApi({ repoRoot: root }).setEnabled(true), { status: 404 });
++});
++
++test("the status never contains anything secret: the private key is never read", async () => {
++  const root = installation({});
++  writeFileSync(join(root, "runtime", "generated", "tls-front", "front-key.pem"), "-----BEGIN EC PRIVATE KEY-----\nSECRET\n");
++  const reads = [];
++  const read = (path, enc) => { reads.push(String(path)); return readFileSync(path, enc); };
++  const status = await createEncryptedApi({ repoRoot: root, run: dockerRunning(), read }).status();
++  assert.ok(!JSON.stringify(status).includes("SECRET"));
++  assert.ok(reads.every((path) => !path.endsWith("front-key.pem")), "front-key.pem must not be read");
++});
++
++test("enable and disable run the script with a fixed argument and return the new status", async () => {
++  const root = installation({});
++  const calls = [];
++  const run = async (file, args, options) => {
++    calls.push([file, args, options?.cwd]);
++    if (file === "docker") return "running\thealthy\n";
++    return "";
++  };
++  const api = createEncryptedApi({ repoRoot: root, run });
++  const status = await api.setEnabled(true);
++  const script = resolve(root, "runtime", "scripts", "tls-front.sh");
++  assert.deepEqual(calls[0], [script, ["enable"], root]);
++  assert.equal(status.fingerprint, PIN);
++  await api.setEnabled(false);
++  assert.deepEqual(calls.find((call) => call[1][0] === "disable"), [script, ["disable"], root]);
++});
++
++test("only a real boolean switches it; nothing else reaches the script", async () => {
++  const root = installation({});
++  let ran = false;
++  const api = createEncryptedApi({ repoRoot: root, run: async () => { ran = true; return ""; } });
++  for (const bad of ["true", 1, null, undefined, { enabled: true }, "enable; rm -rf /"]) {
++    await assert.rejects(api.setEnabled(bad), (error) => error instanceof EncryptedApiError && error.status === 400, String(bad));
++  }
++  assert.equal(ran, false);
++});
++
++test("a second change while the first one builds is refused, and a failure frees the lock", async () => {
++  const root = installation({});
++  let release;
++  const gate = new Promise((resolvePromise) => { release = resolvePromise; });
++  let fail = false;
++  const run = async (file) => {
++    if (file === "docker") return "running\thealthy\n";
++    await gate;
++    if (fail) throw new Error("build failed");
++    return "";
++  };
++  const api = createEncryptedApi({ repoRoot: root, run });
++  const first = api.setEnabled(true);
++  await assert.rejects(api.setEnabled(false), { status: 409 });
++  fail = true;
++  release();
++  await assert.rejects(first, { status: 502 });
++  fail = false;
++  await assert.doesNotReject(api.setEnabled(true));
++});
++
++test("routes: reading is settings:read, switching is settings:write (never reachable with an API key)", () => {
++  assert.equal(actionForRoute("/api/settings/encrypted-api", "GET"), "settings:read");
++  assert.equal(actionForRoute("/api/settings/encrypted-api", "POST"), "settings:write");
++});
+diff --git a/console/api/test/fixtures/tls-front-cert.pem b/console/api/test/fixtures/tls-front-cert.pem
+new file mode 100644
+index 0000000..9af0789
+--- /dev/null
++++ b/console/api/test/fixtures/tls-front-cert.pem
+@@ -0,0 +1,11 @@
++-----BEGIN CERTIFICATE-----
++MIIBfzCCASWgAwIBAgIQeqXOfa0zLBV6TLnipo7hETAKBggqhkjOPQQDAjAmMSQw
++IgYDVQQDExtNYXBWaWV3ZXIzRCBlbmNyeXB0ZWQgZnJvbnQwHhcNMjYxMDAyMDky
++NzQxWhcNNDYxMDAyMTAyNzQxWjAmMSQwIgYDVQQDExtNYXBWaWV3ZXIzRCBlbmNy
++eXB0ZWQgZnJvbnQwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAARnODAiG/8iKa8G
++r8S6k74vCqiA9sQr6GP9wTW0hpYNx388l7uxXZVh9a85yclzL2EKmPpITNgPjJW0
++aUM2b4fTozUwMzAOBgNVHQ8BAf8EBAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwEw
++DAYDVR0TAQH/BAIwADAKBggqhkjOPQQDAgNIADBFAiBSAWFi0hnPKWdLYDgjBd6U
++elwQrLnJ4Pq2RV6ULDfHHQIhALInZW+rvxJfBikGocI0NvAkIXx55Zxub8Ia7okx
++6YHv
++-----END CERTIFICATE-----
+diff --git a/console/web/src/api/encryptedApi.ts b/console/web/src/api/encryptedApi.ts
+new file mode 100644
+index 0000000..f9ae2c4
+--- /dev/null
++++ b/console/web/src/api/encryptedApi.ts
+@@ -0,0 +1,18 @@
++import { api, post } from "./client";
++
++// Encrypted API access (console/api/src/services/encryptedApi.js). The fingerprint is public
++// by design: it is what clients compare before they pin the key.
++export type EncryptedApiStatus = {
++  available: boolean;
++  enabled: boolean;
++  running: boolean;
++  state: string;
++  health: string;
++  port: number;
++  fingerprint: string;
++};
++
++export const encryptedApiApi = {
++  status: () => api<EncryptedApiStatus>("/api/settings/encrypted-api", { cache: "no-store" }),
++  setEnabled: (enabled: boolean) => post<EncryptedApiStatus>("/api/settings/encrypted-api", { enabled })
++};
+diff --git a/console/web/src/features/settings/EncryptedApiSection.test.tsx b/console/web/src/features/settings/EncryptedApiSection.test.tsx
+new file mode 100644
+index 0000000..e9eb92c
+--- /dev/null
++++ b/console/web/src/features/settings/EncryptedApiSection.test.tsx
+@@ -0,0 +1,62 @@
++import { fireEvent, render, screen, waitFor } from "@testing-library/react";
++import { beforeEach, expect, test, vi } from "vitest";
++import { EncryptedApiSection } from "./EncryptedApiSection";
++
++vi.mock("../../api/client", () => ({ api: vi.fn(), post: vi.fn() }));
++vi.mock("../../lib/clipboard", () => ({ copyText: vi.fn().mockResolvedValue(undefined) }));
++
++import { api, post } from "../../api/client";
++import { copyText } from "../../lib/clipboard";
++
++const mockedApi = vi.mocked(api);
++const mockedPost = vi.mocked(post);
++const PIN = `sha256/${"B".repeat(43)}`;
++
++function status(over: Record<string, unknown> = {}) {
++  return { available: true, enabled: true, running: true, state: "running", health: "healthy", port: 8797, fingerprint: PIN, ...over };
++}
++
++beforeEach(() => {
++  vi.clearAllMocks();
++  mockedApi.mockResolvedValue(status());
++});
++
++test("shows status, address and the key fingerprint, and copies it", async () => {
++  render(<EncryptedApiSection />);
++  expect(await screen.findByText("Running")).toBeVisible();
++  expect(screen.getByLabelText(/key fingerprint of the encrypted api access/i)).toHaveValue(PIN);
++  expect(screen.getByText(`https://${window.location.hostname}:8797`)).toBeVisible();
++  expect(screen.getByRole("checkbox", { name: /encrypted api access/i })).toBeChecked();
++  fireEvent.click(screen.getByRole("button", { name: /copy/i }));
++  await waitFor(() => expect(copyText).toHaveBeenCalledWith(PIN));
++  expect(await screen.findByRole("button", { name: /copied/i })).toBeVisible();
++});
++
++test("an installation without the feature says so and offers no switch", async () => {
++  mockedApi.mockResolvedValue(status({ available: false, enabled: false, running: false, fingerprint: "" }));
++  render(<EncryptedApiSection />);
++  expect(await screen.findByText("Not Available")).toBeVisible();
++  expect(screen.getByText(/does not include the encrypted API access/i)).toBeVisible();
++  expect(screen.queryByRole("checkbox")).toBeNull();
++});
++
++test("switching it on starts it and then shows the new fingerprint", async () => {
++  mockedApi.mockResolvedValue(status({ enabled: false, running: false, state: "", health: "", fingerprint: "" }));
++  mockedPost.mockResolvedValue(status());
++  render(<EncryptedApiSection />);
++  expect(await screen.findByText("Off")).toBeVisible();
++  expect(screen.queryByLabelText(/key fingerprint/i)).toBeNull();
++  fireEvent.click(screen.getByRole("checkbox", { name: /encrypted api access/i }));
++  await waitFor(() => expect(mockedPost).toHaveBeenCalledWith("/api/settings/encrypted-api", { enabled: true }));
++  expect(await screen.findByLabelText(/key fingerprint/i)).toHaveValue(PIN);
++  expect(await screen.findByText(/Encrypted API access is on/i)).toBeVisible();
++});
++
++test("a failed start is reported and the section stays usable", async () => {
++  mockedApi.mockResolvedValue(status({ enabled: false, running: false, fingerprint: "" }));
++  mockedPost.mockRejectedValue(new Error("The encrypted API access could not be started."));
++  render(<EncryptedApiSection />);
++  fireEvent.click(await screen.findByRole("checkbox", { name: /encrypted api access/i }));
++  expect(await screen.findByText(/could not be started/i)).toBeVisible();
++  expect(screen.getByRole("checkbox", { name: /encrypted api access/i })).not.toBeDisabled();
++});
+diff --git a/console/web/src/features/settings/EncryptedApiSection.tsx b/console/web/src/features/settings/EncryptedApiSection.tsx
+new file mode 100644
+index 0000000..0f18111
+--- /dev/null
++++ b/console/web/src/features/settings/EncryptedApiSection.tsx
+@@ -0,0 +1,122 @@
++import { useEffect, useState } from "react";
++import { Copy } from "lucide-react";
++import { encryptedApiApi, type EncryptedApiStatus } from "../../api/encryptedApi";
++import { StatusPill } from "../../components/common/DisplayPrimitives";
++import { InlineActionResult, type InlineActionResultState } from "../../components/common/InlineActionResult";
++import { copyText } from "../../lib/clipboard";
++
++function statusLabel(status: EncryptedApiStatus) {
++  if (!status.available) return "Not Available";
++  if (!status.enabled) return "Off";
++  if (!status.running) return "Stopped";
++  if (status.health === "starting") return "Starting";
++  if (status.health === "unhealthy") return "Unhealthy";
++  return "Running";
++}
++
++export function EncryptedApiSection() {
++  const [status, setStatus] = useState<EncryptedApiStatus | null>(null);
++  const [busy, setBusy] = useState(false);
++  const [copied, setCopied] = useState(false);
++  const [result, setResult] = useState<InlineActionResultState | null>(null);
++
++  async function refresh() {
++    try {
++      setStatus(await encryptedApiApi.status());
++    } catch (error) {
++      setStatus({ available: false, enabled: false, running: false, state: "", health: "", port: 8797, fingerprint: "" });
++      setResult({ key: "status", tone: "danger", text: error instanceof Error ? error.message : String(error) });
++    }
++  }
++
++  useEffect(() => { void refresh(); }, []);
++
++  useEffect(() => {
++    if (!result || result.pending) return undefined;
++    const id = window.setTimeout(() => setResult(null), 8000);
++    return () => window.clearTimeout(id);
++  }, [result]);
++
++  async function toggle(enabled: boolean) {
++    setBusy(true);
++    setResult({
++      key: "toggle",
++      tone: "neutral",
++      text: enabled ? "Starting the encrypted API access... The first start builds the image and can take a minute." : "Stopping the encrypted API access...",
++      pending: true
++    });
++    try {
++      setStatus(await encryptedApiApi.setEnabled(enabled));
++      setResult({ key: "toggle", tone: "success", text: enabled ? "Encrypted API access is on." : "Encrypted API access is off." });
++    } catch (error) {
++      setResult({ key: "toggle", tone: "danger", text: error instanceof Error ? error.message : String(error) });
++      void refresh();
++    } finally {
++      setBusy(false);
++    }
++  }
++
++  async function copyFingerprint() {
++    if (!status?.fingerprint) return;
++    try {
++      await copyText(status.fingerprint);
++      setCopied(true);
++    } catch {
++      setCopied(false);
++      setResult({ key: "copy", tone: "danger", text: "Could not copy automatically. Select the fingerprint and copy it manually." });
++    }
++  }
++
++  if (status === null) return <p className="muted">Loading Encrypted API Access...</p>;
++
++  const address = `https://${window.location.hostname}:${status.port}`;
++
++  return <div className="encrypted-api-section">
++    <p className="muted">
++      Serves the Console API over HTTPS with its own long-lived key, for tools such as MapViewer3D. The API key and the data
++      cannot be read or changed on the network. Only API-key requests (GET) pass: the Console web UI is not offered on this
++      port, and your normal address keeps working unchanged.
++    </p>
++
++    <div className="action-row">
++      <span className="switch-label">Status:</span>
++      <StatusPill value={statusLabel(status)} />
++      <InlineActionResult result={result} resultKey="status" />
++    </div>
++
++    {!status.available && <p className="attention-text">
++      This installation does not include the encrypted API access. Update Dune Docker to get it.
++    </p>}
++
++    {status.available && <>
++      <label className={`switch-checkbox ${status.enabled ? "enabled" : "disabled"}`}>
++        <input
++          type="checkbox"
++          disabled={busy}
++          checked={status.enabled}
++          onChange={(event) => { void toggle(event.target.checked); }}
++        />
++        <span className="switch-label">Encrypted API Access:</span>
++        <strong className="switch-state">{busy ? "Working" : status.enabled ? "Enabled" : "Disabled"}</strong>
++      </label>
++      <InlineActionResult result={result} resultKey="toggle" />
++      <InlineActionResult result={result} resultKey="copy" />
++    </>}
++
++    {status.available && status.fingerprint && <div className="encrypted-api-fingerprint">
++      <label>
++        <span className="field-label-row"><span>Key Fingerprint</span></span>
++        <div className="api-key-reveal-row">
++          <input readOnly value={status.fingerprint} aria-label="Key fingerprint of the encrypted API access" onFocus={(event) => event.target.select()} />
++          <button onClick={() => { void copyFingerprint(); }}><Copy size={16} aria-hidden="true" /> {copied ? "Copied" : "Copy"}</button>
++        </div>
++      </label>
++      <p className="muted">
++        Address: <code>{address}</code>. When a tool such as MapViewer3D asks you to confirm an encrypted connection, compare
++        its fingerprint with this one. If they are identical, nobody can sit in between. The fingerprint stays the same until
++        <code> runtime/generated/tls-front</code> is deleted.
++      </p>
++      <p className="muted">Allow TCP {status.port} in the server firewall to use it from other computers. The same value is shown by <code>dune encrypted-api fingerprint</code> and at the end of the installer.</p>
++    </div>}
++  </div>;
++}
+diff --git a/console/web/src/features/settings/SettingsPanel.tsx b/console/web/src/features/settings/SettingsPanel.tsx
+index 80ca6ef..27ecdb9 100644
+--- a/console/web/src/features/settings/SettingsPanel.tsx
++++ b/console/web/src/features/settings/SettingsPanel.tsx
+@@ -5,6 +5,7 @@ import { SecretInput } from "../../components/SecretInput";
+ import { InfoTooltip, KeyValueGrid, StatusPill } from "../../components/common/DisplayPrimitives";
+ import { firstDefined, formatUiSentence, friendlyColumnName } from "../../lib/display";
+ import { ApiKeysSection } from "./ApiKeysSection";
++import { EncryptedApiSection } from "./EncryptedApiSection";
+ 
+ type SettingsTaskResult = { status: "running" | "succeeded" | "failed" | "stopped"; title: string; message?: string; details?: string };
+ type PublicDirectorySettings = {
+@@ -57,6 +58,7 @@ export function SettingsPanel({ onPasswordChanged, publicListingUrl, confirmActi
+   const [webPortRedirectUrl, setWebPortRedirectUrl] = useState("");
+   const [webPortRedirectCountdown, setWebPortRedirectCountdown] = useState<number | null>(null);
+   const [apiKeysOpen, setApiKeysOpen] = useState(false);
++  const [encryptedApiOpen, setEncryptedApiOpen] = useState(false);
+   const [serverStartupOpen, setServerStartupOpen] = useState(false);
+   const [serverStartupSaving, setServerStartupSaving] = useState(false);
+   const [serverStartupResult, setServerStartupResult] = useState<SettingsTaskResult | null>(null);
+@@ -364,6 +366,10 @@ export function SettingsPanel({ onPasswordChanged, publicListingUrl, confirmActi
+           </div>
+         </div>}
+       </div>
++      <div className={`playerAdmin_toggle settings-encrypted-api-toggle ${encryptedApiOpen ? "open" : ""}`}>
++        <button className="playerAdmin_toggleHeader" aria-label={encryptedApiOpen ? "Collapse Encrypted API Access" : "Expand Encrypted API Access"} onClick={() => setEncryptedApiOpen(!encryptedApiOpen)}>{encryptedApiOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}<span>Encrypted API Access</span></button>
++        {encryptedApiOpen && <div className="playerAdmin_toggleBody"><EncryptedApiSection /></div>}
++      </div>
+       <div className={`playerAdmin_toggle settings-api-keys-toggle ${apiKeysOpen ? "open" : ""}`}>
+         <button className="playerAdmin_toggleHeader" aria-label={apiKeysOpen ? "Collapse API Keys" : "Expand API Keys"} onClick={() => setApiKeysOpen(!apiKeysOpen)}>{apiKeysOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}<span>API Keys</span></button>
+         {apiKeysOpen && <div className="playerAdmin_toggleBody"><ApiKeysSection confirmAction={confirmAction} /></div>}
+diff --git a/console/web/src/styles.css b/console/web/src/styles.css
+index eda4f8d..b78abdf 100644
+--- a/console/web/src/styles.css
++++ b/console/web/src/styles.css
+@@ -7710,3 +7710,8 @@ td :where(.service-actions, .action-row, .map-action-buttons) { max-width: 100%;
+ .deleted-character-unattributed > .playerAdmin_toggleHeader { border-radius: 0; background: var(--panel-muted); }
+ .deleted-character-unattributed > .playerAdmin_toggleBody { display: flex; flex-direction: column; gap: 12px; }
+ .deleted-character-unattributed-count { margin-left: auto; color: var(--text-faint); font-weight: 500 !important; }
++
++/* Settings: Encrypted API Access */
++.encrypted-api-section { display: grid; gap: 12px; }
++.encrypted-api-section code { overflow-wrap: anywhere; }
++.encrypted-api-fingerprint input { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+diff --git a/docker-compose.tls-front.yml b/docker-compose.tls-front.yml
+new file mode 100644
+index 0000000..51d736f
+--- /dev/null
++++ b/docker-compose.tls-front.yml
+@@ -0,0 +1,38 @@
++name: dune-tls-front
++
++# Optional encrypted front door for the Console API: HTTPS with its own long-lived
++# key in front of the unchanged Console (docs/console/encrypted-api.md). Started and
++# stopped by runtime/scripts/tls-front.sh, the installer and Settings -> Encrypted API Access.
++services:
++  dune-tls-front:
++    build:
++      context: ./runtime/tls-front
++    image: dune-tls-front:dev
++    container_name: dune-tls-front
++    restart: unless-stopped
++    # Host networking: reaches the Console on the host's loopback and listens on
++    # DUNE_TLS_FRONT_BIND:DUNE_TLS_FRONT_PORT.
++    network_mode: host
++    user: "${DUNE_HOST_UID:-0}:${DUNE_HOST_GID:-0}"
++    environment:
++      MV_TLS_ADDR: "${DUNE_TLS_FRONT_BIND:-0.0.0.0}:${DUNE_TLS_FRONT_PORT:-8797}"
++      MV_TLS_UPSTREAM: "http://127.0.0.1:${DUNE_TLS_FRONT_CONSOLE_PORT:-8088}"
++      MV_TLS_NAMES: "${DUNE_TLS_FRONT_NAMES:-}"
++      MV_TLS_ALLOW: "${DUNE_TLS_FRONT_ALLOW:-}"
++      MV_TLS_STATE: /data
++    volumes:
++      # key and certificate; the Console reads only the certificate to show the fingerprint
++      - "${DUNE_HOST_REPO_ROOT:?DUNE_HOST_REPO_ROOT is required}/runtime/generated/tls-front:/data"
++    read_only: true
++    security_opt:
++      - no-new-privileges:true
++    cap_drop:
++      - ALL
++    cpus: "0.50"
++    mem_limit: 64m
++    pids_limit: 64
++    logging:
++      driver: json-file
++      options:
++        max-size: "${DUNE_DOCKER_LOG_MAX_SIZE:-20m}"
++        max-file: "${DUNE_DOCKER_LOG_MAX_FILES:-3}"
+diff --git a/docs/README.md b/docs/README.md
+index 92464f4..00fa94b 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -86,6 +86,7 @@ by nature, so it gets its own.
+ - [deleted-characters.md](console/deleted-characters.md) — Current. Find characters deleted from the server that still hold bases or vehicles.
+ - [restart-queue.md](console/restart-queue.md) — Current. The Restart Queue toggle: player-aware countdowns with in-game warnings, the two broadcast variants, concurrency rules, crash recovery, the "Restart later" deferred-restart option, and the join-lock limitation.
+ - [exchange.md](console/exchange.md) — Current. The read-only Market Board: aggregated-by-item CHOAM exchange listings, seller resolution, how bot listings are identified, the bot/blacklist filter config, the Market Bot seed/buyback engine, and the Bot items tab's per-item catalog overrides.
++- [encrypted-api.md](console/encrypted-api.md) — Optional. The encrypted front door for the Console API: HTTPS with its own long-lived key that clients pin, the API-only door (`GET /api/*` with an API key, no web UI, no cookies), the fingerprint shown by the installer, Settings and `dune encrypted-api`, and how to compare it.
+ - [live-map.md](console/live-map.md) — Current. The Live Map panel: partition display-name resolution, the actor/spice/POI marker data model (static archive + live decode + self-learning pool, the registry-driven POI framework), the Layers legend's hide-if-empty and default-settings mechanism, Coriolis seed/layout/countdown resolution, and the WebGL terrain renderer that draws the Deep Desert's own cartography meshes (with the conditions under which it falls back to the flat map image).
+ 
+ ## Runtime (`runtime/`)
+diff --git a/docs/console/encrypted-api.md b/docs/console/encrypted-api.md
+new file mode 100644
+index 0000000..f63105c
+--- /dev/null
++++ b/docs/console/encrypted-api.md
+@@ -0,0 +1,87 @@
++# Encrypted API access
++
++**Status:** Optional | **Last Updated:** October 2026
++
++The Console listens on plain HTTP (`http://<host>:8088`). That is fine on a trusted network, but over the internet the
++admin password, API keys and every answer cross the network in clear text. **Encrypted API access** is a small container
++in front of the unchanged Console that serves the Console **API** over HTTPS, for tools that use API keys (for example
++[MapViewer3D](https://github.com/dev-prophet-code/MapViewer3D)). Nothing else changes: your normal address keeps working,
++and nobody has to adapt anything.
++
++```
++tool ──HTTPS :8797, API key──► dune-tls-front ──HTTP 127.0.0.1:8088──► Console (unchanged)
++```
++
++## Fingerprint
++
++On its first start the front door creates **its own key** (ECDSA P-256) in `runtime/generated/tls-front` with a
++self-signed certificate valid for 20 years. Clients do not trust a certificate authority; they **pin the key**:
++
++```
++sha256/<base64url of the SHA-256 of the certificate's public key>
++```
++
++The fingerprint does not change by itself – not after a restart, not when the certificate is re-issued. It is not secret.
++**Compare it** with the one a tool shows when it asks you to confirm an encrypted connection: if both are identical,
++nobody can sit in between. (A tool that learned the fingerprint over the very connection it wants to protect could be
++handed an attacker's key; the comparison closes that gap.)
++
++You can see it again at any time:
++
++- the **end of the installer** prints the address and the fingerprint next to the first admin password;
++- **Settings → Encrypted API Access** shows status, address and fingerprint with a Copy button;
++- `dune encrypted-api fingerprint` prints it on the host.
++
++## What it passes
++
++The default is an **API door**:
++
++| | |
++|---|---|
++| Methods | `GET` and `HEAD` only |
++| Paths | `/api/*` and the public marker images `/images/maps/*`; the Console web UI is **not** offered on this port |
++| Login | `Authorization: Bearer dak_…` is required (marker images and `/api/health` excepted); browser sessions and cookies never pass |
++| Blocked even with a key | `/api/auth/`, `/api/settings/`, `/api/setup/`, `/api/discord/` |
++| Forwarded headers | `Authorization`, `Accept`, `Accept-Encoding`, `Range`, conditional headers – no cookies, no `X-Forwarded-For` |
++| Brute force | rejected API keys are counted per client address by the front door (the Console only sees `127.0.0.1` behind a proxy and would lump all clients together); 10 per minute block the address for 10 minutes |
++| Streams | server-sent events are flushed immediately (for example `/api/realtime/stream`) |
++
++So it adds no new way into the admin console. API keys keep exactly the scopes, expiry, rate limit and audit you gave them.
++
++## Turning it on and off
++
++On a **new install** the installer starts it (set `DUNE_ENCRYPTED_API=0` to skip). Later:
++
++- **Settings → Encrypted API Access** has a switch; the first start builds the image and can take a minute.
++- `dune encrypted-api enable | disable | status | fingerprint`.
++
++The choice is kept in `runtime/generated/tls-front.env` and survives re-running the installer.
++
++| Variable (`runtime/generated/tls-front.env`) | Default | Meaning |
++|---|---|---|
++| `DUNE_TLS_FRONT_ENABLED` | `true` after a new install | start it |
++| `DUNE_TLS_FRONT_PORT` | `8797` | TCP port on the host |
++| `DUNE_TLS_FRONT_BIND` | `0.0.0.0` | interface |
++| `DUNE_TLS_FRONT_NAMES` | empty | host names / IPs for the certificate (only browsers look at them; tools pin the key) |
++| `DUNE_TLS_FRONT_ALLOW` | empty = all | only these IPs/CIDRs may connect |
++
++Allow **TCP 8797** in the host firewall (and any upstream firewall) to use it from other computers; ideally only from the
++addresses that need it (`DUNE_TLS_FRONT_ALLOW`).
++
++## API
++
++| Route | Action | |
++|---|---|---|
++| `GET /api/settings/encrypted-api` | `settings:read` | `{ available, enabled, running, state, health, port, fingerprint }`; no secret |
++| `POST /api/settings/encrypted-api` | `settings:write` | `{ "enabled": true\|false }`, builds/starts or stops it; audited |
++
++Both are `settings:*`, so no API key can reach them. The Console only ever reads the **certificate** to compute the
++fingerprint; the private key is never read.
++
++## Security notes
++
++- Keep `runtime/generated/tls-front` private and back it up: if the key is lost, the fingerprint changes and tools have to
++  confirm the new one. (Deleting the folder is also how you rotate the key.)
++- The container runs as the host user, read-only, `cap_drop: ALL`, `no-new-privileges`, 64 MB, with host networking so it can
++  reach the Console on `127.0.0.1`.
++- Prefer a real certificate? A reverse proxy with Let's Encrypt in front of the Console works too and needs none of this.
+diff --git a/install.sh b/install.sh
+index b391c46..f7e88b8 100755
+--- a/install.sh
++++ b/install.sh
+@@ -613,6 +613,40 @@ read_admin_password() {
+   done
+ }
+ 
++# Encrypted API access (optional): HTTPS with its own long-lived key in front of the
++# Console, for tools such as MapViewer3D (docs/console/encrypted-api.md). On by
++# default for a new install; DUNE_ENCRYPTED_API=0 skips it. A choice made later in
++# Settings (runtime/generated/tls-front.env) is kept when the installer runs again.
++start_tls_front() {
++  TLS_FRONT_FINGERPRINT=""
++  TLS_FRONT_PORT="${DUNE_TLS_FRONT_PORT:-8797}"
++  [ "${DUNE_ENCRYPTED_API:-1}" != "0" ] || return 0
++  [ -f docker-compose.tls-front.yml ] && [ -x runtime/scripts/tls-front.sh ] || return 0
++  if [ -r runtime/generated/tls-front.env ]; then
++    # shellcheck disable=SC1091
++    . runtime/generated/tls-front.env
++    [ "${DUNE_TLS_FRONT_ENABLED:-false}" = "true" ] || return 0
++    TLS_FRONT_PORT="${DUNE_TLS_FRONT_PORT:-8797}"
++  fi
++
++  step "Starting the encrypted API access."
++  export DUNE_HOST_REPO_ROOT="${DUNE_HOST_REPO_ROOT:-$(pwd -P)}"
++  export DUNE_HOST_UID="${DUNE_HOST_UID:-$(default_host_uid)}"
++  export DUNE_HOST_GID="${DUNE_HOST_GID:-$(default_host_gid)}"
++  export ADMIN_BIND_PORT="$WEB_PORT"
++  if [ "$DOCKER_NEEDS_SUDO" = "1" ]; then
++    need_sudo env \
++      "ADMIN_BIND_PORT=$ADMIN_BIND_PORT" \
++      "DUNE_HOST_REPO_ROOT=$DUNE_HOST_REPO_ROOT" \
++      "DUNE_HOST_UID=$DUNE_HOST_UID" \
++      "DUNE_HOST_GID=$DUNE_HOST_GID" \
++      runtime/scripts/tls-front.sh enable >/dev/null 2>&1 || true
++  else
++    runtime/scripts/tls-front.sh enable >/dev/null 2>&1 || true
++  fi
++  TLS_FRONT_FINGERPRINT="$(runtime/scripts/tls-front.sh fingerprint 2>/dev/null || true)"
++}
++
+ show_finish() {
+   finish_host_ip="$(host_ip)"
+   finish_public_ip="$(public_ip)"
+@@ -645,6 +679,19 @@ show_finish() {
+   else
+     echo "The password was not ready yet. Wait a few seconds and run ./install.sh again to show it."
+   fi
++  if [ -n "${TLS_FRONT_FINGERPRINT:-}" ]; then
++    echo
++    echo "Encrypted API access (for tools such as MapViewer3D):"
++    if [ -n "$finish_public_ip" ] && [ "$finish_public_ip" != "$finish_host_ip" ]; then
++      echo "  https://$finish_public_ip:$TLS_FRONT_PORT"
++    else
++      echo "  https://$finish_host_ip:$TLS_FRONT_PORT"
++    fi
++    echo "  Key fingerprint (compare it when a tool asks you to confirm it):"
++    echo "  $TLS_FRONT_FINGERPRINT"
++    echo "Allow TCP $TLS_FRONT_PORT in the server firewall to use it from other computers."
++    echo "Show it again any time: Settings > Encrypted API Access, or run: dune encrypted-api fingerprint"
++  fi
+   echo
+   echo "After signing in, the setup wizard will check the server and finish everything from the browser."
+   echo "If you prefer the terminal, you can also run: dune --help"
+@@ -667,4 +714,5 @@ install_cli_command
+ migrate_existing_ownership
+ choose_web_port
+ start_console
++start_tls_front
+ show_finish
+diff --git a/runtime/scripts/dune b/runtime/scripts/dune
+index a0011d0..8971d69 100755
+--- a/runtime/scripts/dune
++++ b/runtime/scripts/dune
+@@ -423,6 +423,11 @@ EOF
+     runtime/scripts/ip-change-restart.sh "$@"
+     ;;
+ 
++  encrypted-api)
++    shift || true
++    runtime/scripts/tls-front.sh "$@"
++    ;;
++
+   shutdown-protection)
+     shift || true
+     runtime/scripts/shutdown-protection.sh "$@"
+@@ -524,6 +529,7 @@ Usage:
+   dune self-update [check|list|install [latest|<tag>]]
+   dune restart-schedule [enable <HH:MM> [notify-minutes]|disable|status]
+   dune ip-change-restart [enable [interval-minutes] [notify-minutes]|disable|status|check-now]
++  dune encrypted-api [enable|disable|status|fingerprint]
+   dune shutdown-protection [enable|disable|remove|status]
+   dune network [status|fix]
+   dune db backup [output-dir]
+diff --git a/runtime/scripts/tls-front.sh b/runtime/scripts/tls-front.sh
+new file mode 100755
+index 0000000..41d92ec
+--- /dev/null
++++ b/runtime/scripts/tls-front.sh
+@@ -0,0 +1,171 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++cd "$(dirname "$0")/../.."
++
++COMPOSE_FILE="docker-compose.tls-front.yml"
++STATE_DIR="runtime/generated/tls-front"
++ENV_FILE="runtime/generated/tls-front.env"
++BUILD_STATE="runtime/generated/tls-front-build.sha256"
++CONTAINER="dune-tls-front"
++PROJECT="dune-tls-front"
++IMAGE="dune-tls-front:dev"
++DEFAULT_PORT=8797
++
++usage() {
++  cat <<'EOF2'
++Usage:
++  tls-front.sh enable       turn the encrypted API access on and start it
++  tls-front.sh disable      turn it off and stop it
++  tls-front.sh reconcile    start or stop it according to runtime/generated/tls-front.env
++  tls-front.sh status
++  tls-front.sh fingerprint  print the key fingerprint (sha256/..., not secret)
++
++The encrypted front door is HTTPS with its own long-lived key in front of the
++unchanged Console. Clients (for example MapViewer3D) pin the key's fingerprint:
++compare it with the one shown here before you accept it. TCP port 8797 must be
++allowed by the host firewall to use it from other computers.
++EOF2
++}
++
++load_env() {
++  DUNE_TLS_FRONT_ENABLED=false
++  DUNE_TLS_FRONT_PORT="$DEFAULT_PORT"
++  DUNE_TLS_FRONT_BIND="0.0.0.0"
++  DUNE_TLS_FRONT_NAMES=""
++  DUNE_TLS_FRONT_ALLOW=""
++  if [ -r "$ENV_FILE" ]; then
++    # shellcheck disable=SC1090
++    . "$ENV_FILE"
++  fi
++  case "$DUNE_TLS_FRONT_PORT" in
++    ''|*[!0-9]*) echo "Invalid DUNE_TLS_FRONT_PORT in $ENV_FILE." >&2; exit 1 ;;
++  esac
++}
++
++write_env() {
++  local enabled="$1" tmp
++  mkdir -p runtime/generated
++  tmp="${ENV_FILE}.tmp-$$"
++  {
++    echo "DUNE_TLS_FRONT_ENABLED=$enabled"
++    echo "DUNE_TLS_FRONT_PORT=$DUNE_TLS_FRONT_PORT"
++    echo "DUNE_TLS_FRONT_BIND=$DUNE_TLS_FRONT_BIND"
++    echo "DUNE_TLS_FRONT_NAMES=$DUNE_TLS_FRONT_NAMES"
++    echo "DUNE_TLS_FRONT_ALLOW=$DUNE_TLS_FRONT_ALLOW"
++  } >"$tmp"
++  chmod 600 "$tmp" 2>/dev/null || true
++  mv "$tmp" "$ENV_FILE"
++}
++
++console_port() {
++  local port="${ADMIN_WEB_PORT:-${ADMIN_BIND_PORT:-}}"
++  if [ -z "$port" ] && [ -f .env ]; then
++    port="$(awk -F= '/^(ADMIN_BIND_PORT|ADMIN_WEB_PORT)=/ {print $2; exit}' .env | tr -d '[:space:]"'\''' || true)"
++  fi
++  printf '%s' "${port:-8088}"
++}
++
++compose() {
++  DUNE_HOST_REPO_ROOT="${DUNE_HOST_REPO_ROOT:-$(pwd -P)}" \
++    DUNE_HOST_UID="${DUNE_HOST_UID:-$(id -u)}" \
++    DUNE_HOST_GID="${DUNE_HOST_GID:-$(id -g)}" \
++    DUNE_TLS_FRONT_PORT="$DUNE_TLS_FRONT_PORT" \
++    DUNE_TLS_FRONT_BIND="$DUNE_TLS_FRONT_BIND" \
++    DUNE_TLS_FRONT_NAMES="$DUNE_TLS_FRONT_NAMES" \
++    DUNE_TLS_FRONT_ALLOW="$DUNE_TLS_FRONT_ALLOW" \
++    DUNE_TLS_FRONT_CONSOLE_PORT="$(console_port)" \
++    COMPOSE_PROJECT_NAME="$PROJECT" \
++    docker compose -f "$COMPOSE_FILE" "$@"
++}
++
++start_front() {
++  local current_hash saved_hash=""
++  mkdir -p "$STATE_DIR"
++  chmod 700 "$STATE_DIR" 2>/dev/null || true
++  current_hash="$(
++    sha256sum \
++      runtime/tls-front/Dockerfile \
++      runtime/tls-front/go.mod \
++      runtime/tls-front/main.go |
++      sha256sum |
++      awk '{print $1}'
++  )"
++  [ -r "$BUILD_STATE" ] && saved_hash="$(tr -d '[:space:]' <"$BUILD_STATE")"
++  if [ "$current_hash" != "$saved_hash" ] || ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
++    compose build dune-tls-front
++    printf '%s\n' "$current_hash" >"$BUILD_STATE"
++    chmod 600 "$BUILD_STATE" 2>/dev/null || true
++  fi
++  compose up -d --force-recreate
++}
++
++stop_front() {
++  if [ -f "$COMPOSE_FILE" ] && docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
++    compose down --remove-orphans
++  fi
++}
++
++cert_fingerprint() {
++  local cert="$STATE_DIR/front-cert.pem"
++  if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
++    local pin
++    pin="$(docker exec "$CONTAINER" /usr/local/bin/dune-tls-front -pin 2>/dev/null || true)"
++    if [ -n "$pin" ]; then printf '%s\n' "$pin"; return 0; fi
++  fi
++  [ -r "$cert" ] || return 1
++  command -v openssl >/dev/null 2>&1 || return 1
++  printf 'sha256/%s\n' "$(
++    openssl x509 -in "$cert" -pubkey -noout |
++      openssl pkey -pubin -outform der |
++      openssl dgst -sha256 -binary |
++      base64 | tr '+/' '-_' | tr -d '=\n'
++  )"
++}
++
++wait_for_fingerprint() {
++  local attempt=1
++  while [ "$attempt" -le 30 ]; do
++    if cert_fingerprint 2>/dev/null; then return 0; fi
++    sleep 1
++    attempt=$((attempt + 1))
++  done
++  return 1
++}
++
++status_front() {
++  load_env
++  if ! docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
++    echo "State: $([ "$DUNE_TLS_FRONT_ENABLED" = "true" ] && echo "enabled, not running" || echo "disabled")"
++    return
++  fi
++  docker inspect "$CONTAINER" --format 'State: {{.State.Status}}{{if .State.Health}} health={{.State.Health.Status}}{{end}}'
++  echo "Port: $DUNE_TLS_FRONT_PORT/tcp"
++  echo "Fingerprint: $(cert_fingerprint 2>/dev/null || echo unknown)"
++}
++
++case "${1:-status}" in
++  enable)
++    load_env
++    write_env true
++    start_front
++    wait_for_fingerprint >/dev/null || true
++    status_front
++    ;;
++  disable)
++    load_env
++    write_env false
++    stop_front
++    echo "State: disabled"
++    ;;
++  reconcile)
++    load_env
++    if [ "$DUNE_TLS_FRONT_ENABLED" = "true" ]; then start_front; else stop_front; fi
++    ;;
++  status) status_front ;;
++  fingerprint)
++    cert_fingerprint || { echo "No fingerprint yet: the encrypted API access has not been started." >&2; exit 1; }
++    ;;
++  help|--help|-h) usage ;;
++  *) usage >&2; exit 2 ;;
++esac
+diff --git a/runtime/tls-front/Dockerfile b/runtime/tls-front/Dockerfile
+new file mode 100644
+index 0000000..2726d65
+--- /dev/null
++++ b/runtime/tls-front/Dockerfile
+@@ -0,0 +1,17 @@
++# Encrypted front door for the Console API (HTTPS in front of the Console).
++FROM golang:1.25-alpine AS build
++
++WORKDIR /src
++COPY go.mod ./
++COPY *.go ./
++RUN CGO_ENABLED=0 go vet ./... \
++    && CGO_ENABLED=0 go test ./... \
++    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/dune-tls-front .
++
++FROM alpine:3.22
++
++# Runs as the host user chosen in docker-compose.tls-front.yml (DUNE_HOST_UID/GID).
++COPY --from=build /out/dune-tls-front /usr/local/bin/dune-tls-front
++
++HEALTHCHECK --interval=30s --timeout=8s --start-period=10s --retries=3 CMD ["/usr/local/bin/dune-tls-front", "-healthcheck"]
++ENTRYPOINT ["/usr/local/bin/dune-tls-front"]
+diff --git a/runtime/tls-front/go.mod b/runtime/tls-front/go.mod
+new file mode 100644
+index 0000000..b4d14b0
+--- /dev/null
++++ b/runtime/tls-front/go.mod
+@@ -0,0 +1,3 @@
++module mvtls
++
++go 1.24
+diff --git a/runtime/tls-front/main.go b/runtime/tls-front/main.go
+new file mode 100644
+index 0000000..c40131e
+--- /dev/null
++++ b/runtime/tls-front/main.go
+@@ -0,0 +1,528 @@
++// mvtls is the encrypted front door for the Dune Docker Console API.
++//
++// A viewer on someone's PC talks HTTPS to mvtls; mvtls forwards to the
++// unchanged Console (http://127.0.0.1:8088). Nothing in Dune Docker has to
++// change for the encryption, and everybody else keeps using the Console exactly
++// as before.
++//
++//   - Own long-lived key (ECDSA P-256) in a volume, created on first start. The
++//     certificate is self-signed and valid for 20 years; it is re-issued (same
++//     key) when MV_TLS_NAMES changes. The fingerprint of the KEY is what clients
++//     pin, so it never changes by itself and survives certificate re-issues.
++//
++//   - Default mode ("API door"): only GET/HEAD of /api/* and /images/maps/*,
++//     only with "Authorization: Bearer dak_…" (images excepted), sessions and
++//     cookies never pass, the Console's auth/settings/setup routes are not
++//     reachable. The Console web UI is NOT exposed on this port.
++//
++//   - Failed API-key attempts are counted per client address here, because the
++//     Console only sees 127.0.0.1 behind this proxy and would otherwise lump all
++//     clients into one bucket.
++//
++//     mvtls                 serve
++//     mvtls -pin            print the key fingerprint (sha256/…, not secret) and exit
++//     mvtls -healthcheck    container health check
++package main
++
++import (
++	"context"
++	"crypto/ecdsa"
++	"crypto/elliptic"
++	"crypto/rand"
++	"crypto/sha256"
++	"crypto/tls"
++	"crypto/x509"
++	"crypto/x509/pkix"
++	"encoding/base64"
++	"encoding/json"
++	"encoding/pem"
++	"errors"
++	"flag"
++	"fmt"
++	"log"
++	"math/big"
++	"net"
++	"net/http"
++	"net/http/httputil"
++	"net/url"
++	"os"
++	"os/signal"
++	"path/filepath"
++	"slices"
++	"strings"
++	"sync"
++	"syscall"
++	"time"
++)
++
++type config struct {
++	Addr     string
++	Upstream *url.URL
++	State    string
++	Names    []string
++	Allow    []*net.IPNet
++	Full     bool
++}
++
++func main() {
++	pinOnly := flag.Bool("pin", false, "print the key fingerprint (sha256/…, not secret) and exit")
++	health := flag.Bool("healthcheck", false, "check the local front door and exit")
++	flag.Parse()
++	log.SetFlags(log.LstdFlags | log.LUTC)
++
++	cfg, err := loadConfig(os.Getenv)
++	if err != nil {
++		log.Fatal(err)
++	}
++	id, err := loadOrCreateIdentity(cfg.State, cfg.Names)
++	if err != nil {
++		log.Fatal(err)
++	}
++	if *pinOnly {
++		fmt.Println(pinOf(id.Leaf))
++		return
++	}
++	if *health {
++		os.Exit(healthcheck(cfg))
++	}
++
++	inner, err := net.Listen("tcp", cfg.Addr)
++	if err != nil {
++		log.Fatal(err)
++	}
++	ln := tls.NewListener(&allowListener{Listener: inner, allow: cfg.allowed}, &tls.Config{
++		Certificates: []tls.Certificate{id},
++		MinVersion:   tls.VersionTLS12,
++		NextProtos:   []string{"http/1.1"}, // server-sent events and simple proxying
++	})
++	srv := &http.Server{
++		Handler:           newHandler(cfg),
++		ReadHeaderTimeout: 10 * time.Second,
++		IdleTimeout:       2 * time.Minute,
++		MaxHeaderBytes:    16 << 10,
++		ErrorLog:          log.New(os.Stderr, "mvtls http: ", log.LstdFlags|log.LUTC),
++	}
++	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
++	defer stop()
++	go func() {
++		<-ctx.Done()
++		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++		defer cancel()
++		srv.Shutdown(sctx)
++	}()
++	mode := "API door (GET /api/* and /images/maps/*, API key required)"
++	if cfg.Full {
++		mode = "FULL CONSOLE (web UI and login are exposed on this port too)"
++	}
++	log.Printf("mvtls: https://%s -> %s; mode: %s; allow list: %d entries", cfg.Addr, cfg.Upstream, mode, len(cfg.Allow))
++	log.Printf("mvtls: key fingerprint %s – compare it with the one a client shows before you confirm it (show it again: mvtls -pin; on Dune Docker: dune encrypted-api fingerprint)", pinOf(id.Leaf))
++	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) && ctx.Err() == nil {
++		log.Fatal(err)
++	}
++}
++
++func loadConfig(env func(string) string) (config, error) {
++	cfg := config{
++		Addr:  envOr(env, "MV_TLS_ADDR", ":8797"),
++		State: envOr(env, "MV_TLS_STATE", "/data"),
++		Full:  env("MV_TLS_FULL") == "true" || env("MV_TLS_FULL") == "1",
++	}
++	u, err := url.Parse(envOr(env, "MV_TLS_UPSTREAM", "http://127.0.0.1:8088"))
++	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
++		return cfg, errors.New("MV_TLS_UPSTREAM: expected http://host:port")
++	}
++	cfg.Upstream = u
++	for _, n := range splitList(env("MV_TLS_NAMES")) {
++		if strings.ContainsAny(n, "/ :@") && net.ParseIP(n) == nil {
++			return cfg, fmt.Errorf("MV_TLS_NAMES: %q is not a host name or IP address", n)
++		}
++		cfg.Names = append(cfg.Names, n)
++	}
++	for _, part := range splitList(env("MV_TLS_ALLOW")) {
++		if !strings.Contains(part, "/") {
++			if ip := net.ParseIP(part); ip != nil && ip.To4() != nil {
++				part += "/32"
++			} else {
++				part += "/128"
++			}
++		}
++		_, n, err := net.ParseCIDR(part)
++		if err != nil {
++			return cfg, fmt.Errorf("MV_TLS_ALLOW: %q is not an IP or CIDR", part)
++		}
++		cfg.Allow = append(cfg.Allow, n)
++	}
++	return cfg, nil
++}
++
++func splitList(s string) []string {
++	return strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' })
++}
++
++func envOr(env func(string) string, k, def string) string {
++	if v := env(k); v != "" {
++		return v
++	}
++	return def
++}
++
++func (c config) allowed(ip net.IP) bool {
++	if len(c.Allow) == 0 || (ip != nil && ip.IsLoopback()) {
++		return true // loopback: the container's own health check
++	}
++	if ip == nil {
++		return false
++	}
++	for _, n := range c.Allow {
++		if n.Contains(ip) {
++			return true
++		}
++	}
++	return false
++}
++
++// ---------------------------------------------------------------- identity
++
++// pinOf is the fingerprint of the certificate's public key:
++// "sha256/" + base64url(SHA-256(SubjectPublicKeyInfo)).
++func pinOf(cert *x509.Certificate) string {
++	h := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
++	return "sha256/" + base64.RawURLEncoding.EncodeToString(h[:])
++}
++
++// loadOrCreateIdentity loads the key from dir or creates it. The certificate is
++// (re)issued from the same key whenever it is missing, nearly expired or its
++// names differ from names; the pin therefore stays the same.
++func loadOrCreateIdentity(dir string, names []string) (tls.Certificate, error) {
++	keyPath, certPath := filepath.Join(dir, "front-key.pem"), filepath.Join(dir, "front-cert.pem")
++	if err := os.MkdirAll(dir, 0o700); err != nil {
++		return tls.Certificate{}, err
++	}
++	var key *ecdsa.PrivateKey
++	if b, err := os.ReadFile(keyPath); err == nil {
++		blk, _ := pem.Decode(b)
++		if blk == nil {
++			return tls.Certificate{}, fmt.Errorf("%s: no PEM data", keyPath)
++		}
++		if key, err = x509.ParseECPrivateKey(blk.Bytes); err != nil {
++			return tls.Certificate{}, fmt.Errorf("%s: %w", keyPath, err)
++		}
++	} else if errors.Is(err, os.ErrNotExist) {
++		if key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader); err != nil {
++			return tls.Certificate{}, err
++		}
++		kb, err := x509.MarshalECPrivateKey(key)
++		if err != nil {
++			return tls.Certificate{}, err
++		}
++		if err := writeFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: kb}), 0o600); err != nil {
++			return tls.Certificate{}, err
++		}
++	} else {
++		return tls.Certificate{}, err
++	}
++
++	if b, err := os.ReadFile(certPath); err == nil {
++		if blk, _ := pem.Decode(b); blk != nil {
++			if cert, err := x509.ParseCertificate(blk.Bytes); err == nil && certMatches(cert, key, names) {
++				return tls.Certificate{Certificate: [][]byte{blk.Bytes}, PrivateKey: key, Leaf: cert}, nil
++			}
++		}
++	}
++	der, err := issue(key, names)
++	if err != nil {
++		return tls.Certificate{}, err
++	}
++	if err := writeFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o644); err != nil {
++		return tls.Certificate{}, err
++	}
++	leaf, err := x509.ParseCertificate(der)
++	if err != nil {
++		return tls.Certificate{}, err
++	}
++	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key, Leaf: leaf}, nil
++}
++
++func certNames(names []string) (dns []string, ips []net.IP) {
++	for _, n := range names {
++		if ip := net.ParseIP(n); ip != nil {
++			ips = append(ips, ip)
++		} else {
++			dns = append(dns, strings.ToLower(n))
++		}
++	}
++	return dns, ips
++}
++
++func certMatches(cert *x509.Certificate, key *ecdsa.PrivateKey, names []string) bool {
++	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
++	if !ok || !pub.Equal(&key.PublicKey) || time.Until(cert.NotAfter) < 90*24*time.Hour {
++		return false
++	}
++	dns, ips := certNames(names)
++	slices.Sort(dns)
++	have := slices.Clone(cert.DNSNames)
++	slices.Sort(have)
++	if !slices.Equal(dns, have) || len(ips) != len(cert.IPAddresses) {
++		return false
++	}
++	for _, ip := range ips {
++		if !slices.ContainsFunc(cert.IPAddresses, ip.Equal) {
++			return false
++		}
++	}
++	return true
++}
++
++func issue(key *ecdsa.PrivateKey, names []string) ([]byte, error) {
++	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 127))
++	if err != nil {
++		return nil, err
++	}
++	dns, ips := certNames(names)
++	now := time.Now()
++	tpl := &x509.Certificate{
++		SerialNumber:          serial,
++		Subject:               pkix.Name{CommonName: "MapViewer3D encrypted front"},
++		NotBefore:             now.Add(-time.Hour),
++		NotAfter:              now.AddDate(20, 0, 0),
++		KeyUsage:              x509.KeyUsageDigitalSignature,
++		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
++		BasicConstraintsValid: true,
++		DNSNames:              dns,
++		IPAddresses:           ips,
++	}
++	return x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
++}
++
++func writeFile(path string, b []byte, mode os.FileMode) error {
++	tmp := path + ".tmp"
++	if err := os.WriteFile(tmp, b, mode); err != nil {
++		return err
++	}
++	return os.Rename(tmp, path)
++}
++
++// ---------------------------------------------------------------- listener
++
++// allowListener closes connections of addresses outside the allow list before
++// any TLS work is done.
++type allowListener struct {
++	net.Listener
++	allow func(net.IP) bool
++}
++
++func (l *allowListener) Accept() (net.Conn, error) {
++	for {
++		c, err := l.Listener.Accept()
++		if err != nil {
++			return nil, err
++		}
++		if l.allow(peerIP(c.RemoteAddr())) {
++			return c, nil
++		}
++		c.Close()
++	}
++}
++
++func peerIP(a net.Addr) net.IP {
++	if t, ok := a.(*net.TCPAddr); ok {
++		return t.IP
++	}
++	host, _, _ := net.SplitHostPort(a.String())
++	return net.ParseIP(host)
++}
++
++// ---------------------------------------------------------------- handler
++
++// Console routes that are never reachable through the API door, even with a key.
++var blockedPrefixes = []string{"/api/auth/", "/api/settings/", "/api/setup/", "/api/discord/"}
++
++func newHandler(cfg config) http.Handler {
++	fails := newFailLimiter(10, time.Minute, 10*time.Minute)
++	proxy := &httputil.ReverseProxy{
++		Rewrite: func(r *httputil.ProxyRequest) {
++			r.SetURL(cfg.Upstream)
++			if cfg.Full {
++				r.Out.Header["X-Forwarded-For"] = nil
++				return
++			}
++			// API door: nothing but the key and what the API needs
++			h := http.Header{}
++			for _, k := range []string{"Authorization", "Accept", "Accept-Encoding", "Range", "If-None-Match", "If-Modified-Since"} {
++				if v := r.In.Header[k]; v != nil {
++					h[k] = v
++				}
++			}
++			r.Out.Header = h
++		},
++		FlushInterval: -1, // server-sent events: pass every write on at once
++		ModifyResponse: func(resp *http.Response) error {
++			if !cfg.Full {
++				resp.Header.Del("Set-Cookie")
++			}
++			if resp.StatusCode == http.StatusUnauthorized {
++				if ip, ok := resp.Request.Context().Value(clientKey{}).(net.IP); ok && fails.fail(ip) {
++					log.Printf("mvtls: %s blocked for 10 minutes after repeated rejected API keys", ip)
++				}
++			}
++			return nil
++		},
++		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
++			if r.Context().Err() == nil {
++				log.Printf("mvtls: console unreachable: %v", err)
++			}
++			http.Error(w, "console unreachable", http.StatusBadGateway)
++		},
++	}
++	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		ip := peerIP(addrOf(r))
++		h := w.Header()
++		h.Set("X-Content-Type-Options", "nosniff")
++		h.Set("Strict-Transport-Security", "max-age=31536000")
++
++		if r.URL.Path == "/mvtls" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
++			// identification for MapViewer3D; nothing secret, sent without any login
++			h.Set("Content-Type", "application/json")
++			h.Set("Cache-Control", "no-store")
++			h.Set("Access-Control-Allow-Origin", "*")
++			json.NewEncoder(w).Encode(map[string]any{"mapviewer-tls": 1, "full": cfg.Full})
++			return
++		}
++		if fails.blocked(ip) {
++			h.Set("Retry-After", "600")
++			http.Error(w, "too many rejected API keys", http.StatusTooManyRequests)
++			return
++		}
++		if !cfg.Full {
++			if code := apiDoorRefusal(r); code != 0 {
++				http.Error(w, http.StatusText(code), code)
++				return
++			}
++		}
++		proxy.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), clientKey{}, ip)))
++	})
++}
++
++type clientKey struct{}
++
++func addrOf(r *http.Request) net.Addr {
++	a, err := net.ResolveTCPAddr("tcp", r.RemoteAddr)
++	if err != nil {
++		return &net.TCPAddr{}
++	}
++	return a
++}
++
++// apiDoorRefusal returns the status code to refuse the request with, or 0.
++func apiDoorRefusal(r *http.Request) int {
++	if r.Method != http.MethodGet && r.Method != http.MethodHead {
++		return http.StatusMethodNotAllowed
++	}
++	p := r.URL.Path
++	if strings.Contains(p, "..") || strings.Contains(p, "//") || strings.Contains(p, `\`) {
++		return http.StatusBadRequest
++	}
++	if strings.HasPrefix(p, "/images/maps/") {
++		return 0 // public marker images of the Console, no key needed
++	}
++	if p == "/api/health" {
++		return 0
++	}
++	if !strings.HasPrefix(p, "/api/") {
++		return http.StatusNotFound
++	}
++	for _, b := range blockedPrefixes {
++		if strings.HasPrefix(p, b) {
++			return http.StatusNotFound
++		}
++	}
++	if a := r.Header.Get("Authorization"); len(a) < 12 || !strings.EqualFold(a[:7], "bearer ") || !strings.HasPrefix(strings.TrimSpace(a[7:]), "dak_") {
++		return http.StatusUnauthorized
++	}
++	return 0
++}
++
++// failLimiter blocks an address after max rejected API keys within window.
++type failLimiter struct {
++	mu     sync.Mutex
++	max    int
++	window time.Duration
++	block  time.Duration
++	now    func() time.Time
++	ips    map[string]*failEntry
++}
++
++type failEntry struct {
++	first, until time.Time
++	n            int
++}
++
++func newFailLimiter(max int, window, block time.Duration) *failLimiter {
++	return &failLimiter{max: max, window: window, block: block, now: time.Now, ips: map[string]*failEntry{}}
++}
++
++func (l *failLimiter) blocked(ip net.IP) bool {
++	if ip == nil || ip.IsLoopback() {
++		return false
++	}
++	l.mu.Lock()
++	defer l.mu.Unlock()
++	e := l.ips[ip.String()]
++	return e != nil && l.now().Before(e.until)
++}
++
++// fail records a rejected key and reports whether the address just got blocked.
++func (l *failLimiter) fail(ip net.IP) bool {
++	if ip == nil || ip.IsLoopback() {
++		return false
++	}
++	l.mu.Lock()
++	defer l.mu.Unlock()
++	now := l.now()
++	if len(l.ips) > 10000 {
++		for k, e := range l.ips {
++			if now.Sub(e.first) > l.window && now.After(e.until) {
++				delete(l.ips, k)
++			}
++		}
++	}
++	k := ip.String()
++	e := l.ips[k]
++	if e == nil || now.Sub(e.first) > l.window {
++		e = &failEntry{first: now}
++		l.ips[k] = e
++	}
++	e.n++
++	if e.n >= l.max {
++		e.until = now.Add(l.block)
++		e.n, e.first = 0, now
++		return true
++	}
++	return false
++}
++
++// ---------------------------------------------------------------- health check
++
++func healthcheck(cfg config) int {
++	_, port, err := net.SplitHostPort(cfg.Addr)
++	if err != nil {
++		fmt.Fprintln(os.Stderr, err)
++		return 1
++	}
++	c := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{
++		// the certificate is not for 127.0.0.1; this only asks the front door itself
++		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
++	}}
++	resp, err := c.Get("https://127.0.0.1:" + port + "/mvtls")
++	if err != nil {
++		fmt.Fprintln(os.Stderr, err)
++		return 1
++	}
++	resp.Body.Close()
++	if resp.StatusCode != http.StatusOK {
++		fmt.Fprintln(os.Stderr, "mvtls:", resp.Status)
++		return 1
++	}
++	return 0
++}
+diff --git a/runtime/tls-front/main_test.go b/runtime/tls-front/main_test.go
+new file mode 100644
+index 0000000..ee47ba5
+--- /dev/null
++++ b/runtime/tls-front/main_test.go
+@@ -0,0 +1,310 @@
++package main
++
++import (
++	"bufio"
++	"crypto/tls"
++	"io"
++	"net"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++	"time"
++)
++
++const key = "Bearer dak_test_0123456789"
++
++// console is a stand-in for the Dune Docker Console: it records what reached it.
++func console(t *testing.T, seen chan<- *http.Request) *httptest.Server {
++	t.Helper()
++	mux := http.NewServeMux()
++	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, `{"ok":true}`) })
++	mux.HandleFunc("/api/map/status", func(w http.ResponseWriter, r *http.Request) {
++		seen <- r
++		if r.Header.Get("Authorization") != key {
++			w.WriteHeader(http.StatusUnauthorized)
++			return
++		}
++		w.Header().Set("Set-Cookie", "session=abc")
++		io.WriteString(w, `{"rows":[]}`)
++	})
++	mux.HandleFunc("/api/realtime/stream", func(w http.ResponseWriter, r *http.Request) {
++		seen <- r
++		w.Header().Set("Content-Type", "text/event-stream")
++		io.WriteString(w, "event: snap\ndata: {}\n\n")
++		w.(http.Flusher).Flush()
++		<-r.Context().Done()
++	})
++	mux.HandleFunc("/images/maps/x.png", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "PNG") })
++	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { seen <- r; io.WriteString(w, "console ui") })
++	s := httptest.NewServer(mux)
++	t.Cleanup(s.Close)
++	return s
++}
++
++// start runs the real front door (TLS + handler) in front of a console stub.
++func start(t *testing.T, env map[string]string) (base string, pin string, seen chan *http.Request) {
++	t.Helper()
++	seen = make(chan *http.Request, 32)
++	m := map[string]string{"MV_TLS_UPSTREAM": console(t, seen).URL, "MV_TLS_STATE": t.TempDir()}
++	for k, v := range env {
++		m[k] = v
++	}
++	cfg, err := loadConfig(func(k string) string { return m[k] })
++	if err != nil {
++		t.Fatal(err)
++	}
++	id, err := loadOrCreateIdentity(cfg.State, cfg.Names)
++	if err != nil {
++		t.Fatal(err)
++	}
++	inner, _ := net.Listen("tcp", "127.0.0.1:0")
++	ln := tls.NewListener(&allowListener{Listener: inner, allow: cfg.allowed}, &tls.Config{Certificates: []tls.Certificate{id}, MinVersion: tls.VersionTLS12})
++	srv := &http.Server{Handler: newHandler(cfg)}
++	go srv.Serve(ln)
++	t.Cleanup(func() { srv.Close() })
++	return "https://" + inner.Addr().String(), pinOf(id.Leaf), seen
++}
++
++// client trusts exactly the pinned key, like MapViewer3D does.
++func client(pin string) *http.Client {
++	return &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
++		InsecureSkipVerify: true,
++		VerifyConnection: func(cs tls.ConnectionState) error {
++			if pinOf(cs.PeerCertificates[0]) != pin {
++				return io.ErrUnexpectedEOF
++			}
++			return nil
++		},
++	}}}
++}
++
++func get(t *testing.T, c *http.Client, u string, hdr map[string]string) *http.Response {
++	t.Helper()
++	req, _ := http.NewRequest(http.MethodGet, u, nil)
++	for k, v := range hdr {
++		req.Header.Set(k, v)
++	}
++	resp, err := c.Do(req)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { resp.Body.Close() })
++	return resp
++}
++
++func TestKeyAndPinAreStableAndPrivate(t *testing.T) {
++	dir := t.TempDir()
++	a, err := loadOrCreateIdentity(dir, nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	b, err := loadOrCreateIdentity(dir, nil)
++	if err != nil || pinOf(a.Leaf) != pinOf(b.Leaf) || string(a.Leaf.Raw) != string(b.Leaf.Raw) {
++		t.Fatal("identity changed on reload")
++	}
++	// new names: certificate re-issued, key and pin unchanged
++	c, err := loadOrCreateIdentity(dir, []string{"dune.example.org", "203.0.113.7"})
++	if err != nil || pinOf(c.Leaf) != pinOf(a.Leaf) {
++		t.Fatal("pin changed with the names")
++	}
++	if len(c.Leaf.DNSNames) != 1 || len(c.Leaf.IPAddresses) != 1 {
++		t.Fatalf("names missing in the certificate: %v %v", c.Leaf.DNSNames, c.Leaf.IPAddresses)
++	}
++	if time.Until(c.Leaf.NotAfter) < 19*365*24*time.Hour {
++		t.Fatal("certificate does not live long")
++	}
++	if st, _ := os.Stat(filepath.Join(dir, "front-key.pem")); st.Mode().Perm() != 0o600 {
++		t.Fatalf("key mode %v", st.Mode().Perm())
++	}
++}
++
++func TestIdentificationNeedsNoLogin(t *testing.T) {
++	base, pin, seen := start(t, nil)
++	resp := get(t, client(pin), base+"/mvtls", nil)
++	if resp.StatusCode != 200 || !strings.Contains(resp.Header.Get("Content-Type"), "json") {
++		t.Fatalf("%d", resp.StatusCode)
++	}
++	select {
++	case r := <-seen:
++		t.Fatalf("%s reached the console", r.URL)
++	default:
++	}
++}
++
++func TestWrongPinIsRefusedByClient(t *testing.T) {
++	base, _, _ := start(t, nil)
++	if _, err := client("sha256/" + strings.Repeat("A", 43)).Get(base + "/mvtls"); err == nil {
++		t.Fatal("connected with the wrong pin")
++	}
++}
++
++func TestAPIDoorOnlyForwardsKeyedReads(t *testing.T) {
++	base, pin, seen := start(t, nil)
++	c := client(pin)
++	auth := map[string]string{"Authorization": key}
++
++	// forwarded, cookie of the console never passes, only the headers the API needs
++	resp := get(t, c, base+"/api/map/status", map[string]string{"Authorization": key, "Cookie": "session=admin", "X-Forwarded-For": "1.2.3.4"})
++	if resp.StatusCode != 200 || resp.Header.Get("Set-Cookie") != "" {
++		t.Fatalf("status %d, cookie %q", resp.StatusCode, resp.Header.Get("Set-Cookie"))
++	}
++	r := <-seen
++	if r.Header.Get("Cookie") != "" || r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("Authorization") != key {
++		t.Fatalf("headers: %v", r.Header)
++	}
++	// public images without a key
++	if get(t, c, base+"/images/maps/x.png", nil).StatusCode != 200 {
++		t.Fatal("image refused")
++	}
++	for path, want := range map[string]int{
++		"/api/map/status":        401, // no key: refused here, never reaches the console
++		"/":                      404, // the Console web UI is not exposed
++		"/index.html":            404,
++		"/api/auth/login":        404,
++		"/api/settings/api-keys": 404,
++		"/api/setup/state":       404,
++		"/api/../api/settings/x": 400,
++		"/api//settings/x":       400,
++		"/images/maps/../../x":   400,
++	} {
++		h := auth
++		if want == 401 {
++			h = nil
++		}
++		if got := get(t, c, base+path, h).StatusCode; got != want {
++			t.Errorf("%s: %d, want %d", path, got, want)
++		}
++	}
++	// a non-dak bearer is refused too
++	if get(t, c, base+"/api/map/status", map[string]string{"Authorization": "Bearer something-else"}).StatusCode != 401 {
++		t.Error("non-dak bearer forwarded")
++	}
++	req, _ := http.NewRequest(http.MethodPost, base+"/api/map/status", strings.NewReader("x"))
++	req.Header.Set("Authorization", key)
++	resp2, err := c.Do(req)
++	if err != nil {
++		t.Fatal(err)
++	}
++	resp2.Body.Close()
++	if resp2.StatusCode != 405 {
++		t.Errorf("POST: %d", resp2.StatusCode)
++	}
++	for len(seen) > 0 {
++		r := <-seen
++		if r.URL.Path != "/api/map/status" {
++			t.Errorf("unexpected request %s %s reached the console", r.Method, r.URL)
++		}
++	}
++}
++
++func TestFullModeForwardsEverything(t *testing.T) {
++	base, pin, seen := start(t, map[string]string{"MV_TLS_FULL": "true"})
++	resp := get(t, client(pin), base+"/", map[string]string{"Cookie": "session=admin"})
++	b, _ := io.ReadAll(resp.Body)
++	if string(b) != "console ui" {
++		t.Fatalf("UI not forwarded: %q", b)
++	}
++	if r := <-seen; r.Header.Get("Cookie") == "" {
++		t.Fatal("full mode dropped the session cookie")
++	}
++}
++
++func TestStreamIsFlushed(t *testing.T) {
++	base, pin, _ := start(t, nil)
++	c := client(pin)
++	c.Timeout = 0
++	resp := get(t, c, base+"/api/realtime/stream", map[string]string{"Authorization": key})
++	line := make(chan string, 1)
++	go func() { s, _ := bufio.NewReader(resp.Body).ReadString('\n'); line <- s }()
++	select {
++	case s := <-line:
++		if !strings.HasPrefix(s, "event: snap") {
++			t.Fatalf("first line %q", s)
++		}
++	case <-time.After(3 * time.Second):
++		t.Fatal("stream data was buffered instead of flushed")
++	}
++}
++
++func TestRejectedKeysBlockTheAddress(t *testing.T) {
++	// a console that rejects every key: the front must not let one client drain the console's shared limiter
++	seen := make(chan *http.Request, 64)
++	m := map[string]string{"MV_TLS_UPSTREAM": console(t, seen).URL, "MV_TLS_STATE": t.TempDir()}
++	cfg, _ := loadConfig(func(k string) string { return m[k] })
++	h := newHandler(cfg)
++	for i := 0; i < 10; i++ {
++		req := httptest.NewRequest("GET", "/api/map/status", nil)
++		req.RemoteAddr = "198.51.100.7:5000"
++		req.Header.Set("Authorization", "Bearer dak_wrong_wrong_wrong")
++		rec := httptest.NewRecorder()
++		h.ServeHTTP(rec, req)
++		if rec.Code != 401 {
++			t.Fatalf("attempt %d: %d", i, rec.Code)
++		}
++	}
++	req := httptest.NewRequest("GET", "/api/map/status", nil)
++	req.RemoteAddr = "198.51.100.7:5000"
++	req.Header.Set("Authorization", key)
++	rec := httptest.NewRecorder()
++	h.ServeHTTP(rec, req)
++	if rec.Code != 429 {
++		t.Fatalf("right key after 10 rejections: %d", rec.Code)
++	}
++	// another address is not affected
++	req = httptest.NewRequest("GET", "/api/map/status", nil)
++	req.RemoteAddr = "198.51.100.8:5000"
++	req.Header.Set("Authorization", key)
++	rec = httptest.NewRecorder()
++	h.ServeHTTP(rec, req)
++	if rec.Code != 200 {
++		t.Fatalf("other address: %d", rec.Code)
++	}
++}
++
++func TestAllowList(t *testing.T) {
++	cfg, err := loadConfig(func(k string) string { return map[string]string{"MV_TLS_ALLOW": "203.0.113.7, 10.0.0.0/8"}[k] })
++	if err != nil || !cfg.allowed(net.ParseIP("10.1.2.3")) || cfg.allowed(net.ParseIP("198.51.100.1")) || !cfg.allowed(net.ParseIP("127.0.0.1")) {
++		t.Fatalf("allow list: %v", err)
++	}
++	base, pin, _ := start(t, map[string]string{"MV_TLS_ALLOW": "203.0.113.7"})
++	// 127.0.0.1 is always allowed (health check), so test the listener with a foreign-looking policy
++	if get(t, client(pin), base+"/mvtls", nil).StatusCode != 200 {
++		t.Fatal("loopback refused")
++	}
++}
++
++func TestConfigErrors(t *testing.T) {
++	for _, bad := range []map[string]string{
++		{"MV_TLS_UPSTREAM": "ftp://x"}, {"MV_TLS_UPSTREAM": "http://u:p@127.0.0.1:8088"},
++		{"MV_TLS_ALLOW": "nope"}, {"MV_TLS_NAMES": "a/b"},
++	} {
++		if _, err := loadConfig(func(k string) string { return bad[k] }); err == nil {
++			t.Errorf("accepted %v", bad)
++		}
++	}
++}
++
++func TestFailLimiterExpires(t *testing.T) {
++	now := time.Unix(0, 0)
++	l := newFailLimiter(2, time.Minute, 10*time.Minute)
++	l.now = func() time.Time { return now }
++	ip := net.ParseIP("198.51.100.1")
++	l.fail(ip)
++	now = now.Add(2 * time.Minute)
++	if l.fail(ip) || l.blocked(ip) {
++		t.Fatal("blocked although the failures were in different windows")
++	}
++	if !l.fail(ip) || !l.blocked(ip) {
++		t.Fatal("not blocked after 2 failures in one window")
++	}
++	now = now.Add(11 * time.Minute)
++	if l.blocked(ip) {
++		t.Fatal("block did not expire")
++	}
++	if l.fail(net.ParseIP("127.0.0.1")) {
++		t.Fatal("loopback must never be blocked")
++	}
++}
+diff --git a/tests/tls-front-script-test.sh b/tests/tls-front-script-test.sh
+new file mode 100755
+index 0000000..2e16d4d
+--- /dev/null
++++ b/tests/tls-front-script-test.sh
+@@ -0,0 +1,89 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++repo_root="$(cd "$(dirname "$0")/.." && pwd)"
++
++fail() {
++  echo "FAIL: $*" >&2
++  exit 1
++}
++
++# A scratch installation with the real script and a docker mock that records its calls.
++work="$(mktemp -d)"
++trap 'rm -rf "$work"' EXIT
++mkdir -p "$work/runtime/scripts" "$work/runtime/tls-front" "$work/bin"
++cp "$repo_root/runtime/scripts/tls-front.sh" "$work/runtime/scripts/"
++cp "$repo_root/docker-compose.tls-front.yml" "$work/"
++cp "$repo_root/runtime/tls-front/Dockerfile" "$repo_root/runtime/tls-front/go.mod" "$repo_root/runtime/tls-front/main.go" "$work/runtime/tls-front/"
++
++# sha256sum is not on every development machine; the script only needs a stable hash.
++if ! command -v sha256sum >/dev/null 2>&1; then
++  printf '#!/bin/sh\nshasum -a 256 "$@"\n' >"$work/bin/sha256sum"
++  chmod +x "$work/bin/sha256sum"
++fi
++
++calls="$work/docker-calls"
++: >"$calls"
++running="$work/container-running"
++cat >"$work/bin/docker" <<'MOCK'
++#!/bin/sh
++echo "docker $*" >>"$MOCK_CALLS"
++case "$1" in
++  ps)
++    if [ -e "$MOCK_RUNNING" ]; then echo dune-tls-front; fi
++    ;;
++  image) exit 1 ;;   # not built yet
++  compose)
++    case " $* " in
++      *" up "*) : >"$MOCK_RUNNING"; mkdir -p "$MOCK_STATE"; : >"$MOCK_STATE/front-cert.pem" ;;
++      *" down "*) rm -f "$MOCK_RUNNING" ;;
++    esac
++    ;;
++  exec) echo "sha256/MOCKFINGERPRINTMOCKFINGERPRINTMOCKFINGERPRI" ;;
++  inspect) echo "State: running health=healthy" ;;
++esac
++MOCK
++chmod +x "$work/bin/docker"
++export MOCK_CALLS="$calls" MOCK_RUNNING="$running" MOCK_STATE="$work/runtime/generated/tls-front"
++export PATH="$work/bin:$PATH"
++
++run() { (cd "$work" && ./runtime/scripts/tls-front.sh "$@"); }
++
++# nothing configured: disabled, and no fingerprint is invented
++out="$(run status)"
++grep -Fq 'State: disabled' <<<"$out" || fail "fresh status is not 'disabled': $out"
++if run fingerprint 2>/dev/null; then fail "fingerprint printed although the front door never ran"; fi
++
++# enable: writes the env file, builds, starts, shows the fingerprint
++out="$(run enable)"
++grep -Fq 'DUNE_TLS_FRONT_ENABLED=true' "$work/runtime/generated/tls-front.env" || fail "enable did not persist the choice"
++[ "$(stat -c %a "$work/runtime/generated/tls-front.env" 2>/dev/null || stat -f %Lp "$work/runtime/generated/tls-front.env")" = "600" ] || fail "env file is not private"
++grep -Fq 'docker compose -f docker-compose.tls-front.yml build dune-tls-front' "$calls" || fail "image was not built"
++grep -Fq 'docker compose -f docker-compose.tls-front.yml up -d --force-recreate' "$calls" || fail "front door was not started"
++grep -Fq 'Fingerprint: sha256/MOCKFINGERPRINT' <<<"$out" || fail "status after enable lacks the fingerprint: $out"
++fp="$(run fingerprint)"
++[ "$fp" = "sha256/MOCKFINGERPRINTMOCKFINGERPRINTMOCKFINGERPRI" ] || fail "fingerprint command output: $fp"
++[ -d "$work/runtime/generated/tls-front" ] || fail "state directory missing"
++
++# reconcile keeps the operator's choice
++: >"$calls"
++run reconcile
++grep -Fq ' up -d' "$calls" || fail "reconcile did not start an enabled front door"
++
++# disable: persists, stops
++: >"$calls"
++run disable >/dev/null
++grep -Fq 'DUNE_TLS_FRONT_ENABLED=false' "$work/runtime/generated/tls-front.env" || fail "disable did not persist the choice"
++grep -Fq ' down ' "$calls" || fail "disable did not stop the container"
++: >"$calls"
++run reconcile
++if grep -Fq ' up -d' "$calls"; then fail "reconcile started a disabled front door"; fi
++
++# a bad port in the env file is refused, never passed on
++printf 'DUNE_TLS_FRONT_ENABLED=true\nDUNE_TLS_FRONT_PORT=80;rm\n' >"$work/runtime/generated/tls-front.env"
++if run status >/dev/null 2>&1; then fail "invalid port accepted"; fi
++
++# a request for an unknown command fails
++if run frobnicate >/dev/null 2>&1; then fail "unknown command accepted"; fi
++
++echo "tls-front.sh tests passed"
+-- 
+2.54.0 (Apple Git-157)
+
