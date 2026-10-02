@@ -62,6 +62,7 @@ func (s *Server) rememberServer(c secure.Credentials) {
 func (s *Server) activate(c secure.Credentials) {
 	s.setLive(&LiveConfig{APIBase: c.APIBase, Token: c.Token, APIPin: c.Pin})
 	s.clearServerCaches()
+	s.refreshSecureOffer()
 	s.refreshRealtime()
 }
 

@@ -26,7 +26,7 @@ A complete example (site with the viewer built in, nginx, systemd, config with s
 
 ## Through the Dune Docker Console (Realtime Data, since Beta.16)
 
-A viewer on **your own PC** gets the data through the Console instead of directly from the agent: the agent runs as a container next to Dune Docker (branch [`ddp`](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp), `127.0.0.1:8796` only), and the Console passes it on at `/api/realtime/*` to API keys with the **Realtime Data** permission (players only with **Players → Read** as well). The viewer needs no option for this: at start it asks with its API key – only over HTTPS or on the same machine – and hides the switches when there is no suitable answer. `-agent` (your own agent) takes precedence. Details: README and SECURITY.md in branch `ddp`.
+A viewer on **your own PC** gets the data through the Console instead of directly from the agent (encrypted through the stack's optional `mvtls` front door, which the viewer finds by itself and uses after you compare its fingerprint): the agent runs as a container next to Dune Docker (branch [`ddp`](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp), `127.0.0.1:8796` only), and the Console passes it on at `/api/realtime/*` to API keys with the **Realtime Data** permission (players only with **Players → Read** as well). The viewer needs no option for this: at start it asks with its API key – only over HTTPS or on the same machine – and hides the switches when there is no suitable answer. `-agent` (your own agent) takes precedence. Details: README and SECURITY.md in branch `ddp`.
 
 ## Quick start
 

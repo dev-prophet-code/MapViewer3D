@@ -143,7 +143,8 @@ func (s *Server) setupStatus(w http.ResponseWriter, r *http.Request) {
 	if !admin {
 		host, fp = "", "" // Besucher eines öffentlichen Viewers sehen die Verbindung nicht
 	}
-	writeJSON(w, map[string]any{"configured": ok && s.lp() != nil, "stored": ok, "server": host, "fingerprint": fp, "admin": admin})
+	writeJSON(w, map[string]any{"configured": ok && s.lp() != nil, "stored": ok, "server": host, "fingerprint": fp, "admin": admin,
+		"https": s.activeHTTPS(), "secure": s.secureStatus(r)})
 }
 
 var tokenPattern = regexp.MustCompile(`^[A-Za-z0-9_\-.]{8,512}$`)

@@ -76,7 +76,7 @@ If the viewer runs **on your own PC** instead of the game host, worms, enemies a
 
 1. run the agent as a container on the game host (branch [`ddp`](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp): `docker compose -f docker-compose.mapviewer-live.yml up -d --build`; reachable on `127.0.0.1` only),
 2. in the Console grant the API key **Realtime Data → Read** under **Settings → API Keys** (live players additionally **Players → Read**),
-3. connect to the Console via **HTTPS** (e.g. `https://my-server.com`); for a self-signed or internal certificate enter the fingerprint the viewer shows during setup.
+3. **encrypt** the connection to the Console: the stack in `ddp` ships an optional front door for that, `mvtls` (`--profile tls`, port 8797): HTTPS with its own key in front of the unchanged Console, nobody else has to change anything. **The viewer finds it by itself**, shows its fingerprint and switches after you confirm it (compare it with `mvtls -pin` on the server first). Your own HTTPS proxy (`https://my-server.com`), an SSH tunnel or a VPN work as well.
 
 The viewer asks briefly at start. If anything is missing – or the Console does not know the feature yet – the switches simply do not appear and the log says why. **Note:** the Console change is a ready patch in branch `ddp` and not yet part of Dune Docker.
 

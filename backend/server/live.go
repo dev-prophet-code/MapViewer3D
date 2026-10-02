@@ -66,6 +66,8 @@ func (s *Server) UseConfig(cfg *LiveConfig) {
 	if cfg.Public != nil {
 		s.SetPublic(cfg.Public)
 	}
+	setActivePin(cfg.APIPin)
+	s.refreshSecureOffer() // nur ein Hinweis im Log: die feste Konfiguration stellt der Betreiber selbst um
 }
 
 // Aktualität je Datenart: Spieler oft, Weltobjekte selten.

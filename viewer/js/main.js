@@ -10,7 +10,7 @@ import { Terrain } from './terrain.js';
 import { bindHud, bindUi, showMapInfo } from './ui.js';
 import { initCompass } from './compass.js';
 import { initTheme } from './theme.js';
-import { askForSetup, editNames, showConnection, switchServer } from './setup.js';
+import { askForSetup, editNames, offerSecure, showConnection, switchServer } from './setup.js';
 import { initUpdate } from './update.js';
 import { applyStatic, EMBED, START_MAP, t } from './i18n.js';
 
@@ -102,6 +102,8 @@ async function init() {
   }
   if (!status.configured) status = await askForSetup();
   showConnection(status);
+  // Der Server bietet einen verschlüsselten Eingang an (mvtls): nach dem Vergleich des Fingerabdrucks nutzen
+  if (status.secure && await offerSecure(status.secure)) { location.reload(); return; }
   // Öffentlich gibt es keine Offline-Spieler – der Schalter bliebe immer leer
   const st = await api.liveStatus().catch(() => ({}));
   if (st.public) document.querySelector('#liveToggles [data-key="offline"]')?.remove();

@@ -89,6 +89,7 @@ type Server struct {
 	liveKick chan struct{}
 	// realtimeOn: die Abfrage nach Realtime Data läuft (kein eigener Agent);
 	// realtimeMu verhindert, dass Hintergrundabfrage und Serverwechsel gleichzeitig verbinden.
+	secure       secureState // erkannter verschlüsselter Eingang (secure.go)
 	realtimeOn   atomic.Bool
 	realtimeMu   sync.Mutex
 	realtimeLast atomic.Pointer[string] // letzter gemeldeter Zustand (Log nur bei Änderung)
@@ -157,6 +158,7 @@ func New(dataDir, webDir, stateDir string, store *secure.Store) *Server {
 	} else if c, err := store.Load(); err == nil {
 		s.setLive(&LiveConfig{APIBase: c.APIBase, Token: c.Token, APIPin: c.Pin})
 		s.adoptStoredServer(*c)
+		s.refreshSecureOffer()
 		log.Printf("Verbindung zur Console eingerichtet")
 	} else if err != secure.ErrNotConfigured {
 		log.Printf("Zugangsdaten nicht lesbar (%v) – bitte neu einrichten", err)
@@ -165,6 +167,7 @@ func New(dataDir, webDir, stateDir string, store *secure.Store) *Server {
 	}
 	s.mux.HandleFunc("GET /api/setup", s.setupStatus)
 	s.mux.HandleFunc("POST /api/setup", s.setupSave)
+	s.mux.HandleFunc("POST /api/setup/secure", s.secureAccept)
 	s.mux.HandleFunc("GET /api/servers", s.serversGet)
 	s.mux.HandleFunc("POST /api/servers/{id}/use", s.serverUse)
 	s.mux.HandleFunc("DELETE /api/servers/{id}", s.serverDelete)

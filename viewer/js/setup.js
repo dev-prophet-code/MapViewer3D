@@ -152,12 +152,43 @@ export function switchServer() {
   });
 }
 
+// Angebot, ab jetzt den verschlüsselten Eingang des Servers zu nutzen (mvtls).
+// Der Fingerabdruck muss mit dem auf dem Server verglichen werden. Löst mit true auf, wenn umgestellt wurde.
+export function offerSecure(offer) {
+  return new Promise((resolve) => {
+    const modal = $('secureOffer');
+    const err = $('secureError');
+    $('secureUrl').value = offer.url;
+    $('securePin').value = offer.pin;
+    err.hidden = true;
+    modal.hidden = false;
+    const done = (v) => { modal.hidden = true; $('secureYes').onclick = null; $('secureNo').onclick = null; resolve(v); };
+    $('secureNo').onclick = async () => {
+      try { await api.secureAnswer(false, offer.pin); } catch { /* egal: es wird dann nur erneut angeboten */ }
+      done(false);
+    };
+    $('secureYes').onclick = async () => {
+      err.hidden = true;
+      $('secureYes').disabled = true;
+      try {
+        await api.secureAnswer(true, offer.pin);
+        done(true);
+      } catch (ex) {
+        err.textContent = errorText(ex);
+        err.hidden = false;
+      } finally {
+        $('secureYes').disabled = false;
+      }
+    };
+  });
+}
+
 export function showConnection(status) {
   const admin = status.admin !== false;
   $('connInfo').textContent = !admin
     ? t(status.configured ? 'conn.remote' : 'conn.none')
     : status.stored
-      ? t('conn.info', { server: status.server, fp: status.fingerprint })
+      ? t('conn.info', { server: status.server, fp: status.fingerprint }) + '\n' + t(status.https ? 'conn.encrypted' : 'conn.plain')
       : t('conn.none');
   // Besucher eines öffentlichen Viewers dürfen nichts umstellen
   for (const id of ['connSwitch', 'connNames', 'connChange', 'connDelete']) $(id).hidden = !admin;

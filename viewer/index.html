@@ -105,6 +105,25 @@
   </form>
 </div>
 
+<div id="secureOffer" class="modal" hidden>
+  <div class="dialog" role="dialog" aria-labelledby="secureTitle">
+    <h1 id="secureTitle" data-i18n="secure.title">Encrypted connection available</h1>
+    <p class="muted small" data-i18n="secure.intro"></p>
+    <label><span data-i18n="secure.address">Address</span>
+      <input id="secureUrl" type="text" readonly spellcheck="false">
+    </label>
+    <label><span data-i18n="secure.fingerprint">Key fingerprint</span>
+      <input id="securePin" type="text" readonly spellcheck="false" class="mono">
+    </label>
+    <p class="small" data-i18n-html="secure.compare"></p>
+    <div id="secureError" class="error small" hidden></div>
+    <div class="btnrow">
+      <button id="secureNo" type="button" data-i18n="secure.no">Not now</button>
+      <button id="secureYes" type="button" class="primary" data-i18n="secure.yes">The fingerprint matches – use it</button>
+    </div>
+  </div>
+</div>
+
 <div id="servers" class="modal" hidden>
   <div class="dialog" role="dialog" aria-labelledby="serversTitle">
     <h1 id="serversTitle" data-i18n="servers.title">Switch server</h1>

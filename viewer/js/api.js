@@ -26,6 +26,7 @@ const send = (url, method, body) => json(url, {
 export const api = {
   setupStatus: () => json('api/setup'),
   setupSave: (server, port, token, pin = '') => send('api/setup', 'POST', { server, port, token, pin }),
+  secureAnswer: (accept, pin) => send('api/setup/secure', 'POST', { accept, pin }),
   servers: () => json('api/servers'),
   serverUse: (id) => send(`api/servers/${encodeURIComponent(id)}/use`, 'POST'),
   serverDelete: (id) => send(`api/servers/${encodeURIComponent(id)}`, 'DELETE'),

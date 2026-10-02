@@ -30,7 +30,7 @@ Läuft der Viewer **auf dem eigenen PC** statt auf dem Spiel-Host, kommen Würme
 
 1. auf dem Spiel-Host den Agenten als Container starten (Branch [`ddp`](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp): `docker compose -f docker-compose.mapviewer-live.yml up -d --build`; er ist nur auf `127.0.0.1` erreichbar),
 2. in der Console dem API-Key unter **Settings → API Keys** das Recht **Realtime Data → Read** geben (Live-Spieler zusätzlich **Players → Read**),
-3. die Console per **HTTPS** anbinden (z. B. `https://mein-server.de`); bei einem selbst signierten oder internen Zertifikat den Fingerabdruck eintragen, den der Viewer beim Einrichten nennt.
+3. die Verbindung zur Console **verschlüsseln**: Der Stack aus `ddp` bringt dafür den optionalen Eingang `mvtls` mit (`--profile tls`, Port 8797): HTTPS mit eigenem Schlüssel vor der unveränderten Console, ohne dass jemand sonst etwas umstellen muss. **Der Viewer findet ihn selbst**, zeigt seinen Fingerabdruck und stellt nach deiner Bestätigung um (vorher mit `mvtls -pin` auf dem Server vergleichen). Alternativ geht ein eigener HTTPS-Proxy (`https://mein-server.de`), ein SSH-Tunnel oder ein VPN.
 
 Der Viewer fragt beim Start kurz nach. Fehlt etwas davon – oder kennt die Console die Funktion noch nicht –, erscheinen die Schalter einfach nicht und das Log sagt warum. **Hinweis:** Die nötige Änderung an der Console liegt im Branch `ddp` als Patch bereit und ist noch nicht Teil von Dune Docker.
 
