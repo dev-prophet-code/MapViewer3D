@@ -100,7 +100,7 @@ Use that key as the viewer's console token (server = the Console's address, `tok
 - The viewer sends the key only over HTTPS (or to the same machine) and checks the certificate – via the system trust store or a pinned fingerprint.
 - In PvP, worms and enemies follow players: do not give such keys to players.
 
-Details: [SECURITY.md](SECURITY.md).
+Details: [SECURITY.md](SECURITY.md). Using the data from your own program: [REALTIME-API.md](dune-docker-integration/REALTIME-API.md).
 
 ## Configuration (`.env`)
 

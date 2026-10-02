@@ -1,6 +1,6 @@
-From 3cbedd8a9f3088756fab836890bf44f709e16d12 Mon Sep 17 00:00:00 2001
-From: Stefan Schaefer <stefanschaefer@BlackGuard.fritz.box>
-Date: Fri, 2 Oct 2026 12:31:32 +0200
+From 24d37e95548b1b5e2bcdb8edb190a6bc454188c0 Mon Sep 17 00:00:00 2001
+From: dev-prophet-code <dev-prophet-code@users.noreply.github.com>
+Date: Fri, 2 Oct 2026 13:45:22 +0200
 Subject: [PATCH] Encrypted API access: optional HTTPS front door for the
  Console API, fingerprint in the installer and in Settings
 

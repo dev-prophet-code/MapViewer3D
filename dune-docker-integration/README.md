@@ -14,7 +14,7 @@ git am /path/to/0001-api-keys-realtime-data-scope.patch /path/to/0002-encrypted-
 dune console restart
 ```
 
-Neither is submitted as a pull request yet. A one-page explanation of how the system works, for maintainers: [OVERVIEW.md](OVERVIEW.md).
+Neither is submitted as a pull request yet. A one-page explanation of how the system works, for maintainers: [OVERVIEW.md](OVERVIEW.md). The data API for other programs (fields, stream format, examples, pinning): [REALTIME-API.md](REALTIME-API.md).
 
 ---
 

@@ -95,7 +95,7 @@ Test server, Dune Docker v1.4.44 with both patches applied, `dune console restar
 
 - `dune encrypted-api enable`: image built (vet and tests run in the build), container `healthy`, port 8797 listening.
 - The fingerprint printed by `dune encrypted-api fingerprint` equals the one the Console's `encryptedApi` service computes from the
-  certificate **and** the one seen from outside by `openssl s_client` (`sha256/lSIhjqwZTNZyGlSvR59xuBbTFByGEp6j563ZQpNjqek`).
+  certificate **and** the one seen from outside by `openssl s_client`.
 - From another machine: `GET /mvtls` answers without a login; `/`, `/index.html`, `/api/auth/state`, `/api/settings/api-keys` give
   `404`; `/api/map/status` without a key or with a wrong key gives `401`; plain HTTP on the port gets `400`.
 - A client with a wrong pin is refused, with the right pin the TLS connection works and only the wrong token is rejected by the

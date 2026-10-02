@@ -102,7 +102,7 @@ Den Key als Console-Token des Viewers verwenden (Server = Adresse der Console, `
 - Der Viewer schickt den Key nur über HTTPS (oder an denselben Rechner) und prüft das Zertifikat – über die Zertifikatsstellen des Systems oder einen festgelegten Fingerabdruck.
 - Im PvP folgen Würmer und Gegner den Spielern: solche Keys nicht an Spieler geben.
 
-Einzelheiten: [SECURITY.md](SECURITY.md).
+Einzelheiten: [SECURITY.md](SECURITY.md). Die Daten im eigenen Programm nutzen: [REALTIME-API.md](dune-docker-integration/REALTIME-API.md) (englisch).
 
 ## Einstellungen (`.env`)
 

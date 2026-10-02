@@ -1,6 +1,6 @@
-From e2cd9d1363b1f3d73b34cfb419777fbda873c7b3 Mon Sep 17 00:00:00 2001
-From: Stefan Schaefer <stefanschaefer@BlackGuard.fritz.box>
-Date: Fri, 2 Oct 2026 02:04:52 +0200
+From 2d95875d0f45b39c1f5cc5d872c8cab31984fff9 Mon Sep 17 00:00:00 2001
+From: dev-prophet-code <dev-prophet-code@users.noreply.github.com>
+Date: Fri, 2 Oct 2026 13:45:22 +0200
 Subject: [PATCH] API keys: new scope "Realtime Data" for live sandworms, NPCs,
  vehicles and storms
 
