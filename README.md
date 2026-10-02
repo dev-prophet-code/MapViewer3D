@@ -61,7 +61,7 @@ Use that key as the viewer's console token (`apiBase` = the Console's HTTPS addr
 - available and permitted → the switches **Sandworms (live)**, **Enemies**, **Civilians & traders**, **Vehicles (live)** and the storms appear;
 - otherwise they stay hidden and the log says why (Dune Docker without the function, agent not running, key without "Realtime Data", Console not on HTTPS, certificate mismatch). It asks again every 10 minutes.
 
-**Self-signed or internal certificate** (e.g. Caddy `tls internal`): the viewer refuses it and logs its fingerprint. Check it on the server and pin it:
+**Self-signed or internal certificate** (e.g. Caddy `tls internal`): the viewer refuses it and shows its fingerprint during setup. Compare it on the server and enter it in the setup's **Certificate fingerprint** field (stored per server; **Switch server** keeps several servers), or for all connections:
 
 ```bash
 ./start.sh -api-pin sha256/…        # or "apiPin" in the config file, or MV_API_PIN

@@ -63,7 +63,7 @@ Den Key als Console-Token des Viewers verwenden (`apiBase` = HTTPS-Adresse der C
 - verfügbar und erlaubt → die Schalter **Sandwürmer (live)**, **Gegner**, **Zivilisten & Händler**, **Fahrzeuge (live)** und die Stürme erscheinen;
 - sonst bleiben sie ausgeblendet und das Log sagt warum (Dune Docker ohne die Funktion, Agent läuft nicht, Key ohne „Realtime Data“, Console nicht per HTTPS, Zertifikat passt nicht). Alle 10 Minuten fragt er erneut.
 
-**Selbst signiertes oder internes Zertifikat** (z. B. Caddy `tls internal`): Der Viewer lehnt es ab und schreibt seinen Fingerabdruck ins Log. Auf dem Server vergleichen und festlegen:
+**Selbst signiertes oder internes Zertifikat** (z. B. Caddy `tls internal`): Der Viewer lehnt es ab und nennt beim Einrichten seinen Fingerabdruck. Auf dem Server vergleichen und im Feld **Zertifikats-Fingerabdruck** der Einrichtung eintragen (wird je Server gespeichert; **Server wechseln** hält mehrere Server bereit), oder für alle Verbindungen:
 
 ```bash
 ./start.sh -api-pin sha256/…        # oder "apiPin" in der Konfigurationsdatei, oder MV_API_PIN

@@ -28,7 +28,7 @@ The agent that reads the game servers has no network exposure at all; the **Dune
 The API key and the positions travel inside the Console connection, so the viewer is strict about it:
 
 - **HTTPS required** for Realtime Data, unless the Console is on the same machine (`127.0.0.1`, `localhost`, `::1`). Over plain HTTP the switches stay hidden and the log says why.
-- **Certificate check**: either the system trust store (a normal certificate, e.g. Let's Encrypt) or, for a self-signed / internal certificate, a **pinned fingerprint** (`-api-pin sha256/…`, SHA-256 of the public key). Without a pin a certificate the system does not trust is refused, and the log shows its fingerprint so the admin can compare it on the server and pin it. A wrong pin is reported as a possible man in the middle.
+- **Certificate check**: either the system trust store (a normal certificate, e.g. Let's Encrypt) or, for a self-signed / internal certificate, a **pinned fingerprint** (SHA-256 of the public key; entered per server in the setup, or `-api-pin sha256/…` for all). Without a pin a certificate the system does not trust is refused, and the log shows its fingerprint so the admin can compare it on the server and pin it. A wrong pin is reported as a possible man in the middle.
 - TLS 1.2 minimum (the Console's reverse proxy decides; Caddy and current nginx offer TLS 1.3).
 - Redirects are not followed for the Realtime Data check.
 
