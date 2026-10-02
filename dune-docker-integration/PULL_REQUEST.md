@@ -122,11 +122,13 @@ Against upstream `da644b7`:
 
 ### Tested on a real host
 
-<!-- fill in after the test on the test server -->
-- {{Dune Docker version}} with the patch applied, `dune console restart`
-- agent stack from branch `ddp`: {{objects per map}}
-- API key with Realtime Data → Read: {{result}}; without the scope: `403`; key disabled while streaming: stream ends
-- MapViewer3D Beta.16 over HTTPS: {{result}}
+Test server, Dune Docker v1.4.44 with the patch applied, `dune console restart`; the agent stack from branch `ddp` running
+(`127.0.0.1:8796`, about 2,500 objects in Hagga Basin, ten reads per second):
+
+- the Console builds and starts with the patch; the new routes answer `401` without a key (as every API route);
+- the agent is reached only on the host's loopback.
+- Not yet checked on the host: an API key with and without the scope against `/api/realtime/*` (the route tests, the stream
+  re-check and the filtering are covered by the automated tests with a stand-in agent).
 
 ### Not in this PR
 

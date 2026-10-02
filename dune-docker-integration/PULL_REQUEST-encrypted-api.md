@@ -91,11 +91,17 @@ Against upstream `da644b7` with both patches applied:
 
 ### Tested on a real host
 
-<!-- fill in after the test on the test server -->
-- {{Dune Docker version}} with both patches; `dune console restart`
-- `dune encrypted-api enable` → image built, container healthy, fingerprint = {{value}}
-- Settings → Encrypted API Access shows the same fingerprint; the installer's final screen {{result}}
-- an API key against `https://<host>:8797`: map data {{result}}; without a key `401`; `/` and `/api/settings/…` `404`
-- MapViewer3D Beta.16: fingerprint compared and confirmed, maps and Realtime Data over the encrypted connection {{result}}
+Test server, Dune Docker v1.4.44 with both patches applied, `dune console restart`:
+
+- `dune encrypted-api enable`: image built (vet and tests run in the build), container `healthy`, port 8797 listening.
+- The fingerprint printed by `dune encrypted-api fingerprint` equals the one the Console's `encryptedApi` service computes from the
+  certificate **and** the one seen from outside by `openssl s_client` (`sha256/lSIhjqwZTNZyGlSvR59xuBbTFByGEp6j563ZQpNjqek`).
+- From another machine: `GET /mvtls` answers without a login; `/`, `/index.html`, `/api/auth/state`, `/api/settings/api-keys` give
+  `404`; `/api/map/status` without a key or with a wrong key gives `401`; plain HTTP on the port gets `400`.
+- A client with a wrong pin is refused, with the right pin the TLS connection works and only the wrong token is rejected by the
+  Console through the front door.
+- Restart of the Console and of the front door keeps the key, so the fingerprint is unchanged.
+- Not yet checked on the host: the installer's final screen (shown only on a fresh install; covered by the shell test with a
+  docker mock), the Settings page rendered in a browser (covered by component tests), an API key with real map data through 8797.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
