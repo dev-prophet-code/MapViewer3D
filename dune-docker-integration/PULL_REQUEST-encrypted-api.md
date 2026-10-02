@@ -15,7 +15,7 @@ Nothing changes for anybody who does not use it: the normal address keeps workin
 ### What the admin sees
 
 - **Installer:** below the first admin password it now prints the encrypted address and the **key fingerprint** and where to see
-  it again. `DUNE_ENCRYPTED_API=0` skips it; a choice made later in Settings is kept when the installer runs again.
+  it again. `DUNE_ENCRYPTED_API=1` enables it (off by default); a choice made later in Settings is kept when the installer runs again.
 - **Settings → Encrypted API Access:** a short section with status, an on/off switch, the address and the **Key Fingerprint** with a Copy button. The explanation (what to compare, when the fingerprint changes) is in the docs, not on the page.
 - **CLI:** `dune encrypted-api enable | disable | status | fingerprint`.
 
@@ -55,9 +55,7 @@ tool ──HTTPS :8797, Authorization: Bearer dak_…──► dune-tls-front �
 
 ### Decision for you
 
-The installer starts the front door **by default** on a new install, so the fingerprint can be shown at the end of the setup.
-It listens on 8797 but is only reachable if that port is opened in the firewall, and it passes nothing but API-key `GET`s.
-If you prefer opt-in, flip `DUNE_ENCRYPTED_API` to default `0` in `start_tls_front` – everything else stays the same.
+The front door is **off by default** on a new install (set in the maintainer's follow-up commit); `DUNE_ENCRYPTED_API=1` or the Settings switch enables it, and the fingerprint is then shown. It listens on 8797 but is only reachable if that port is opened in the firewall, and it passes nothing but API-key `GET`s.
 
 ### Files
 

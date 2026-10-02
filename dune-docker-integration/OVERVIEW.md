@@ -61,7 +61,7 @@ attacker's key. The admin therefore compares the fingerprint shown by the client
 | 1 Realtime Data | `services/realtime.js`, routes `/api/realtime/*`, namespace `realtime` | `server.js`, `actions.js`, `policy.js` (admin), `apiKeyScopes.js`, key-form label |
 | 2 Encrypted API access | `runtime/tls-front/`, `docker-compose.tls-front.yml`, `runtime/scripts/tls-front.sh`, `services/encryptedApi.js`, Settings section | `install.sh` (start + show fingerprint), `runtime/scripts/dune`, `server.js`, `actions.js`, `SettingsPanel.tsx` |
 
-Defaults and switches: the installer starts the front door on a new install (`DUNE_ENCRYPTED_API=0` skips); a later choice in Settings is kept. It only
+Defaults and switches: the front door is **off** on a new install (`DUNE_ENCRYPTED_API=1` or the switch in Settings turns it on); a choice made in Settings is kept. It only
 listens on `8797`, which still has to be opened in the firewall. The agent is installed separately (compose project in this repository) and only needed for Realtime Data.
 
 ## Tested

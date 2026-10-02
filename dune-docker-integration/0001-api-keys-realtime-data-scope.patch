@@ -1,8 +1,8 @@
 From 2d95875d0f45b39c1f5cc5d872c8cab31984fff9 Mon Sep 17 00:00:00 2001
 From: dev-prophet-code <dev-prophet-code@users.noreply.github.com>
 Date: Fri, 2 Oct 2026 13:45:22 +0200
-Subject: [PATCH] API keys: new scope "Realtime Data" for live sandworms, NPCs,
- vehicles and storms
+Subject: [PATCH 1/2] API keys: new scope "Realtime Data" for live sandworms,
+ NPCs, vehicles and storms
 
 Realtime Data is its own read-only namespace (realtime:read), shown as a
 separate row "Realtime Data" (None / Read) when creating an API key. The
@@ -777,6 +777,73 @@ index 0000000..182d35e
 +HTTPS or on the same machine, and checks the Console certificate – by the
 +system trust store or by a pinned fingerprint for a self-signed / internal
 +certificate.
+-- 
+2.54.0 (Apple Git-157)
+
+
+From 200c05fc8469ed7baaf5ddc5106bd345c14824e5 Mon Sep 17 00:00:00 2001
+From: Red-Blink <34422787+Red-Blink@users.noreply.github.com>
+Date: Fri, 2 Oct 2026 18:03:42 +0300
+Subject: [PATCH 2/2] Close realtime streams when player access is removed
+
+---
+ console/api/src/services/realtime.js |  7 ++++++-
+ console/api/test/realtime.test.js    | 24 ++++++++++++++++++++++++
+ 2 files changed, 30 insertions(+), 1 deletion(-)
+
+diff --git a/console/api/src/services/realtime.js b/console/api/src/services/realtime.js
+index 32625e5..aa4f123 100644
+--- a/console/api/src/services/realtime.js
++++ b/console/api/src/services/realtime.js
+@@ -142,7 +142,12 @@ export function createRealtime({
+       const upstream = http.get(new URL("/stream", base), { headers: { accept: "text/event-stream" } });
+       const recheck = setInterval(() => {
+         if (!stillAllowed()) return finish();
+-        players = Boolean(allowPlayers());
++        const nextPlayers = Boolean(allowPlayers());
++        // Previously admitted player IDs remain in the delta cache until the
++        // next snapshot. End this stream on a downgrade rather than leaking
++        // their positions in the meantime; reconnect applies the new scope.
++        if (players && !nextPlayers) return finish();
++        players = nextPlayers;
+       }, recheckMs);
+ 
+       function finish() {
+diff --git a/console/api/test/realtime.test.js b/console/api/test/realtime.test.js
+index 0074754..9ec6cb8 100644
+--- a/console/api/test/realtime.test.js
++++ b/console/api/test/realtime.test.js
+@@ -120,6 +120,30 @@ test("stream without players:read drops player objects and their positions", asy
+   }
+ });
+ 
++test("removing only players:read ends a stream without waiting for another snapshot", async () => {
++  const agent = await fakeAgent();
++  const realtime = createRealtime({ agentUrl: agent.url, recheckMs: 20 });
++  let players = true;
++  const { front, events, done } = await openStream(realtime, {
++    principal: "apikey:downgrade", allowPlayers: () => players, stillAllowed: () => true
++  });
++  try {
++    await new Promise(resolve => setTimeout(resolve, 100));
++    assert.ok(events.some(e => e.name === "pos" && e.data.d.some(d => d[0] === 3)));
++    players = false;
++    await Promise.race([done, new Promise((_, reject) => {
++      const timer = setTimeout(() => reject(new Error("scope downgrade did not end the stream")), 1000);
++      timer.unref();
++    })]);
++    const count = events.length;
++    await new Promise(resolve => setTimeout(resolve, 60));
++    assert.equal(events.length, count);
++    assert.equal(realtime.openStreams(), 0);
++  } finally {
++    front.closeAllConnections(); front.close(); agent.server.close();
++  }
++});
++
+ test("stream with players:read keeps players", async () => {
+   const agent = await fakeAgent();
+   const realtime = createRealtime({ agentUrl: agent.url });
 -- 
 2.54.0 (Apple Git-157)
 

@@ -1,7 +1,7 @@
 From 56aebf12f1639577c44bc9d48bf99baae43a7931 Mon Sep 17 00:00:00 2001
 From: dev-prophet-code <dev-prophet-code@users.noreply.github.com>
 Date: Fri, 2 Oct 2026 13:45:22 +0200
-Subject: [PATCH] Encrypted API access: optional HTTPS front door for the
+Subject: [PATCH 1/2] Encrypted API access: optional HTTPS front door for the
  Console API, fingerprint in the installer and in Settings
 
 A small container (runtime/tls-front, docker-compose.tls-front.yml) serves the
@@ -2125,6 +2125,715 @@ index 0000000..2e16d4d
 +if run frobnicate >/dev/null 2>&1; then fail "unknown command accepted"; fi
 +
 +echo "tls-front.sh tests passed"
+-- 
+2.54.0 (Apple Git-157)
+
+
+From a2c813d836494ad2f388fad21b7516efe094b25c Mon Sep 17 00:00:00 2001
+From: Red-Blink <34422787+Red-Blink@users.noreply.github.com>
+Date: Fri, 2 Oct 2026 18:04:54 +0300
+Subject: [PATCH 2/2] Integrate encrypted API access with Console restrictions
+ and lifecycle
+
+---
+ .github/workflows/ci.yml                     |  4 +-
+ console/api/src/server.js                    | 14 ++++-
+ console/api/src/services/tlsClientAddress.js | 28 +++++++++
+ console/api/test/tlsClientAddress.test.js    | 46 +++++++++++++++
+ docker-compose.tls-front.yml                 |  2 +-
+ docs/console/encrypted-api.md                |  9 ++-
+ install.sh                                   |  7 ++-
+ runtime/scripts/console.sh                   |  2 +
+ runtime/scripts/self-update.sh               |  1 +
+ runtime/scripts/test_tls_front_config.py     | 29 ++++++++++
+ runtime/scripts/tls-front-config.py          | 53 +++++++++++++++++
+ runtime/scripts/tls-front.sh                 | 21 ++++---
+ runtime/tls-front/main.go                    | 59 +++++++++++++++++++
+ runtime/tls-front/main_test.go               | 61 +++++++++++++++++++-
+ tests/tls-front-script-test.sh               | 14 +++++
+ 15 files changed, 332 insertions(+), 18 deletions(-)
+ create mode 100644 console/api/src/services/tlsClientAddress.js
+ create mode 100644 console/api/test/tlsClientAddress.test.js
+ create mode 100644 runtime/scripts/test_tls_front_config.py
+ create mode 100644 runtime/scripts/tls-front-config.py
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 121b5e8..7ce3e4a 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -109,7 +109,9 @@ jobs:
+       - name: Test readiness with configured service ports
+         run: bash tests/ready-configured-ports-test.sh
+       - name: Test the encrypted API access script
+-        run: bash tests/tls-front-script-test.sh
++        run: |
++          bash tests/tls-front-script-test.sh
++          python3 runtime/scripts/test_tls_front_config.py
+       - name: Test stable farm readiness gating
+         run: bash tests/farm-readiness-test.sh
+       - name: Test database updater role restoration
+diff --git a/console/api/src/server.js b/console/api/src/server.js
+index 2e8daef..f31e412 100644
+--- a/console/api/src/server.js
++++ b/console/api/src/server.js
+@@ -41,6 +41,7 @@ import { createTarHeader, tarArchiveLength, tarPadding, TAR_TRAILER_BYTES, creat
+ import { createMemoryBalancer } from "./services/memoryBalancer.js";
+ import { collectContainerHealth } from "./services/containerHealth.js";
+ import { createEncryptedApi, EncryptedApiError } from "./services/encryptedApi.js";
++import { tlsClientAddress } from "./services/tlsClientAddress.js";
+ import { parseMemorySwapStatus } from "./services/memorySwap.js";
+ import { createDeathPoller } from "./deathPoller.js";
+ import { updateEnvFileValue as updateEnvValue } from "./services/envFile.js";
+@@ -300,8 +301,14 @@ process.on("unhandledRejection", (error) => {
+ });
+ 
+ createServer(async (req, res) => {
++  req.trustedClientAddress = tlsClientAddress(req, config.repoRoot);
++  if (req.trustedClientAddress === null) {
++    res.writeHead(403, { "content-type": "application/json" });
++    res.end(JSON.stringify({ error: "Invalid encrypted API forwarding identity." }));
++    return;
++  }
+   if (config.allowedIps.length) {
+-    const remoteIp = (req.socket.remoteAddress || "").replace(/^::ffff:/, "");
++    const remoteIp = req.trustedClientAddress;
+     if (!config.allowedIps.includes(remoteIp)) {
+       res.writeHead(403, { "content-type": "application/json" });
+       res.end(JSON.stringify({ error: "Access denied: IP not in ADMIN_ALLOWED_IPS" }));
+@@ -2847,6 +2854,7 @@ function scheduleConsoleRestart(port) {
+       "docker compose -f docker-compose.web.yml build redblink-dune-docker-console >> runtime/generated/console-restart.log 2>&1",
+       "docker rm -f redblink-dune-docker-console >> runtime/generated/console-restart.log 2>&1 || true",
+       "docker compose -f docker-compose.web.yml up -d redblink-dune-docker-console >> runtime/generated/console-restart.log 2>&1",
++      "if [ -x runtime/scripts/tls-front.sh ]; then runtime/scripts/tls-front.sh reconcile >> runtime/generated/console-restart.log 2>&1; fi",
+       `echo "[$(date -Is)] Dune Docker Console restart command finished" >> runtime/generated/console-restart.log`
+     ].join("\n");
+     const child = spawn("docker", buildSelfUpdateHelperDockerArgs({
+@@ -6738,9 +6746,11 @@ function mockCommand(operation) {
+ 
+ // Best-effort client address, IPv4-mapped IPv6 unwrapped. No X-Forwarded-For
+ // handling, matching every other limiter here -- behind a reverse proxy this
+-// records the proxy, not the caller. Per-key limits are unaffected: they key
++// records the proxy, not the caller, unless the project TLS front supplies a
++// verified forwarding identity. Per-key limits are unaffected: they key
+ // on the key id, not on this.
+ function remoteIpOf(req) {
++  if (req.trustedClientAddress !== undefined) return req.trustedClientAddress || "";
+   return (req?.socket?.remoteAddress || "").replace(/^::ffff:/, "") || null;
+ }
+ 
+diff --git a/console/api/src/services/tlsClientAddress.js b/console/api/src/services/tlsClientAddress.js
+new file mode 100644
+index 0000000..cb39e0b
+--- /dev/null
++++ b/console/api/src/services/tlsClientAddress.js
+@@ -0,0 +1,28 @@
++import { createHmac, timingSafeEqual } from "node:crypto";
++import { readFileSync } from "node:fs";
++import { isIP } from "node:net";
++import { join } from "node:path";
++
++// Only the project TLS front may supply a client address. Its per-install
++// shared key signs the address, timestamp and exact request, so arbitrary
++// X-Forwarded-For headers never bypass ADMIN_ALLOWED_IPS.
++export function tlsClientAddress(req, repoRoot, now = Date.now()) {
++  const peer = String(req.socket.remoteAddress || "").replace(/^::ffff:/, "");
++  const ip = req.headers["x-dune-tls-client"];
++  const timestamp = req.headers["x-dune-tls-time"];
++  const signature = req.headers["x-dune-tls-signature"];
++  if (ip === undefined && timestamp === undefined && signature === undefined) return peer;
++  const local = String(req.socket.localAddress || "").replace(/^::ffff:/, "");
++  if (!["127.0.0.1", "::1", local].includes(peer)
++    || typeof ip !== "string" || !isIP(ip)
++    || typeof timestamp !== "string" || !/^\d{10}$/.test(timestamp)
++    || Math.abs(now - Number(timestamp) * 1000) > 60_000
++    || typeof signature !== "string" || !/^[a-f0-9]{64}$/.test(signature)) return null;
++  try {
++    const key = readFileSync(join(repoRoot, "runtime/generated/tls-front/proxy-key"));
++    if (key.length !== 32) return null;
++    const expected = createHmac("sha256", key)
++      .update(`${timestamp}\n${ip}\n${req.method}\n${req.url}`).digest();
++    return timingSafeEqual(expected, Buffer.from(signature, "hex")) ? ip : null;
++  } catch { return null; }
++}
+diff --git a/console/api/test/tlsClientAddress.test.js b/console/api/test/tlsClientAddress.test.js
+new file mode 100644
+index 0000000..268e952
+--- /dev/null
++++ b/console/api/test/tlsClientAddress.test.js
+@@ -0,0 +1,46 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { createHmac, randomBytes } from "node:crypto";
++import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { tlsClientAddress } from "../src/services/tlsClientAddress.js";
++
++test("only signed local TLS forwarding identities can affect the IP allowlist", () => {
++  const root = mkdtempSync(join(tmpdir(), "tls-client-address-"));
++  const key = randomBytes(32);
++  const now = Date.parse("2026-10-02T12:00:00Z");
++  const timestamp = String(now / 1000);
++  mkdirSync(join(root, "runtime/generated/tls-front"), { recursive: true });
++  writeFileSync(join(root, "runtime/generated/tls-front/proxy-key"), key, { mode: 0o600 });
++  const req = { method: "GET", url: "/api/server/status?view=1",
++    socket: { remoteAddress: "127.0.0.1", localAddress: "127.0.0.1" }, headers: {} };
++  try {
++    assert.equal(tlsClientAddress(req, root, now), "127.0.0.1");
++    req.headers["x-forwarded-for"] = "203.0.113.9";
++    assert.equal(tlsClientAddress(req, root, now), "127.0.0.1");
++    req.headers["x-dune-tls-client"] = "203.0.113.9";
++    req.headers["x-dune-tls-time"] = timestamp;
++    req.headers["x-dune-tls-signature"] = createHmac("sha256", key)
++      .update(`${timestamp}\n203.0.113.9\nGET\n${req.url}`).digest("hex");
++    assert.equal(tlsClientAddress(req, root, now), "203.0.113.9");
++    assert.equal(tlsClientAddress(req, root, now + 61000), null);
++    assert.equal(tlsClientAddress({ ...req, url: "/api/other" }, root, now), null);
++    assert.equal(tlsClientAddress({ ...req, method: "POST" }, root, now), null);
++    assert.equal(tlsClientAddress({ ...req, socket: { remoteAddress: "203.0.113.8", localAddress: "127.0.0.1" } }, root, now), null);
++    req.socket = { remoteAddress: "192.168.1.20", localAddress: "192.168.1.20" };
++    assert.equal(tlsClientAddress(req, root, now), "203.0.113.9");
++    req.headers["x-dune-tls-client"] = "203.0.113.8";
++    assert.equal(tlsClientAddress(req, root, now), null);
++    assert.equal(tlsClientAddress(req, join(root, "missing"), now), null);
++  } finally { rmSync(root, { recursive: true, force: true }); }
++});
++
++test("Console port changes and deployment paths reconcile the optional TLS front", () => {
++  const server = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
++  const restart = server.slice(server.indexOf("function scheduleConsoleRestart"), server.indexOf("function scheduleConsoleRestart") + 4000);
++  assert.match(restart, /tls-front\.sh reconcile/);
++  for (const script of ["console.sh", "self-update.sh"]) {
++    assert.match(readFileSync(new URL(`../../../runtime/scripts/${script}`, import.meta.url), "utf8"), /tls-front\.sh reconcile/);
++  }
++});
+diff --git a/docker-compose.tls-front.yml b/docker-compose.tls-front.yml
+index 51d736f..78429fa 100644
+--- a/docker-compose.tls-front.yml
++++ b/docker-compose.tls-front.yml
+@@ -16,7 +16,7 @@ services:
+     user: "${DUNE_HOST_UID:-0}:${DUNE_HOST_GID:-0}"
+     environment:
+       MV_TLS_ADDR: "${DUNE_TLS_FRONT_BIND:-0.0.0.0}:${DUNE_TLS_FRONT_PORT:-8797}"
+-      MV_TLS_UPSTREAM: "http://127.0.0.1:${DUNE_TLS_FRONT_CONSOLE_PORT:-8088}"
++      MV_TLS_UPSTREAM: "${DUNE_TLS_FRONT_UPSTREAM:-http://127.0.0.1:8088}"
+       MV_TLS_NAMES: "${DUNE_TLS_FRONT_NAMES:-}"
+       MV_TLS_ALLOW: "${DUNE_TLS_FRONT_ALLOW:-}"
+       MV_TLS_STATE: /data
+diff --git a/docs/console/encrypted-api.md b/docs/console/encrypted-api.md
+index 96a0756..3aa054f 100644
+--- a/docs/console/encrypted-api.md
++++ b/docs/console/encrypted-api.md
+@@ -51,13 +51,20 @@ So it adds no new way into the admin console. API keys keep exactly the scopes,
+ 
+ ## Turning it on and off
+ 
+-On a **new install** the installer starts it (set `DUNE_ENCRYPTED_API=0` to skip). Later:
++On a **new install** it is disabled unless you set `DUNE_ENCRYPTED_API=1`. Later:
+ 
+ - **Settings → Encrypted API Access** has a switch; the first start builds the image and can take a minute.
+ - `dune encrypted-api enable | disable | status | fingerprint`.
+ 
+ The choice is kept in `runtime/generated/tls-front.env` and survives re-running the installer.
+ 
++The front door follows the Console's configured bind address and port. Console
++port changes and self-updates reconcile the enabled front door without restarting
++the Battlegroup. The Console still applies `ADMIN_ALLOWED_IPS` to the original
++client address, verified using a private per-install forwarding key; ordinary
++forwarding headers are never trusted. `DUNE_TLS_FRONT_ALLOW` can restrict access
++further. The forwarding key stays alongside the TLS key and is not an API key.
++
+ | Variable (`runtime/generated/tls-front.env`) | Default | Meaning |
+ |---|---|---|
+ | `DUNE_TLS_FRONT_ENABLED` | `true` after a new install | start it |
+diff --git a/install.sh b/install.sh
+index a533294..2aefe95 100755
+--- a/install.sh
++++ b/install.sh
+@@ -614,19 +614,20 @@ read_admin_password() {
+ }
+ 
+ # Encrypted API access (optional): HTTPS with its own long-lived key in front of the
+-# Console (docs/console/encrypted-api.md). On by
+-# default for a new install; DUNE_ENCRYPTED_API=0 skips it. A choice made later in
++# Console (docs/console/encrypted-api.md). Off by
++# default for a new install; DUNE_ENCRYPTED_API=1 enables it. A choice made later in
+ # Settings (runtime/generated/tls-front.env) is kept when the installer runs again.
+ start_tls_front() {
+   TLS_FRONT_FINGERPRINT=""
+   TLS_FRONT_PORT="${DUNE_TLS_FRONT_PORT:-8797}"
+-  [ "${DUNE_ENCRYPTED_API:-1}" != "0" ] || return 0
+   [ -f docker-compose.tls-front.yml ] && [ -x runtime/scripts/tls-front.sh ] || return 0
+   if [ -r runtime/generated/tls-front.env ]; then
+     # shellcheck disable=SC1091
+     . runtime/generated/tls-front.env
+     [ "${DUNE_TLS_FRONT_ENABLED:-false}" = "true" ] || return 0
+     TLS_FRONT_PORT="${DUNE_TLS_FRONT_PORT:-8797}"
++  else
++    [ "${DUNE_ENCRYPTED_API:-0}" = "1" ] || return 0
+   fi
+ 
+   step "Starting the encrypted API access."
+diff --git a/runtime/scripts/console.sh b/runtime/scripts/console.sh
+index 6a6642a..6f4d416 100755
+--- a/runtime/scripts/console.sh
++++ b/runtime/scripts/console.sh
+@@ -119,6 +119,7 @@ restart_console() {
+   echo "Replacing Dune Docker Console container..."
+   docker rm -f "$WEB_SERVICE" >/dev/null 2>&1 || true
+   COMPOSE_PROJECT_NAME="$PROJECT_NAME" DUNE_COMPOSE_PROJECT_NAME="$MAIN_PROJECT_NAME" DUNE_HOST_REPO_ROOT="$HOST_ROOT" docker compose -f "$WEB_COMPOSE" up -d "$WEB_SERVICE"
++  if [ -x runtime/scripts/tls-front.sh ]; then runtime/scripts/tls-front.sh reconcile; fi
+   current_image_id="$(docker image inspect --format '{{.Id}}' redblink-dune-docker-console:dev 2>/dev/null || true)"
+   if [ -n "$previous_image_id" ] && [ "$previous_image_id" != "$current_image_id" ]; then
+     docker image rm "$previous_image_id" >/dev/null 2>&1 || true
+@@ -140,6 +141,7 @@ reload_console() {
+   echo "Recreating the Dune Docker Console container..."
+   docker rm -f "$WEB_SERVICE" >/dev/null 2>&1 || true
+   COMPOSE_PROJECT_NAME="$PROJECT_NAME" DUNE_COMPOSE_PROJECT_NAME="$MAIN_PROJECT_NAME" DUNE_HOST_REPO_ROOT="$HOST_ROOT" docker compose -f "$WEB_COMPOSE" up -d "$WEB_SERVICE"
++  if [ -x runtime/scripts/tls-front.sh ]; then runtime/scripts/tls-front.sh reconcile; fi
+   echo "Dune Docker Console reloaded."
+   print_url
+ }
+diff --git a/runtime/scripts/self-update.sh b/runtime/scripts/self-update.sh
+index 90fbf39..1eb2ab0 100755
+--- a/runtime/scripts/self-update.sh
++++ b/runtime/scripts/self-update.sh
+@@ -1315,6 +1315,7 @@ rebuild_web_console_now() {
+   self_update_running restarting 94 "Restarting the updated web console."
+   docker rm -f "$service" >/dev/null 2>&1 || true
+   COMPOSE_PROJECT_NAME="$web_compose_project" DUNE_COMPOSE_PROJECT_NAME="$DUNE_COMPOSE_PROJECT_NAME" DUNE_HOST_REPO_ROOT="$HOST_ROOT_DIR" docker compose -f docker-compose.web.yml up -d --force-recreate "$service"
++  if [ -x runtime/scripts/tls-front.sh ]; then runtime/scripts/tls-front.sh reconcile; fi
+ }
+ 
+ reconcile_coriolis_coordinator_after_deploy() {
+diff --git a/runtime/scripts/test_tls_front_config.py b/runtime/scripts/test_tls_front_config.py
+new file mode 100644
+index 0000000..41a4567
+--- /dev/null
++++ b/runtime/scripts/test_tls_front_config.py
+@@ -0,0 +1,29 @@
++import importlib.util
++import unittest
++from pathlib import Path
++
++spec = importlib.util.spec_from_file_location("tls_front_config", Path(__file__).with_name("tls-front-config.py"))
++config = importlib.util.module_from_spec(spec)
++spec.loader.exec_module(config)
++
++
++class EndpointTests(unittest.TestCase):
++    def test_existing_bindings(self):
++        for host, authority in [("0.0.0.0", "127.0.0.1"), ("192.168.1.20", "192.168.1.20"),
++                                ("::", "[::1]"), ("::1", "[::1]"), ("localhost", "localhost")]:
++            self.assertEqual(config.console_upstream({"ADMIN_BIND_HOST": host, "ADMIN_BIND_PORT": "8099"}), f"http://{authority}:8099")
++
++    def test_compose_port_precedence(self):
++        self.assertEqual(config.console_upstream({"ADMIN_WEB_PORT": "8100", "ADMIN_BIND_PORT": "8099"}), "http://127.0.0.1:8100")
++
++    def test_invalid_authorities_and_ports(self):
++        for host in ["user@host", "host/path", "host?query", "$(command)"]:
++            with self.assertRaises(ValueError):
++                config.console_upstream({"ADMIN_BIND_HOST": host})
++        for port in ["0", "65536", "abc"]:
++            with self.assertRaises(ValueError):
++                config.console_upstream({"ADMIN_BIND_PORT": port})
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/runtime/scripts/tls-front-config.py b/runtime/scripts/tls-front-config.py
+new file mode 100644
+index 0000000..16bb187
+--- /dev/null
++++ b/runtime/scripts/tls-front-config.py
+@@ -0,0 +1,53 @@
++#!/usr/bin/env python3
++"""Resolve the existing Console endpoint without executing its .env file."""
++import fcntl
++import os
++import re
++import shlex
++import socket
++import struct
++from pathlib import Path
++
++
++def console_upstream(values):
++    host = values.get("ADMIN_BIND_HOST", "0.0.0.0").strip()
++    if host in ("", "auto"):
++        host = "127.0.0.1"
++        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
++            for _, name in socket.if_nameindex():
++                try:
++                    data = fcntl.ioctl(probe, 0x8915, struct.pack("256s", name.encode()[:15]))
++                    address = socket.inet_ntoa(data[20:24])
++                    a, b, *_ = map(int, address.split("."))
++                    if a == 10 or a == 172 and 16 <= b <= 31 or a == 192 and b == 168 or a == 100 and 64 <= b <= 127:
++                        host = address
++                        break
++                except OSError:
++                    continue
++    if host == "0.0.0.0":
++        host = "127.0.0.1"
++    elif host == "::":
++        host = "::1"
++    # Never turn an untrusted .env value into a URL authority or shell text.
++    if ":" in host:
++        socket.inet_pton(socket.AF_INET6, host)
++    elif not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host):
++        raise ValueError("Invalid Console bind host")
++    port = int(values.get("ADMIN_WEB_PORT") or values.get("ADMIN_BIND_PORT") or 8088)
++    if not 1 <= port <= 65535:
++        raise ValueError("Invalid Console port")
++    return f"http://{'[' + host + ']' if ':' in host else host}:{port}"
++
++
++if __name__ == "__main__":
++    values = {}
++    path = Path(".env")
++    if path.exists():
++        for line in path.read_text().splitlines():
++            key, separator, raw = line.partition("=")
++            if separator and key.strip() in ("ADMIN_BIND_HOST", "ADMIN_BIND_PORT", "ADMIN_WEB_PORT"):
++                parts = shlex.split(raw, comments=True)
++                if len(parts) == 1:
++                    values[key.strip()] = parts[0]
++    values.update({key: os.environ[key] for key in ("ADMIN_BIND_HOST", "ADMIN_BIND_PORT", "ADMIN_WEB_PORT") if key in os.environ})
++    print(console_upstream(values))
+diff --git a/runtime/scripts/tls-front.sh b/runtime/scripts/tls-front.sh
+index bb04807..430a51c 100755
+--- a/runtime/scripts/tls-front.sh
++++ b/runtime/scripts/tls-front.sh
+@@ -50,23 +50,24 @@ write_env() {
+   {
+     echo "DUNE_TLS_FRONT_ENABLED=$enabled"
+     echo "DUNE_TLS_FRONT_PORT=$DUNE_TLS_FRONT_PORT"
+-    echo "DUNE_TLS_FRONT_BIND=$DUNE_TLS_FRONT_BIND"
+-    echo "DUNE_TLS_FRONT_NAMES=$DUNE_TLS_FRONT_NAMES"
+-    echo "DUNE_TLS_FRONT_ALLOW=$DUNE_TLS_FRONT_ALLOW"
++    printf 'DUNE_TLS_FRONT_BIND=%q\n' "$DUNE_TLS_FRONT_BIND"
++    printf 'DUNE_TLS_FRONT_NAMES=%q\n' "$DUNE_TLS_FRONT_NAMES"
++    printf 'DUNE_TLS_FRONT_ALLOW=%q\n' "$DUNE_TLS_FRONT_ALLOW"
+   } >"$tmp"
+   chmod 600 "$tmp" 2>/dev/null || true
+   mv "$tmp" "$ENV_FILE"
++  preserve_host_owner "$ENV_FILE"
+ }
+ 
+-console_port() {
+-  local port="${ADMIN_WEB_PORT:-${ADMIN_BIND_PORT:-}}"
+-  if [ -z "$port" ] && [ -f .env ]; then
+-    port="$(awk -F= '/^(ADMIN_BIND_PORT|ADMIN_WEB_PORT)=/ {print $2; exit}' .env | tr -d '[:space:]"'\''' || true)"
++preserve_host_owner() {
++  if [ "$(id -u)" = "0" ] && [[ "${DUNE_HOST_UID:-}" =~ ^[0-9]+$ ]] && [[ "${DUNE_HOST_GID:-}" =~ ^[0-9]+$ ]]; then
++    chown "$DUNE_HOST_UID:$DUNE_HOST_GID" "$1"
+   fi
+-  printf '%s' "${port:-8088}"
+ }
+ 
+ compose() {
++  local upstream
++  upstream="$(python3 runtime/scripts/tls-front-config.py)"
+   DUNE_HOST_REPO_ROOT="${DUNE_HOST_REPO_ROOT:-$(pwd -P)}" \
+     DUNE_HOST_UID="${DUNE_HOST_UID:-$(id -u)}" \
+     DUNE_HOST_GID="${DUNE_HOST_GID:-$(id -g)}" \
+@@ -74,7 +75,7 @@ compose() {
+     DUNE_TLS_FRONT_BIND="$DUNE_TLS_FRONT_BIND" \
+     DUNE_TLS_FRONT_NAMES="$DUNE_TLS_FRONT_NAMES" \
+     DUNE_TLS_FRONT_ALLOW="$DUNE_TLS_FRONT_ALLOW" \
+-    DUNE_TLS_FRONT_CONSOLE_PORT="$(console_port)" \
++    DUNE_TLS_FRONT_UPSTREAM="$upstream" \
+     COMPOSE_PROJECT_NAME="$PROJECT" \
+     docker compose -f "$COMPOSE_FILE" "$@"
+ }
+@@ -82,6 +83,7 @@ compose() {
+ start_front() {
+   local current_hash saved_hash=""
+   mkdir -p "$STATE_DIR"
++  preserve_host_owner "$STATE_DIR"
+   chmod 700 "$STATE_DIR" 2>/dev/null || true
+   current_hash="$(
+     sha256sum \
+@@ -96,6 +98,7 @@ start_front() {
+     compose build dune-tls-front
+     printf '%s\n' "$current_hash" >"$BUILD_STATE"
+     chmod 600 "$BUILD_STATE" 2>/dev/null || true
++    preserve_host_owner "$BUILD_STATE"
+   fi
+   compose up -d --force-recreate
+ }
+diff --git a/runtime/tls-front/main.go b/runtime/tls-front/main.go
+index edcf46c..bd62e11 100644
+--- a/runtime/tls-front/main.go
++++ b/runtime/tls-front/main.go
+@@ -28,12 +28,14 @@ import (
+ 	"context"
+ 	"crypto/ecdsa"
+ 	"crypto/elliptic"
++	"crypto/hmac"
+ 	"crypto/rand"
+ 	"crypto/sha256"
+ 	"crypto/tls"
+ 	"crypto/x509"
+ 	"crypto/x509/pkix"
+ 	"encoding/base64"
++	"encoding/hex"
+ 	"encoding/json"
+ 	"encoding/pem"
+ 	"errors"
+@@ -62,6 +64,7 @@ type config struct {
+ 	Names    []string
+ 	Allow    []*net.IPNet
+ 	Full     bool
++	ProxyKey []byte
+ }
+ 
+ func main() {
+@@ -85,6 +88,10 @@ func main() {
+ 	if *health {
+ 		os.Exit(healthcheck(cfg))
+ 	}
++	cfg.ProxyKey, err = loadOrCreateProxyKey(cfg.State)
++	if err != nil {
++		log.Fatal(err)
++	}
+ 
+ 	inner, err := net.Listen("tcp", cfg.Addr)
+ 	if err != nil {
+@@ -303,6 +310,26 @@ func writeFile(path string, b []byte, mode os.FileMode) error {
+ 	return os.Rename(tmp, path)
+ }
+ 
++func loadOrCreateProxyKey(dir string) ([]byte, error) {
++	path := filepath.Join(dir, "proxy-key")
++	if key, err := os.ReadFile(path); err == nil {
++		if len(key) != 32 {
++			return nil, errors.New("invalid TLS forwarding key")
++		}
++		return key, nil
++	} else if !errors.Is(err, os.ErrNotExist) {
++		return nil, err
++	}
++	key := make([]byte, 32)
++	if _, err := rand.Read(key); err != nil {
++		return nil, err
++	}
++	if err := writeFile(path, key, 0o600); err != nil {
++		return nil, err
++	}
++	return key, nil
++}
++
+ // ---------------------------------------------------------------- listener
+ 
+ // allowListener closes connections of addresses outside the allow list before
+@@ -343,8 +370,12 @@ func newHandler(cfg config) http.Handler {
+ 	proxy := &httputil.ReverseProxy{
+ 		Rewrite: func(r *httputil.ProxyRequest) {
+ 			r.SetURL(cfg.Upstream)
++			for _, name := range []string{"X-Dune-Tls-Client", "X-Dune-Tls-Time", "X-Dune-Tls-Signature"} {
++				r.Out.Header.Del(name)
++			}
+ 			if cfg.Full {
+ 				r.Out.Header["X-Forwarded-For"] = nil
++				signClient(r, cfg.ProxyKey)
+ 				return
+ 			}
+ 			// API door: nothing but the key and what the API needs
+@@ -355,6 +386,7 @@ func newHandler(cfg config) http.Handler {
+ 				}
+ 			}
+ 			r.Out.Header = h
++			signClient(r, cfg.ProxyKey)
+ 		},
+ 		FlushInterval: -1, // server-sent events: pass every write on at once
+ 		ModifyResponse: func(resp *http.Response) error {
+@@ -406,6 +438,19 @@ func newHandler(cfg config) http.Handler {
+ 
+ type clientKey struct{}
+ 
++func signClient(r *httputil.ProxyRequest, key []byte) {
++	if len(key) != 32 {
++		return
++	}
++	ip := peerIP(addrOf(r.In)).String()
++	timestamp := fmt.Sprint(time.Now().Unix())
++	mac := hmac.New(sha256.New, key)
++	fmt.Fprintf(mac, "%s\n%s\n%s\n%s", timestamp, ip, r.Out.Method, r.Out.URL.RequestURI())
++	r.Out.Header.Set("X-Dune-Tls-Client", ip)
++	r.Out.Header.Set("X-Dune-Tls-Time", timestamp)
++	r.Out.Header.Set("X-Dune-Tls-Signature", hex.EncodeToString(mac.Sum(nil)))
++}
++
+ func addrOf(r *http.Request) net.Addr {
+ 	a, err := net.ResolveTCPAddr("tcp", r.RemoteAddr)
+ 	if err != nil {
+@@ -524,5 +569,19 @@ func healthcheck(cfg config) int {
+ 		fmt.Fprintln(os.Stderr, "mvtls:", resp.Status)
+ 		return 1
+ 	}
++	// A healthy listener alone does not prove the configured Console endpoint
++	// is reachable. A 403 is valid here when the Console restricts client IPs;
++	// normal forwarded requests carry their independently signed client IP.
++	endpoint := cfg.Upstream.ResolveReference(&url.URL{Path: "/api/health"})
++	backend, err := c.Get(endpoint.String())
++	if err != nil {
++		fmt.Fprintln(os.Stderr, "console unreachable")
++		return 1
++	}
++	backend.Body.Close()
++	if backend.StatusCode != http.StatusOK && backend.StatusCode != http.StatusForbidden {
++		fmt.Fprintln(os.Stderr, "console unavailable:", backend.Status)
++		return 1
++	}
+ 	return 0
+ }
+diff --git a/runtime/tls-front/main_test.go b/runtime/tls-front/main_test.go
+index b31b673..d983c1d 100644
+--- a/runtime/tls-front/main_test.go
++++ b/runtime/tls-front/main_test.go
+@@ -2,11 +2,17 @@ package main
+ 
+ import (
+ 	"bufio"
++	"crypto/hmac"
++	"crypto/sha256"
+ 	"crypto/tls"
++	"encoding/hex"
++	"fmt"
+ 	"io"
+ 	"net"
+ 	"net/http"
+ 	"net/http/httptest"
++	"net/http/httputil"
++	"net/url"
+ 	"os"
+ 	"path/filepath"
+ 	"strings"
+@@ -16,6 +22,52 @@ import (
+ 
+ const key = "Bearer dak_test_0123456789"
+ 
++func TestForwardingIdentity(t *testing.T) {
++	dir := t.TempDir()
++	secret, err := loadOrCreateProxyKey(dir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	again, err := loadOrCreateProxyKey(dir)
++	if err != nil || !hmac.Equal(secret, again) {
++		t.Fatal("forwarding identity changed")
++	}
++	stat, _ := os.Stat(filepath.Join(dir, "proxy-key"))
++	if stat.Mode().Perm() != 0o600 {
++		t.Fatal("forwarding key permissions")
++	}
++	req := httptest.NewRequest("GET", "http://console/api/server/status?view=1", nil)
++	req.RemoteAddr = "203.0.113.9:12345"
++	proxy := &httputil.ProxyRequest{In: req, Out: req.Clone(req.Context())}
++	signClient(proxy, secret)
++	h := proxy.Out.Header
++	if h.Get("X-Dune-Tls-Client") != "203.0.113.9" {
++		t.Fatal("client IP missing")
++	}
++	mac := hmac.New(sha256.New, secret)
++	fmt.Fprintf(mac, "%s\n203.0.113.9\nGET\n/api/server/status?view=1", h.Get("X-Dune-Tls-Time"))
++	if h.Get("X-Dune-Tls-Signature") != hex.EncodeToString(mac.Sum(nil)) {
++		t.Fatal("request signature mismatch")
++	}
++}
++
++func TestHealthCheckRequiresReachableConsole(t *testing.T) {
++	base, _, _ := start(t, nil)
++	front, _ := url.Parse(base)
++	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		w.WriteHeader(http.StatusForbidden) // restrictive Console allowlist
++	}))
++	upstream, _ := url.Parse(backend.URL)
++	cfg := config{Addr: front.Host, Upstream: upstream}
++	if healthcheck(cfg) != 0 {
++		t.Fatal("reachable restricted Console was unhealthy")
++	}
++	backend.Close()
++	if healthcheck(cfg) == 0 {
++		t.Fatal("unreachable Console was reported healthy")
++	}
++}
++
+ // console is a stand-in for the Dune Docker Console: it records what reached it.
+ func console(t *testing.T, seen chan<- *http.Request) *httptest.Server {
+ 	t.Helper()
+@@ -60,6 +112,10 @@ func start(t *testing.T, env map[string]string) (base string, pin string, seen c
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
++	cfg.ProxyKey, err = loadOrCreateProxyKey(cfg.State)
++	if err != nil {
++		t.Fatal(err)
++	}
+ 	inner, _ := net.Listen("tcp", "127.0.0.1:0")
+ 	ln := tls.NewListener(&allowListener{Listener: inner, allow: cfg.allowed}, &tls.Config{Certificates: []tls.Certificate{id}, MinVersion: tls.VersionTLS12})
+ 	srv := &http.Server{Handler: newHandler(cfg)}
+@@ -147,11 +203,14 @@ func TestAPIDoorOnlyForwardsKeyedReads(t *testing.T) {
+ 	auth := map[string]string{"Authorization": key}
+ 
+ 	// forwarded, cookie of the console never passes, only the headers the API needs
+-	resp := get(t, c, base+"/api/map/status", map[string]string{"Authorization": key, "Cookie": "session=admin", "X-Forwarded-For": "1.2.3.4"})
++	resp := get(t, c, base+"/api/map/status", map[string]string{"Authorization": key, "Cookie": "session=admin", "X-Forwarded-For": "1.2.3.4", "X-Dune-Tls-Client": "1.2.3.4", "X-Dune-Tls-Signature": "forged"})
+ 	if resp.StatusCode != 200 || resp.Header.Get("Set-Cookie") != "" {
+ 		t.Fatalf("status %d, cookie %q", resp.StatusCode, resp.Header.Get("Set-Cookie"))
+ 	}
+ 	r := <-seen
++	if r.Header.Get("X-Dune-Tls-Client") != "127.0.0.1" || len(r.Header.Get("X-Dune-Tls-Signature")) != 64 {
++		t.Fatal("forwarded identity was not signed from the real client")
++	}
+ 	if r.Header.Get("Cookie") != "" || r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("Authorization") != key {
+ 		t.Fatalf("headers: %v", r.Header)
+ 	}
+diff --git a/tests/tls-front-script-test.sh b/tests/tls-front-script-test.sh
+index 2e16d4d..2cb721b 100755
+--- a/tests/tls-front-script-test.sh
++++ b/tests/tls-front-script-test.sh
+@@ -13,6 +13,7 @@ work="$(mktemp -d)"
+ trap 'rm -rf "$work"' EXIT
+ mkdir -p "$work/runtime/scripts" "$work/runtime/tls-front" "$work/bin"
+ cp "$repo_root/runtime/scripts/tls-front.sh" "$work/runtime/scripts/"
++cp "$repo_root/runtime/scripts/tls-front-config.py" "$work/runtime/scripts/"
+ cp "$repo_root/docker-compose.tls-front.yml" "$work/"
+ cp "$repo_root/runtime/tls-front/Dockerfile" "$repo_root/runtime/tls-front/go.mod" "$repo_root/runtime/tls-front/main.go" "$work/runtime/tls-front/"
+ 
+@@ -28,6 +29,7 @@ running="$work/container-running"
+ cat >"$work/bin/docker" <<'MOCK'
+ #!/bin/sh
+ echo "docker $*" >>"$MOCK_CALLS"
++echo "upstream=${DUNE_TLS_FRONT_UPSTREAM:-}" >>"$MOCK_CALLS"
+ case "$1" in
+   ps)
+     if [ -e "$MOCK_RUNNING" ]; then echo dune-tls-front; fi
+@@ -66,11 +68,23 @@ fp="$(run fingerprint)"
+ [ -d "$work/runtime/generated/tls-front" ] || fail "state directory missing"
+ 
+ # reconcile keeps the operator's choice
++printf 'DUNE_TLS_FRONT_ENABLED=true\nDUNE_TLS_FRONT_PORT=8797\nDUNE_TLS_FRONT_NAMES="one.example two.example"\nDUNE_TLS_FRONT_ALLOW="192.168.1.0/24 10.0.0.0/8"\n' >"$work/runtime/generated/tls-front.env"
++run enable >/dev/null
++# Re-reading persisted values with spaces must not try to execute them.
+ : >"$calls"
+ run reconcile
+ grep -Fq ' up -d' "$calls" || fail "reconcile did not start an enabled front door"
+ 
+ # disable: persists, stops
++# A custom binding/port is used, and changing it is reconciled without BG operations.
++printf 'ADMIN_BIND_HOST="192.168.1.20"\nADMIN_BIND_PORT=8099\n' >"$work/.env"
++: >"$calls"
++run reconcile
++grep -Fq 'upstream=http://192.168.1.20:8099' "$calls" || fail "custom Console endpoint was not used"
++printf 'ADMIN_BIND_HOST="192.168.1.20"\nADMIN_BIND_PORT=8100\n' >"$work/.env"
++: >"$calls"
++run reconcile
++grep -Fq 'upstream=http://192.168.1.20:8100' "$calls" || fail "changed Console port was not used"
+ : >"$calls"
+ run disable >/dev/null
+ grep -Fq 'DUNE_TLS_FRONT_ENABLED=false' "$work/runtime/generated/tls-front.env" || fail "disable did not persist the choice"
 -- 
 2.54.0 (Apple Git-157)
 

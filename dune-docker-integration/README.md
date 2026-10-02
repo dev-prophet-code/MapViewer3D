@@ -15,6 +15,8 @@ git am /path/to/0001-api-keys-realtime-data-scope.patch      # either one on its
 git am /path/to/0002-encrypted-api-access.patch              # or both (resolve the small conflicts)
 dune console restart
 ```
+Each patch file holds two commits: ours and the maintainer's follow-up from the pull request (stream closes when player access is removed; encrypted access integrated with the Console's IP restrictions and lifecycle, signed client address, off by default).
+
 
 Both are prepared as pull requests from the branches `realtime-data-scope` and `encrypted-api-access` of a fork. A one-page explanation of how the system works, for maintainers: [OVERVIEW.md](OVERVIEW.md). The data API for other programs (fields, stream format, examples, pinning): [REALTIME-API.md](REALTIME-API.md).
 
@@ -99,7 +101,7 @@ forwards to the unchanged Console. Clients pin the key's **fingerprint**; nothin
 | `runtime/tls-front/` | the front door (Go, standard library only; own ECDSA key, API door, brute-force counter per client address) with tests and Dockerfile |
 | `docker-compose.tls-front.yml` | host networking, runs as the host user, read-only, `cap_drop: ALL`, key in `runtime/generated/tls-front` |
 | `runtime/scripts/tls-front.sh`, `runtime/scripts/dune` | `dune encrypted-api enable\|disable\|status\|fingerprint` |
-| `install.sh` | starts it on a new install (`DUNE_ENCRYPTED_API=0` skips) and prints address + fingerprint; a later choice in Settings is kept |
+| `install.sh` | off on a new install (`DUNE_ENCRYPTED_API=1` enables it); when on, it prints address + fingerprint; a choice made in Settings is kept |
 | `console/api/src/services/encryptedApi.js`, `server.js`, `actions.js` | `GET`/`POST /api/settings/encrypted-api` (`settings:read`/`settings:write`, never reachable with an API key); the Console reads only the **certificate** to compute the fingerprint |
 | `console/web/.../EncryptedApiSection.tsx`, `SettingsPanel.tsx` | the Settings section (English) |
 | tests | `encryptedApi.test.js` (12), `tests/tls-front-script-test.sh`, `EncryptedApiSection.test.tsx` (4), Go tests; CI builds the image |

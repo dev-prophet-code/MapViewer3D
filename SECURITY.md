@@ -36,7 +36,7 @@ The Console speaks plain HTTP on 8088, so the API key and every answer would cro
 
 ### Where the fingerprint is shown (Dune Docker patch 2)
 
-With [patch 2](dune-docker-integration/README.md) the front door is part of Dune Docker, and the fingerprint is shown where the admin already looks: below the first admin password at the **end of the installer**, in **Settings → Encrypted API Access** (status, switch, address, fingerprint with a Copy button) and with `dune encrypted-api fingerprint`. The Console reads only the **certificate** to compute it (never the private key); the Settings routes are `settings:read`/`settings:write`, so no API key can reach them. The installer starts the front door by default on a new install (`DUNE_ENCRYPTED_API=0` skips it); a choice made later in Settings is kept. This also protects Dune Docker's own API access in general, independent of any particular client.
+With [patch 2](dune-docker-integration/README.md) the front door is part of Dune Docker, and the fingerprint is shown where the admin already looks: below the first admin password at the **end of the installer**, in **Settings → Encrypted API Access** (status, switch, address, fingerprint with a Copy button) and with `dune encrypted-api fingerprint`. The Console reads only the **certificate** to compute it (never the private key); the Settings routes are `settings:read`/`settings:write`, so no API key can reach them. The front door is off on a new install (`DUNE_ENCRYPTED_API=1` or the switch in Settings turns it on); a choice made in Settings is kept. This also protects Dune Docker's own API access in general, independent of any particular client.
 
 ### How a viewer comes to trust the key
 
