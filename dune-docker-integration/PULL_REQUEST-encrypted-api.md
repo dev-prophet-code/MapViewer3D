@@ -1,6 +1,5 @@
 <!-- Text of the second pull request to Red-Blink/dune-awakening-selfhost-docker.
-     Patch: 0002-encrypted-api-access.patch (applies after 0001-api-keys-realtime-data-scope.patch;
-     base: upstream main da644b7 = v1.4.44). Before opening: rebase, re-run the tests below, fill in
+     Patch: 0002-encrypted-api-access.patch (independent; base: upstream main da644b7 = v1.4.44). Before opening: rebase, re-run the tests below, fill in
      "Tested on a real host", then remove this comment. -->
 
 ## Encrypted API access: optional HTTPS front door for the Console API, fingerprint in the installer and in Settings
@@ -10,8 +9,8 @@ network in clear text, and anything that uses API keys has no way to be sure who
 **API** over HTTPS with its own long-lived key and forwards to the unchanged Console. Clients pin the key's **fingerprint**.
 Nothing changes for anybody who does not use it: the normal address keeps working.
 
-- **Size:** 23 files, +1824 (a third of it tests and the front door's source)
-- **Base:** `main` at `da644b7`; applies after the Realtime Data patch (separate PR), but does not depend on it
+- **Size:** 23 files, +1819 (about a third of it tests and the front door's source)
+- **Base:** `main` at `da644b7`. Independent of the separate "Realtime Data" PR; the two touch neighbouring lines of `server.js`, `actions.js` and `SettingsPanel.tsx`, so whichever is merged second needs a trivial conflict resolution
 
 ### What the admin sees
 
@@ -76,7 +75,7 @@ If you prefer opt-in, flip `DUNE_ENCRYPTED_API` to default `0` in `start_tls_fro
 
 ### Tested
 
-Against upstream `da644b7` with both patches applied:
+Against upstream `da644b7`:
 
 - `node --test test/encryptedApi.test.js` 12/12 – the fingerprint of a certificate produced by the front door equals the value
   `openssl` computes; defaults for a broken env file; no secret in the status; the private key is never read; only a real
@@ -91,7 +90,7 @@ Against upstream `da644b7` with both patches applied:
 
 ### Tested on a real host
 
-Test server, Dune Docker v1.4.44 with both patches applied, `dune console restart`:
+Test server, Dune Docker v1.4.44, `dune console restart`:
 
 - `dune encrypted-api enable`: image built (vet and tests run in the build), container `healthy`, port 8797 listening.
 - The fingerprint printed by `dune encrypted-api fingerprint` equals the one the Console's `encryptedApi` service computes from the

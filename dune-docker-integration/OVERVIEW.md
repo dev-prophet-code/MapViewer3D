@@ -66,7 +66,7 @@ listens on `8797`, which still has to be opened in the firewall. The agent is in
 
 ## Tested
 
-Automated: new Console, shell, web and Go tests; RBAC/scope parity suites; both patches apply in order to upstream `main` and pass. On a real
+Automated: new Console, shell, web and Go tests; RBAC/scope parity suites; each patch applies on its own to upstream `main` and passes. On a real
 test host (v1.4.44): agent reads ~2,500 objects; the front door builds, is healthy, serves the same fingerprint to the Console, to `dune encrypted-api`
 and to an outside client; the API door refuses everything it should. Details: [PULL_REQUEST.md](PULL_REQUEST.md), [PULL_REQUEST-encrypted-api.md](PULL_REQUEST-encrypted-api.md).
 

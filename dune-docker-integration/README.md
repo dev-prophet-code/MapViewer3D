@@ -1,7 +1,8 @@
 # Dune Docker integration
 
 Two ready-to-merge changes for [Red-Blink/dune-awakening-selfhost-docker](https://github.com/Red-Blink/dune-awakening-selfhost-docker),
-independent in purpose, applied in this order with `git am` on upstream `main` at `da644b7` (v1.4.44):
+**independent of each other**: each applies directly with `git am` on upstream `main` at `da644b7` (v1.4.44). They touch neighbouring lines of
+`server.js`, `actions.js` and `SettingsPanel.tsx`, so the one merged second needs a trivial conflict resolution:
 
 | # | Patch | What it adds | PR text |
 |---|---|---|---|
@@ -10,11 +11,12 @@ independent in purpose, applied in this order with `git am` on upstream `main` a
 
 ```bash
 cd dune-awakening-selfhost-docker
-git am /path/to/0001-api-keys-realtime-data-scope.patch /path/to/0002-encrypted-api-access.patch
+git am /path/to/0001-api-keys-realtime-data-scope.patch      # either one on its own,
+git am /path/to/0002-encrypted-api-access.patch              # or both (resolve the small conflicts)
 dune console restart
 ```
 
-Neither is submitted as a pull request yet. A one-page explanation of how the system works, for maintainers: [OVERVIEW.md](OVERVIEW.md). The data API for other programs (fields, stream format, examples, pinning): [REALTIME-API.md](REALTIME-API.md).
+Both are prepared as pull requests from the branches `realtime-data-scope` and `encrypted-api-access` of a fork. A one-page explanation of how the system works, for maintainers: [OVERVIEW.md](OVERVIEW.md). The data API for other programs (fields, stream format, examples, pinning): [REALTIME-API.md](REALTIME-API.md).
 
 ---
 
@@ -73,7 +75,7 @@ Against upstream `da644b7`:
 
 ## Apply
 
-See the top of this page (both patches, in order).
+See the top of this page (each patch applies on its own).
 
 ---
 

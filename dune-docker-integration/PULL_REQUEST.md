@@ -14,6 +14,7 @@ gains anything it did not have before.
 
 - **Source of the agent:** https://github.com/dev-prophet-code/MapViewer3D (branch `ddp`, MIT)
 - **Base:** `main` at `da644b7` (v1.4.44)
+- **Related, independent:** a second PR adds an optional encrypted API access (HTTPS front door, key fingerprint in the installer and in Settings). Realtime Data works over plain HTTP too; the encrypted access just protects the API key and the data on the network.
 - **Size:** 12 files, +571 / −10
 
 ### Why
