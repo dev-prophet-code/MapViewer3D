@@ -1,13 +1,15 @@
-# MapViewer3D live data (sandworms, enemies, civilians, vehicles, storms,
-# optionally players) for a Dune Docker host.
+# MapViewer3D Realtime Data agent for a Dune Docker host: live sandworms,
+# enemies, civilians, vehicles, storms (optionally players), read from the
+# game server processes.
 #
-# Runs next to Dune Docker as its own compose project, changes nothing in it:
+# The agent has no login. It listens on 127.0.0.1:8796 of the host only, and
+# the Dune Docker Console is the one door to it (API key scope "Realtime Data",
+# GET /api/realtime/*). Nothing is published to the network.
 #
 #   cp .env.example .env
 #   docker compose -f docker-compose.mapviewer-live.yml up -d --build
-#   docker compose -f docker-compose.mapviewer-live.yml exec mvgate mvgate -pair <public-host>
 #
-# The pairing code goes into mvlink on your PC (see README.md, SECURITY.md).
+# See README.md and SECURITY.md.
 
 name: mapviewer-live
 
@@ -23,6 +25,9 @@ services:
     restart: unless-stopped
     # sees the game server processes of the Dune Docker containers
     pid: host
+    # loopback of the host, where the Console (host networking) reaches it;
+    # -addr refuses anything but a loopback address
+    network_mode: host
     # reading /proc/<pid>/mem of another container's process
     cap_drop: [ALL]
     cap_add: [SYS_PTRACE, DAC_OVERRIDE]
@@ -31,55 +36,15 @@ services:
       # Dune Docker runs its game containers privileged with AppArmor
       # "unconfined"; the docker-default profile refuses to read such a peer
       # (kernel: apparmor="DENIED" operation="ptrace" peer="unconfined"), so the
-      # agent needs "unconfined" too. Its other limits stay: two capabilities,
-      # no-new-privileges, read-only file system, internal network only.
+      # agent needs "unconfined" too. Its other limits stay.
       - apparmor=${MV_AGENT_APPARMOR:-unconfined}
     read_only: true
     command:
-      - -addr=0.0.0.0:8796
-      - -allow-open
+      - -addr=127.0.0.1:${MV_AGENT_PORT:-8796}
       - -players=${MV_AGENT_PLAYERS:-false}
       - -hz=${MV_AGENT_HZ:-10}
-    networks: [agent]
     mem_limit: 512m
     cpus: ${MV_AGENT_CPUS:-1.0}
     logging:
       driver: json-file
       options: {max-size: 10m, max-file: "3"}
-
-  mvgate:
-    build:
-      context: .
-      target: gate
-    image: mapviewer-live/mvgate:latest
-    restart: unless-stopped
-    depends_on: [mvagent]
-    environment:
-      # empty = mvgate creates a token in /data (recommended)
-      MV_GATE_TOKEN: ${MV_GATE_TOKEN:-}
-      MV_GATE_UPSTREAM: http://mvagent:8796
-      MV_GATE_ALLOW: ${MV_GATE_ALLOW:-}
-      MV_GATE_MAX_STREAMS: ${MV_GATE_MAX_STREAMS:-8}
-      MV_GATE_PUBLIC_PORT: ${MV_GATE_PORT:-8797}
-    volumes:
-      - mvgate-data:/data
-    ports:
-      - "${MV_GATE_BIND:-0.0.0.0}:${MV_GATE_PORT:-8797}:8797"
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    read_only: true
-    networks: [agent, public]
-    mem_limit: 64m
-    logging:
-      driver: json-file
-      options: {max-size: 10m, max-file: "3"}
-
-volumes:
-  # gate key + token: back it up, never share it
-  mvgate-data: {}
-
-networks:
-  # mvagent has no login: it is only reachable from mvgate, and has no internet
-  agent:
-    internal: true
-  public: {}

@@ -1,0 +1,782 @@
+From e2cd9d1363b1f3d73b34cfb419777fbda873c7b3 Mon Sep 17 00:00:00 2001
+From: Stefan Schaefer <stefanschaefer@BlackGuard.fritz.box>
+Date: Fri, 2 Oct 2026 02:04:52 +0200
+Subject: [PATCH] API keys: new scope "Realtime Data" for live sandworms, NPCs,
+ vehicles and storms
+
+Realtime Data is its own read-only namespace (realtime:read), shown as a
+separate row "Realtime Data" (None / Read) when creating an API key. The
+Console proxies the optional MapViewer3D position agent (mvagent on
+127.0.0.1:8796, no login) so every request goes through the normal API key /
+session authorization:
+
+- GET /api/realtime/healthz, /api/realtime/objects, /api/realtime/stream (SSE)
+- player positions only with players:read as well; otherwise removed from
+  snapshots and position updates
+- open streams re-check the key every 10 s: disabling, expiring, revoking or
+  removing the scope ends the stream; 4 streams per key, 16 in total
+- no process ids are passed on; agent URL must be plain HTTP on loopback
+- tiers: owner and admin; maps:read does not include it
+- tests: test/realtime.test.js, scope/RBAC parity tests, ApiKeysSection test;
+  docs/console/realtime.md and the api-keys scope table
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ console/api/src/actions.js                    |   8 +
+ console/api/src/apiKeyScopes.js               |   2 +-
+ console/api/src/policy.js                     |   1 +
+ console/api/src/server.js                     |  50 ++++
+ console/api/src/services/realtime.js          | 236 ++++++++++++++++++
+ console/api/test/apiKeyScopes.test.js         |  10 +-
+ console/api/test/rbacParity.test.js           |   2 +-
+ console/api/test/realtime.test.js             | 183 ++++++++++++++
+ console/web/src/api/apiKeys.ts                |   1 +
+ .../features/settings/ApiKeysSection.test.tsx |  15 ++
+ docs/console/api-keys.md                      |   7 +-
+ docs/console/realtime.md                      |  66 +++++
+ 12 files changed, 571 insertions(+), 10 deletions(-)
+ create mode 100644 console/api/src/services/realtime.js
+ create mode 100644 console/api/test/realtime.test.js
+ create mode 100644 docs/console/realtime.md
+
+diff --git a/console/api/src/actions.js b/console/api/src/actions.js
+index 0c5cdd7..b9bb90d 100644
+--- a/console/api/src/actions.js
++++ b/console/api/src/actions.js
+@@ -50,6 +50,7 @@ export const NAMESPACES = {
+   BLUEPRINTS:  "blueprints",
+   VEHICLES:    "vehicles",
+   EXCHANGE:    "exchange",
++  REALTIME:    "realtime",
+ };
+ 
+ // ---- Actions: route → action mapping ----
+@@ -172,6 +173,13 @@ export const ROUTE_ACTIONS = {
+   "GET /api/settings/api-keys":                "settings:read",
+   "GET /api/settings/api-keys/catalog":        "settings:read",
+   "POST /api/settings/api-keys":               "settings:write",
++  // Realtime Data (services/realtime.js): live sandworms, NPCs, vehicles and
++  // storms from the optional MapViewer3D position agent. Read-only, its own
++  // namespace so an API key gets it only when "Realtime Data" is granted;
++  // player positions additionally need players:read.
++  "GET /api/realtime/healthz":                 "realtime:read",
++  "GET /api/realtime/objects":                 "realtime:read",
++  "GET /api/realtime/stream":                  "realtime:read",
+   "POST /api/settings/public-directory":       "settings:write",
+   "POST /api/settings/public-directory/claim": "settings:write",
+   "POST /api/settings/server-startup":          "settings:write",
+diff --git a/console/api/src/apiKeyScopes.js b/console/api/src/apiKeyScopes.js
+index 14770f0..a2faf6b 100644
+--- a/console/api/src/apiKeyScopes.js
++++ b/console/api/src/apiKeyScopes.js
+@@ -78,7 +78,7 @@ export const SCOPE_LEVELS = Object.freeze(["read", "write"]);
+ // shows up in the UI on its own rather than silently disappearing.
+ const PREFERRED_ORDER = [
+   "players", "bases", "vehicles", "guilds", "storage", "blueprints",
+-  "exchange", "maps", "sietches", "deepdesert", "landsraad",
++  "exchange", "maps", "realtime", "sietches", "deepdesert", "landsraad",
+   "server", "logs", "backups", "updates", "carepackage", "addons",
+   "admin"
+ ];
+diff --git a/console/api/src/policy.js b/console/api/src/policy.js
+index e6bacb0..0dddba2 100644
+--- a/console/api/src/policy.js
++++ b/console/api/src/policy.js
+@@ -315,6 +315,7 @@ export const DEFAULT_POLICIES = {
+         "landsraad:*",
+         "addons:*",
+         "carepackage:*",
++        "realtime:*",
+       ]},
+       { Effect: "Deny", Action: [
+         "settings:*",
+diff --git a/console/api/src/server.js b/console/api/src/server.js
+index afa85ab..b854d5e 100644
+--- a/console/api/src/server.js
++++ b/console/api/src/server.js
+@@ -40,6 +40,7 @@ import { looksLikeTar, mintSystemBackupName, normalizeImportedSystemMetadata, re
+ import { createTarHeader, tarArchiveLength, tarPadding, TAR_TRAILER_BYTES, createBackupDownloadArchive, enrichBackupRows, nextImportedBackupName, normalizeImportedBackupMetadata, readCurrentBattlegroupId, validBackupDownloadName } from "./services/backups.js";
+ import { createMemoryBalancer } from "./services/memoryBalancer.js";
+ import { collectContainerHealth } from "./services/containerHealth.js";
++import { createRealtime, RealtimeError } from "./services/realtime.js";
+ import { parseMemorySwapStatus } from "./services/memorySwap.js";
+ import { createDeathPoller } from "./deathPoller.js";
+ import { updateEnvFileValue as updateEnvValue } from "./services/envFile.js";
+@@ -167,6 +168,7 @@ function shouldNoteApiKeyAuthThrottle(failureKey, at = Date.now()) {
+   return true;
+ }
+ const apiKeys = createApiKeyStore({ file: config.apiKeysFile });
++const realtime = createRealtime();
+ // Proof that a restore was previewed, for the apply that follows it. In memory
+ // beside the sessions it is keyed by -- see the module header for why it is not
+ // persisted.
+@@ -956,6 +958,9 @@ async function handleApi(req, res) {
+     return json(res, 200, { keys: apiKeys.list() });
+   }
+   if (path === "/api/settings/api-keys" && req.method === "POST") return apiKeyCreateRoute(req, res);
++  if (path === "/api/realtime/healthz" && req.method === "GET") return realtimeRoute(res, () => realtime.health());
++  if (path === "/api/realtime/objects" && req.method === "GET") return realtimeRoute(res, () => realtime.objects({ allowPlayers: principalMay(req, "players:read") }));
++  if (path === "/api/realtime/stream" && req.method === "GET") return realtimeStreamRoute(req, res);
+   if (path.startsWith("/api/settings/api-keys/")) return apiKeyItemRoute(req, res, path);
+   if (path === "/api/settings/iam/policy/test" && req.method === "POST") {
+     const body = await readJson(req);
+@@ -2712,6 +2717,51 @@ async function adminPasswordRoute(req, res) {
+   return json(res, 200, { ok: true });
+ }
+ 
++// Whether the principal of this request may perform `action`, by the same two
++// gates handleApi applies (policy engine, then the key's own scope map) --
++// without writing a response. Used for the optional parts of a reply, such as
++// player positions in Realtime Data.
++function principalMay(req, action) {
++  if (!req.authSession || !evaluate(req.authSession, action)) return false;
++  return !req.authApiKey || apiKeys.allows(req.authApiKey, action);
++}
++
++async function realtimeRoute(res, action) {
++  try {
++    return json(res, 200, await action(), { "cache-control": "no-store" });
++  } catch (error) {
++    if (error instanceof RealtimeError) return json(res, error.status, { available: false, error: error.message });
++    throw error;
++  }
++}
++
++// A stream outlives the request that authorized it, so the key (or browser
++// session) is checked again every few seconds: disabling, expiring or revoking
++// the key, or removing its Realtime Data / Players scope, takes effect on the
++// open stream too.
++function realtimeStreamRoute(req, res) {
++  const principal = req.authApiKey ? `apikey:${req.authApiKey.id}` : `session:${req.authSession?.id || "unknown"}`;
++  const current = () => {
++    if (!req.authApiKey) {
++      const session = auth.readSession(req);
++      return session ? { session, key: null } : null;
++    }
++    const bearer = apiKeys.authenticate(req);
++    return bearer && !bearer.error ? { session: bearer.session, key: bearer.key } : null;
++  };
++  const may = (action) => {
++    const now = current();
++    if (!now || !evaluate(now.session, action)) return false;
++    return !now.key || apiKeys.allows(now.key, action);
++  };
++  audit(config, req, "realtime.stream-open", { principal });
++  realtime.stream(req, res, {
++    principal,
++    allowPlayers: () => may("players:read"),
++    stillAllowed: () => may("realtime:read")
++  });
++}
++
+ async function apiKeyCreateRoute(req, res) {
+   const body = await readJson(req);
+   const created = await apiKeys.create({
+diff --git a/console/api/src/services/realtime.js b/console/api/src/services/realtime.js
+new file mode 100644
+index 0000000..32625e5
+--- /dev/null
++++ b/console/api/src/services/realtime.js
+@@ -0,0 +1,236 @@
++// Realtime Data: live sandworms, enemies, civilians, vehicles and sandstorms
++// (optionally players) read from the game server processes by the optional
++// MapViewer3D position agent `mvagent`
++// (https://github.com/dev-prophet-code/MapViewer3D/tree/ddp).
++//
++// The agent has no login and listens on loopback only. The Console is the one
++// door to it: every request is authenticated and authorized here like any
++// other API call (API key scope "Realtime Data" = realtime:read), so enabling,
++// disabling, expiring or revoking a key turns the stream on and off.
++//
++// Player objects leave only when the caller may also read players
++// (players:read); otherwise they are removed from snapshots and their position
++// updates are dropped.
++import http from "node:http";
++import { withSecurityHeaders } from "../auth.js";
++
++export const REALTIME_VERSION = 1;
++export const REALTIME_KINDS = ["worm", "vehicle", "npc", "civilian", "storm", "coriolis"];
++
++const DEFAULT_AGENT_URL = "http://127.0.0.1:8796";
++const HEALTH_TIMEOUT_MS = 3000;
++const MAX_BODY_BYTES = 32 * 1024 * 1024;
++const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
++const RECHECK_MS = 10_000;
++
++export class RealtimeError extends Error {
++  constructor(message, status = 503) {
++    super(message);
++    this.name = "RealtimeError";
++    this.status = status;
++  }
++}
++
++// Only plain HTTP on loopback: the agent has no login, so it must never be
++// reached over a network.
++export function parseAgentUrl(value) {
++  let url;
++  try {
++    url = new URL(String(value || DEFAULT_AGENT_URL));
++  } catch {
++    throw new RealtimeError("DUNE_REALTIME_AGENT_URL is not a valid URL.", 500);
++  }
++  const host = url.hostname.replace(/^\[|\]$/g, "");
++  if (url.protocol !== "http:" || !["127.0.0.1", "::1", "localhost"].includes(host) || url.username || url.password) {
++    throw new RealtimeError("DUNE_REALTIME_AGENT_URL must be http://127.0.0.1:<port> (the agent has no login).", 500);
++  }
++  return url;
++}
++
++// What the Console passes on about the game server processes: no PIDs.
++function publicSources(sources) {
++  return (Array.isArray(sources) ? sources : []).map((source) => {
++    const out = { map: source.map, partition: source.partition, ready: Boolean(source.ready), n: source.n || 0 };
++    if (source.reason) out.reason = String(source.reason);
++    if (source.weather) out.weather = source.weather;
++    return out;
++  });
++}
++
++function filterSnapshot(snapshot, allowPlayers) {
++  const objects = Array.isArray(snapshot?.objects) ? snapshot.objects : [];
++  const kept = allowPlayers ? objects : objects.filter((object) => object?.k !== "player");
++  return { ...snapshot, sources: publicSources(snapshot?.sources), objects: kept };
++}
++
++export function createRealtime({
++  agentUrl = process.env.DUNE_REALTIME_AGENT_URL,
++  maxStreams = 16,
++  maxStreamsPerPrincipal = 4,
++  recheckMs = RECHECK_MS
++} = {}) {
++  const base = parseAgentUrl(agentUrl);
++  const open = new Map(); // principal -> number of open streams
++  let total = 0;
++
++  function get(path, { timeout = HEALTH_TIMEOUT_MS } = {}) {
++    return new Promise((resolve, reject) => {
++      const request = http.get(new URL(path, base), { timeout, headers: { accept: "application/json" } }, (response) => {
++        const chunks = [];
++        let size = 0;
++        response.on("data", (chunk) => {
++          size += chunk.length;
++          if (size > MAX_BODY_BYTES) request.destroy(new Error("agent answer too large"));
++          else chunks.push(chunk);
++        });
++        response.on("end", () => {
++          if (response.statusCode !== 200) return reject(new Error(`agent HTTP ${response.statusCode}`));
++          try {
++            resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
++          } catch {
++            reject(new Error("agent sent invalid JSON"));
++          }
++        });
++      });
++      request.on("timeout", () => request.destroy(new Error("agent timeout")));
++      request.on("error", reject);
++    });
++  }
++
++  return {
++    // GET /api/realtime/healthz. 503 when the agent is not installed or down.
++    async health() {
++      let answer;
++      try {
++        answer = await get("/healthz");
++      } catch {
++        throw new RealtimeError("Realtime Data is not available: the MapViewer3D position agent is not running on this host.", 503);
++      }
++      return { available: true, version: REALTIME_VERSION, ok: Boolean(answer?.ok), ready: Number(answer?.ready) || 0, sources: publicSources(answer?.sources) };
++    },
++
++    // GET /api/realtime/objects
++    async objects({ allowPlayers }) {
++      const kinds = allowPlayers ? [...REALTIME_KINDS, "player"] : REALTIME_KINDS;
++      let snapshot;
++      try {
++        snapshot = await get(`/api/objects?kinds=${kinds.join(",")}`, { timeout: 10_000 });
++      } catch {
++        throw new RealtimeError("Realtime Data is not available: the MapViewer3D position agent is not running on this host.", 503);
++      }
++      return filterSnapshot(snapshot, allowPlayers);
++    },
++
++    // GET /api/realtime/stream (server-sent events, same events as the agent).
++    // allowPlayers and stillAllowed are re-evaluated every recheckMs, so a
++    // disabled, expired or revoked key (or a removed scope) ends the stream.
++    stream(req, res, { principal, allowPlayers, stillAllowed }) {
++      const mine = open.get(principal) || 0;
++      if (total >= maxStreams || mine >= maxStreamsPerPrincipal) {
++        res.writeHead(429, withSecurityHeaders({ "content-type": "application/json; charset=utf-8", "retry-after": "30" }));
++        res.end(JSON.stringify({ error: "Too many open Realtime Data streams. Close another viewer and try again." }));
++        return;
++      }
++      open.set(principal, mine + 1);
++      total += 1;
++
++      let players = Boolean(allowPlayers());
++      let visible = new Set(); // object ids the caller may see
++      let pending = "";
++      let finished = false;
++
++      const upstream = http.get(new URL("/stream", base), { headers: { accept: "text/event-stream" } });
++      const recheck = setInterval(() => {
++        if (!stillAllowed()) return finish();
++        players = Boolean(allowPlayers());
++      }, recheckMs);
++
++      function finish() {
++        if (finished) return;
++        finished = true;
++        clearInterval(recheck);
++        upstream.destroy();
++        if (!res.writableEnded) res.end();
++        const left = (open.get(principal) || 1) - 1;
++        if (left > 0) open.set(principal, left);
++        else open.delete(principal);
++        total -= 1;
++      }
++
++      function send(text) {
++        if (finished) return;
++        res.write(text);
++        if (res.writableLength > MAX_BUFFERED_BYTES) finish(); // the client stopped reading
++      }
++
++      function handle(block) {
++        if (block.startsWith(":")) return send(`${block}\n\n`); // keep-alive comment
++        let name = "";
++        let data = "";
++        for (const line of block.split("\n")) {
++          if (line.startsWith("event:")) name = line.slice(6).trim();
++          else if (line.startsWith("data:")) data += line.slice(5).trim();
++        }
++        let payload;
++        try {
++          payload = JSON.parse(data);
++        } catch {
++          return;
++        }
++        if (name === "snap") {
++          const snapshot = filterSnapshot(payload, players);
++          visible = new Set(snapshot.objects.map((object) => object.i));
++          send(`event: snap\ndata: ${JSON.stringify(snapshot)}\n\n`);
++        } else if (name === "pos") {
++          const d = Array.isArray(payload.d) ? payload.d.filter((entry) => visible.has(entry?.[0])) : [];
++          const r = Array.isArray(payload.r) ? payload.r.filter((id) => visible.has(id)) : [];
++          for (const id of r) visible.delete(id);
++          if (d.length || r.length) send(`event: pos\ndata: ${JSON.stringify({ gen: payload.gen, t: payload.t, d, r })}\n\n`);
++        }
++        // anything else is not forwarded
++      }
++
++      upstream.on("response", (response) => {
++        if (response.statusCode !== 200) {
++          response.resume();
++          if (!res.headersSent) {
++            res.writeHead(503, withSecurityHeaders({ "content-type": "application/json; charset=utf-8" }));
++            res.end(JSON.stringify({ error: "Realtime Data is not available right now." }));
++          }
++          return finish();
++        }
++        res.writeHead(200, withSecurityHeaders({
++          "content-type": "text/event-stream; charset=utf-8",
++          "cache-control": "no-store",
++          "x-accel-buffering": "no"
++        }));
++        response.setEncoding("utf8");
++        response.on("data", (chunk) => {
++          pending += chunk;
++          if (pending.length > MAX_BODY_BYTES) return finish();
++          let index;
++          while ((index = pending.indexOf("\n\n")) >= 0) {
++            const block = pending.slice(0, index).replace(/\r/g, "");
++            pending = pending.slice(index + 2);
++            if (block) handle(block);
++          }
++        });
++        response.on("end", finish);
++        response.on("error", finish);
++      });
++      upstream.on("error", () => {
++        if (!res.headersSent) {
++          res.writeHead(503, withSecurityHeaders({ "content-type": "application/json; charset=utf-8" }));
++          res.end(JSON.stringify({ error: "Realtime Data is not available: the MapViewer3D position agent is not running on this host." }));
++        }
++        finish();
++      });
++      req.on("close", finish);
++      res.on("close", finish);
++    },
++
++    openStreams() {
++      return total;
++    }
++  };
++}
+diff --git a/console/api/test/apiKeyScopes.test.js b/console/api/test/apiKeyScopes.test.js
+index c97dea0..6168499 100644
+--- a/console/api/test/apiKeyScopes.test.js
++++ b/console/api/test/apiKeyScopes.test.js
+@@ -73,11 +73,11 @@ test("carepackage:scan is a write despite its verb-shaped name", () => {
+   assert.equal(keyAllows({ scopes: { carepackage: "write" } }, "carepackage:scan"), true);
+ });
+ 
+-test("logs, updates and addons are the only namespaces offering no write level", () => {
+-  // logs has no write action at all; updates has several but they are denied.
+-  // Both render a two-segment None/Read control.
++test("logs, realtime, updates and addons are the only namespaces offering no write level", () => {
++  // logs and realtime have no write action at all; updates has several but
++  // they are denied. All render a two-segment None/Read control.
+   const namespaces = selectableNamespaces();
+-  const readOnly = new Set(["logs", ...KEY_WRITE_DENIED_NAMESPACES]);
++  const readOnly = new Set(["logs", "realtime", ...KEY_WRITE_DENIED_NAMESPACES]);
+   for (const namespace of readOnly) {
+     assert.ok(namespaces.includes(namespace), `${namespace} should still be selectable, just not writable`);
+     assert.equal(namespaceHasWriteActions(namespace), false, `${namespace} offers a write level it should not`);
+@@ -116,7 +116,7 @@ test("denied namespaces are absent from the selectable catalog entirely", () =>
+     assert.ok(!namespaces.includes(denied), `${denied} must never be offered as a key scope`);
+     assert.ok(!actionsByNamespace().has(denied));
+   }
+-  assert.equal(namespaces.length, 18);
++  assert.equal(namespaces.length, 19);
+ });
+ 
+ test("scopeCatalog reports write support for the UI", () => {
+diff --git a/console/api/test/rbacParity.test.js b/console/api/test/rbacParity.test.js
+index e32cd97..a33a637 100644
+--- a/console/api/test/rbacParity.test.js
++++ b/console/api/test/rbacParity.test.js
+@@ -138,7 +138,7 @@ test("parity: all IAM actions reference known namespaces", () => {
+     "setup", "server", "logs", "backups", "database", "updates", "settings",
+     "players", "guilds", "bases", "maps", "sietches", "deepdesert", "admin",
+     "landsraad", "addons", "carepackage", "storage", "blueprints", "vehicles",
+-    "exchange"
++    "exchange", "realtime"
+   ]);
+   for (const action of Object.values(ROUTE_ACTIONS)) {
+     if (typeof action !== "string") continue;
+diff --git a/console/api/test/realtime.test.js b/console/api/test/realtime.test.js
+new file mode 100644
+index 0000000..0074754
+--- /dev/null
++++ b/console/api/test/realtime.test.js
+@@ -0,0 +1,183 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import http from "node:http";
++import { readFileSync } from "node:fs";
++import { createRealtime, parseAgentUrl, RealtimeError } from "../src/services/realtime.js";
++import { actionForRoute } from "../src/actions.js";
++import { scopeCatalog, normalizeScopes } from "../src/apiKeyScopes.js";
++import { DEFAULT_POLICIES, evaluate } from "../src/policy.js";
++
++const SNAP = {
++  gen: 1, t: 1,
++  sources: [{ pid: 4242, map: "Survival_1", partition: 1, ready: true, n: 3, scans: 2, scanMs: 4800, ageMs: 5 }],
++  objects: [
++    { i: 1, k: "worm", c: "BP_Crea_SandwormArrakis_C", s: 0, x: 1, y: 2, z: 3 },
++    { i: 2, k: "npc", c: "BP_Npc_SoldierBase_C", s: 0, x: 4, y: 5, z: 6 },
++    { i: 3, k: "player", c: "BP_Player_C", s: 0, x: 7, y: 8, z: 9 }
++  ]
++};
++const POS = { gen: 1, t: 2, d: [[1, 10, 20, 30], [3, 70, 80, 90]], r: [] };
++
++// Stand-in for mvagent on loopback.
++async function fakeAgent() {
++  const server = http.createServer((req, res) => {
++    if (req.url === "/healthz") return res.end(JSON.stringify({ ok: true, ready: 1, sources: SNAP.sources }));
++    if (req.url.startsWith("/api/objects")) {
++      const kinds = new URL(req.url, "http://x").searchParams.get("kinds").split(",");
++      return res.end(JSON.stringify({ ...SNAP, objects: SNAP.objects.filter((o) => kinds.includes(o.k)) }));
++    }
++    if (req.url === "/stream") {
++      res.writeHead(200, { "content-type": "text/event-stream" });
++      res.write(`event: snap\ndata: ${JSON.stringify(SNAP)}\n\n`);
++      const tick = setInterval(() => res.write(`event: pos\ndata: ${JSON.stringify(POS)}\n\n: keepalive\n\n`), 20);
++      req.on("close", () => clearInterval(tick));
++      return undefined;
++    }
++    res.statusCode = 404;
++    return res.end();
++  });
++  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
++  return { server, url: `http://127.0.0.1:${server.address().port}` };
++}
++
++// Runs realtime.stream behind a real HTTP server and collects SSE events.
++async function openStream(realtime, options) {
++  const front = http.createServer((req, res) => realtime.stream(req, res, options));
++  await new Promise((resolve) => front.listen(0, "127.0.0.1", resolve));
++  const events = [];
++  const done = new Promise((resolve) => {
++    http.get(`http://127.0.0.1:${front.address().port}/`, (res) => {
++      let buffer = "";
++      res.setEncoding("utf8");
++      res.on("data", (chunk) => {
++        buffer += chunk;
++        let index;
++        while ((index = buffer.indexOf("\n\n")) >= 0) {
++          const block = buffer.slice(0, index);
++          buffer = buffer.slice(index + 2);
++          const name = /^event: (.*)$/m.exec(block)?.[1];
++          const data = /^data: (.*)$/m.exec(block)?.[1];
++          if (name) events.push({ name, data: JSON.parse(data) });
++        }
++      });
++      res.on("end", () => resolve(res.statusCode));
++      res.on("error", () => resolve(res.statusCode));
++    });
++  });
++  return { front, events, done };
++}
++
++test("the agent address must be plain HTTP on loopback", () => {
++  assert.equal(parseAgentUrl(undefined).href, "http://127.0.0.1:8796/");
++  for (const ok of ["http://127.0.0.1:9000", "http://localhost:8796", "http://[::1]:8796"]) assert.doesNotThrow(() => parseAgentUrl(ok), ok);
++  for (const bad of ["https://127.0.0.1:8796", "http://10.0.0.5:8796", "http://example.org:8796", "http://u:p@127.0.0.1:8796", "nope"]) {
++    assert.throws(() => parseAgentUrl(bad), RealtimeError, bad);
++  }
++});
++
++test("health and objects: no PIDs, players only with players:read", async () => {
++  const agent = await fakeAgent();
++  try {
++    const realtime = createRealtime({ agentUrl: agent.url });
++    const health = await realtime.health();
++    assert.equal(health.available, true);
++    assert.equal(health.sources[0].pid, undefined);
++    assert.equal(health.sources[0].map, "Survival_1");
++    const without = await realtime.objects({ allowPlayers: false });
++    assert.deepEqual(without.objects.map((o) => o.k).sort(), ["npc", "worm"]);
++    const withPlayers = await realtime.objects({ allowPlayers: true });
++    assert.ok(withPlayers.objects.some((o) => o.k === "player"));
++  } finally {
++    agent.server.close();
++  }
++});
++
++test("health reports unavailable when no agent runs", async () => {
++  const realtime = createRealtime({ agentUrl: "http://127.0.0.1:1" });
++  await assert.rejects(realtime.health(), (error) => error instanceof RealtimeError && error.status === 503);
++});
++
++test("stream without players:read drops player objects and their positions", async () => {
++  const agent = await fakeAgent();
++  const realtime = createRealtime({ agentUrl: agent.url, recheckMs: 50 });
++  let allowed = true;
++  const { front, events, done } = await openStream(realtime, { principal: "apikey:a", allowPlayers: () => false, stillAllowed: () => allowed });
++  try {
++    await new Promise((resolve) => setTimeout(resolve, 200));
++    const snap = events.find((e) => e.name === "snap");
++    assert.deepEqual(snap.data.objects.map((o) => o.i), [1, 2]);
++    assert.equal(snap.data.sources[0].pid, undefined);
++    const pos = events.filter((e) => e.name === "pos");
++    assert.ok(pos.length > 0);
++    assert.ok(pos.every((e) => e.data.d.every((d) => d[0] !== 3)), "a player position leaked");
++    // revoking the scope (or the key) ends the open stream
++    allowed = false;
++    await done;
++    assert.equal(realtime.openStreams(), 0);
++  } finally {
++    front.close();
++    agent.server.close();
++  }
++});
++
++test("stream with players:read keeps players", async () => {
++  const agent = await fakeAgent();
++  const realtime = createRealtime({ agentUrl: agent.url });
++  let stop = false;
++  const { front, events, done } = await openStream(realtime, { principal: "apikey:b", allowPlayers: () => true, stillAllowed: () => !stop });
++  try {
++    await new Promise((resolve) => setTimeout(resolve, 150));
++    assert.ok(events.find((e) => e.name === "snap").data.objects.some((o) => o.k === "player"));
++    assert.ok(events.some((e) => e.name === "pos" && e.data.d.some((d) => d[0] === 3)));
++  } finally {
++    stop = true;
++    front.closeAllConnections();
++    front.close();
++    agent.server.close();
++    await done;
++  }
++});
++
++test("open streams are limited per key", async () => {
++  const agent = await fakeAgent();
++  const realtime = createRealtime({ agentUrl: agent.url, maxStreamsPerPrincipal: 1 });
++  const first = await openStream(realtime, { principal: "apikey:c", allowPlayers: () => false, stillAllowed: () => true });
++  try {
++    await new Promise((resolve) => setTimeout(resolve, 100));
++    const second = await openStream(realtime, { principal: "apikey:c", allowPlayers: () => false, stillAllowed: () => true });
++    assert.equal(await second.done, 429);
++    second.front.close();
++  } finally {
++    first.front.closeAllConnections();
++    first.front.close();
++    agent.server.close();
++  }
++});
++
++test("Realtime Data is its own read-only API key scope", () => {
++  for (const route of ["/api/realtime/healthz", "/api/realtime/objects", "/api/realtime/stream"]) {
++    assert.equal(actionForRoute(route, "GET"), "realtime:read", route);
++  }
++  const entry = scopeCatalog().find((candidate) => candidate.namespace === "realtime");
++  assert.ok(entry, "realtime missing from the API key scope catalog");
++  assert.deepEqual(entry.readActions, ["realtime:read"]);
++  assert.equal(entry.supportsWrite, false);
++  assert.deepEqual(normalizeScopes({ realtime: "read" }), { realtime: "read" });
++  // maps:read alone does not grant it
++  assert.ok(!scopeCatalog().find((candidate) => candidate.namespace === "maps").readActions.includes("realtime:read"));
++});
++
++test("tiers: owner and admin may read Realtime Data, moderators and below may not", () => {
++  const docs = DEFAULT_POLICIES;
++  assert.equal(evaluate({ tier: "owner" }, "realtime:read", docs), true);
++  assert.equal(evaluate({ tier: "admin" }, "realtime:read", docs), true);
++  for (const tier of ["moderator", "player", "observer"]) assert.equal(evaluate({ tier }, "realtime:read", docs), false, tier);
++});
++
++test("the stream re-checks the key while it is open", () => {
++  const source = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
++  const route = source.slice(source.indexOf("function realtimeStreamRoute"), source.indexOf("async function apiKeyCreateRoute"));
++  assert.match(route, /apiKeys\.authenticate\(req\)/);
++  assert.match(route, /stillAllowed: \(\) => may\("realtime:read"\)/);
++  assert.match(route, /allowPlayers: \(\) => may\("players:read"\)/);
++});
+diff --git a/console/web/src/api/apiKeys.ts b/console/web/src/api/apiKeys.ts
+index 585de09..b36530d 100644
+--- a/console/web/src/api/apiKeys.ts
++++ b/console/web/src/api/apiKeys.ts
+@@ -150,6 +150,7 @@ const SCOPE_LABELS: Record<string, string> = {
+   landsraad: "Landsraad",
+   logs: "Logs",
+   maps: "Maps",
++  realtime: "Realtime Data",
+   players: "Players",
+   server: "Server",
+   sietches: "Sietches",
+diff --git a/console/web/src/features/settings/ApiKeysSection.test.tsx b/console/web/src/features/settings/ApiKeysSection.test.tsx
+index d42dce8..a851051 100644
+--- a/console/web/src/features/settings/ApiKeysSection.test.tsx
++++ b/console/web/src/features/settings/ApiKeysSection.test.tsx
+@@ -551,3 +551,18 @@ test("surfaces a load failure instead of rendering an empty list as success", as
+   render(<ApiKeysSection confirmAction={vi.fn()} />);
+   expect(await screen.findByText(/Postgres is not running/i)).toBeVisible();
+ });
++
++test("Realtime Data is its own read-only row in the scope grid", async () => {
++  mocked.list.mockResolvedValue({ keys: [] });
++  mocked.catalog.mockResolvedValue({ namespaces: [
++    ...CATALOG,
++    { namespace: "realtime", readActions: ["realtime:read"], writeActions: [], supportsWrite: false }
++  ] });
++  render(<ApiKeysSection confirmAction={vi.fn().mockResolvedValue(true)} />);
++  await openCreateForm();
++  expect(screen.getByText("Realtime Data")).toBeVisible();
++  const group = screen.getByLabelText("Access level for realtime");
++  expect(within(group).getByRole("radio", { name: /^None/ })).toBeInTheDocument();
++  expect(within(group).getByRole("radio", { name: /^Read realtime/ })).toBeInTheDocument();
++  expect(within(group).queryByRole("radio", { name: /Read\+Write/ })).toBeNull();
++});
+diff --git a/docs/console/api-keys.md b/docs/console/api-keys.md
+index 8284a47..3bfd729 100644
+--- a/docs/console/api-keys.md
++++ b/docs/console/api-keys.md
+@@ -104,6 +104,7 @@ namespace" rule, so Create stays disabled until something is selected.
+ | `blueprints` | `blueprints:read` | `delete`, `export`, `import`, `unclassified` |
+ | `exchange` | `exchange:market`, `exchange:read` | `market-write`, `write-config` |
+ | `maps` | `maps:read` | `despawn`, `reconcile`, `restart`, `spawn`, `teleport`, `write-config` |
++| `realtime` | `realtime:read` | *nothing — Realtime Data is read-only* |
+ | `sietches` | `sietches:read` | `write` |
+ | `deepdesert` | `deepdesert:read` | `write` |
+ | `landsraad` | `landsraad:read` | `write` |
+@@ -115,9 +116,9 @@ namespace" rule, so Create stays disabled until something is selected.
+ | `addons` | `addons:read` | *nothing — write actions are denied to keys* |
+ | `admin` | `admin:announcements:read`, `admin:history:read`, `admin:items:read`, `admin:motd:read`, `admin:skills:read`, `admin:transfer-settings:read`, `admin:vehicles:read` | `announcements:write`, `broadcast`, `broadcast-shutdown`, `history:clear`, `map-chat`, `motd:write`, `transfer-settings:write` |
+ 
+-`logs`, `updates` and `addons` render a two-segment control (None / Read), not three. `logs`
+-has no write action at all; the other two have several, but they are denied to keys — see
+-below. All three are read from the action catalog rather than hardcoded, so a future `logs`
++`logs`, `realtime`, `updates` and `addons` render a two-segment control (None / Read), not
++three. `logs` and `realtime` have no write action at all; the other two have several, but they
++are denied to keys — see below. All three are read from the action catalog rather than hardcoded, so a future `logs`
+ write action makes the third segment appear on its own.
+ 
+ ### Two read exceptions
+diff --git a/docs/console/realtime.md b/docs/console/realtime.md
+new file mode 100644
+index 0000000..182d35e
+--- /dev/null
++++ b/docs/console/realtime.md
+@@ -0,0 +1,66 @@
++# Realtime Data
++
++**Status:** Optional | **Last Updated:** October 2026
++
++The Live Map reads Postgres, so it shows players, vehicles and bases but not
++sandworms, NPCs or sandstorms: those exist only in the memory of the running
++game server processes. The optional MapViewer3D position agent `mvagent`
++([MapViewer3D, branch `ddp`](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp))
++reads them there, read-only, about ten times per second. The Console passes
++them on as **Realtime Data** to clients that hold the matching permission –
++for example a MapViewer3D running on an administrator's PC.
++
++## Setup
++
++The agent runs next to the Console as its own compose project and changes
++nothing in the Dune containers. It listens on `127.0.0.1:8796` of the host and
++has no login, so it is reachable only through the Console.
++
++```bash
++git clone --branch ddp --depth 1 https://github.com/dev-prophet-code/MapViewer3D.git mapviewer-live
++cd mapviewer-live && cp .env.example .env
++docker compose -f docker-compose.mapviewer-live.yml up -d --build
++```
++
++`DUNE_REALTIME_AGENT_URL` (default `http://127.0.0.1:8796`) points the Console
++at the agent; only plain HTTP on loopback is accepted.
++
++## Permission: API key scope "Realtime Data"
++
++Realtime Data is its own namespace, `realtime`, with a single action
++`realtime:read`. In **Settings → API Keys** it is a separate row,
++**Realtime Data**, with **None / Read** (there is nothing to write).
++
++- **Read** lets the key stream sandworms, enemies, civilians, vehicles and
++  storms.
++- **Player positions** are included only if the key also has
++  **Players → Read**. Without it, player objects are removed and their position
++  updates dropped.
++- `maps:read` does **not** include it, so existing keys gain nothing.
++- Tiers: owner and admin hold `realtime:*`; moderator, player and observer do
++  not.
++
++The stream re-checks its key every 10 seconds: disabling, expiring or revoking
++the key, or removing its Realtime Data (or Players) scope, ends the stream (or
++stops the player positions) without waiting for a reconnect. At most four
++streams per key and 16 in total are open at once.
++
++## Routes
++
++| Route | Action | Answer |
++|---|---|---|
++| `GET /api/realtime/healthz` | `realtime:read` | `{ available, version, ok, ready, sources }`; `503` when the agent does not run |
++| `GET /api/realtime/objects` | `realtime:read` | current snapshot `{ gen, t, sources, objects }` |
++| `GET /api/realtime/stream` | `realtime:read` | server-sent events `snap` (full state) and `pos` (`d`: `[id, x, y, z]`, `r`: removed ids) |
++
++Sources never carry process ids. Object kinds: `worm`, `vehicle`, `npc`,
++`civilian`, `storm`, `coriolis`, and `player` (see above).
++
++## Transport
++
++API keys and positions travel inside the Console's own connection. Serve the
++Console over **HTTPS** (for example behind Caddy or nginx) when it is reached
++over the internet. MapViewer3D (Beta.16 or newer) uses Realtime Data only over
++HTTPS or on the same machine, and checks the Console certificate – by the
++system trust store or by a pinned fingerprint for a self-signed / internal
++certificate.
+-- 
+2.54.0 (Apple Git-157)
+

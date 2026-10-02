@@ -1,92 +1,58 @@
-# Security of the live data link (securelink v1)
+# Security of Realtime Data
 
-This describes how live positions get from a Dune Docker host to a MapViewer3D on someone's PC, what it protects against, and what Dune Docker has to do to "unlock" the feature if it is integrated there.
+How live positions get from a Dune Docker host to a MapViewer3D on someone's PC, what protects them, and what the remaining risks are.
 
-## Goals
+## Design in one sentence
 
-1. **Confidentiality** – nobody on the network path can read positions or the secret.
-2. **Server authenticity** – the viewer talks to *this* gate and nothing else, even if DNS, the network or a certificate authority is compromised (no man in the middle).
-3. **Client authenticity** – only someone the server admin explicitly paired can read anything; an unpaired client never reaches HTTP.
-4. **No secret on the wire** – the token is never sent, not even inside TLS.
-5. **No plain-text mode** – there is no switch that turns any of this off.
+The agent that reads the game servers has no network exposure at all; the **Dune Docker Console is the only door**, and it opens only for an **API key with the scope "Realtime Data"**, over a connection the viewer accepts only when it is **HTTPS with a verified certificate** (or on the same machine).
 
 ## Parts
 
-| Part | Where | Network |
+| Part | Where | Exposure |
 |---|---|---|
-| `mvagent` | Dune Docker host, container, root, `pid: host`, caps `SYS_PTRACE`+`DAC_OVERRIDE` only, AppArmor `unconfined` (required: the Dune game containers are privileged and unconfined, and AppArmor's `docker-default` refuses to read an unconfined peer), `no-new-privileges`, read-only FS | internal Docker network only: no published port, no internet |
-| `mvgate` | Dune Docker host, container, non-root, read-only FS | the only published port (8797/TCP) |
-| MapViewer3D Beta.16+ | the user's PC | connects to mvgate itself (`-agent-pair`, same `securelink` code in `backend/securelink`) |
-| `mvlink` | the user's PC, for viewers before Beta.16 | connects to mvgate; offers the data to the local viewer on **127.0.0.1 only** |
+| `mvagent` | Dune Docker host, container, root, `pid: host`, caps `SYS_PTRACE` + `DAC_OVERRIDE` only, AppArmor `unconfined` (required: the Dune game containers are privileged and unconfined, and `docker-default` refuses to read an unconfined peer), `no-new-privileges`, read-only FS | `127.0.0.1:8796` of the host only (host networking, `-addr` refuses non-loopback addresses); no login, no published port |
+| Dune Docker Console | as shipped by Dune Docker, plus [dune-docker-integration/](dune-docker-integration/README.md) | `/api/realtime/*`, authenticated and authorized like every other API route |
+| MapViewer3D Beta.16+ | the user's PC | calls the Console with its API key as Bearer token |
 
-## Protocol
+## Authorization (Console)
 
-1. **TCP** to the gate. IP allow list and the failure block list are checked before any TLS work. At most 64 handshakes run at once.
-2. **TLS 1.3 only** (1.2 and below are refused), ALPN `http/1.1`. The gate's key is an ECDSA P-256 key it generated itself (`/data/gate-key.pem`, mode 0600, in its own volume).
-3. **Key pinning.** The client accepts exactly one public key: `sha256/<base64url(SHA-256(SPKI))>` from the pairing code. No CA is consulted, so a certificate from any CA – or a self-made one – of an attacker fails. Go's TLS stack still verifies the handshake signature, i.e. that the server owns the pinned key.
-4. **Mutual token proof bound to the session.** Both sides derive `ekm = TLS-Exporter("EXPORTER-mvgate-auth-v1", "", 32)` (RFC 8446 §7.5), which is unique to this TLS session and known only to its two endpoints.
-   - client → gate: `"MVG1" ‖ HMAC-SHA256(token, "mvgate v1 client proof" ‖ ekm)`
-   - gate → client: `"MVG1" ‖ HMAC-SHA256(token, "mvgate v1 server proof" ‖ ekm)`
+- Namespace `realtime`, single action `realtime:read`; in the API key form a separate row **Realtime Data** (None / Read). It is not part of `maps:read`, so no existing key gains access.
+- Player objects only if the principal also has `players:read`; otherwise they are removed from snapshots and their position updates are dropped (the agent reads players at all only with `MV_AGENT_PLAYERS=true`).
+- An open stream re-authenticates its key every 10 s. A disabled, expired or revoked key, or a removed scope, ends it (or stops the player positions).
+- Limits: 4 open streams per key, 16 in total; the key's normal rate limit and audit log apply (`realtime.stream-open`).
+- Process ids are never passed on; the agent URL must be plain HTTP on loopback.
+- Tiers: owner and admin hold `realtime:*`; moderator, player and observer do not.
 
-   Both compare in constant time. A wrong proof closes the connection; the IP is blocked for 10 minutes after 10 failures per minute. The whole step has a 10 s deadline.
-5. Only then does HTTP start, inside the same TLS connection. The gate forwards only `GET`/`HEAD` of `/stream`, `/healthz` and `/api/objects`, strips all request headers except `Accept`, and limits parallel streams.
+## Transport (viewer)
 
-### Why the token is never sent
+The API key and the positions travel inside the Console connection, so the viewer is strict about it:
 
-The proof is an HMAC over a value that exists only in this one TLS session. A recorded proof is useless in any other session (no replay). A relay that terminates TLS towards the client and opens its own session to the gate has two *different* exporter values, so the client's proof does not match at the gate (no relay). This holds even in the worst case where an attacker swapped the pin, because the token itself never left the client. The tests cover this case (`TestRelayMITM`).
+- **HTTPS required** for Realtime Data, unless the Console is on the same machine (`127.0.0.1`, `localhost`, `::1`). Over plain HTTP the switches stay hidden and the log says why.
+- **Certificate check**: either the system trust store (a normal certificate, e.g. Let's Encrypt) or, for a self-signed / internal certificate, a **pinned fingerprint** (`-api-pin sha256/…`, SHA-256 of the public key). Without a pin a certificate the system does not trust is refused, and the log shows its fingerprint so the admin can compare it on the server and pin it. A wrong pin is reported as a possible man in the middle.
+- TLS 1.2 minimum (the Console's reverse proxy decides; Caddy and current nginx offer TLS 1.3).
+- Redirects are not followed for the Realtime Data check.
 
-### What an attacker can still do
+## What an attacker can do
 
 | Attacker | Result |
 |---|---|
-| passive on the network | sees TLS 1.3 traffic to port 8797, its size and timing; no content |
-| active MITM with any certificate | handshake fails at the pin check; nothing is sent |
-| MITM who also swapped the pin in the pairing code | gets neither token nor data (proof is session-bound); the client fails as well |
-| brute force on the token | 256-bit token; 10 tries per minute and IP |
-| connection floods | capped pending handshakes, deadline, block list; it can make the gate busy, not leak |
-| stolen pairing code | full read access to positions: **handle the code like a password**. Rotate with `mvgate -rotate-token` |
-| access to the Docker host | out of scope (root on the host can read the game anyway) |
-| other software on the user's PC | can read from mvlink on 127.0.0.1; mvlink refuses requests from web pages (`Origin`/`Sec-Fetch-Site`) and foreign `Host` headers (DNS rebinding) |
+| on the network, Console on HTTPS with a valid or pinned certificate | sees encrypted traffic, size and timing; no key, no positions |
+| active MITM with a forged certificate | refused (system trust or pin); nothing is sent |
+| on the network, Console on plain HTTP | the viewer does not use Realtime Data at all; note that the normal Console API (and its key) still travels in clear text in such a setup – use HTTPS |
+| holder of a stolen API key with Realtime Data | reads positions until the key is revoked/disabled – revocation takes effect on open streams within 10 s |
+| key without Realtime Data, or without Players → Read | gets 403, respectively no player positions |
+| local user on the Dune Docker host | can reach the agent on loopback; out of scope (root on the host can read the game anyway) |
+| the agent itself | reads only; no ptrace attach, no writes, no injection; never prints the game's service token from the command line |
 
-## Pairing = unlocking
+## Remaining advice
 
-The feature is **off for a client until the server admin pairs it**. The only way in is the pairing code:
-
-```
-mvlive1:<base64url({"v":1,"a":"host:port","p":"sha256/…","t":"<token>"})>
-```
-
-It carries the address, the pin and the token. Whoever creates it must be the server admin (shell on the host, or the admin console if Dune Docker integrates this). It must reach the user over a trusted channel, never over plain HTTP.
-
-### Integration into Dune Docker
-
-Implemented as a ready-to-merge patch in [dune-docker-integration/](dune-docker-integration/README.md) (Settings → **MapViewer3D Live Data**); nothing in the protocol changes:
-
-1. **Capability.** The console knows whether the `mapviewer-live` stack runs (container `mvgate` healthy) and shows a *Live data (MapViewer3D)* card in its admin UI. For API keys it answers
-   `GET /api/mapviewer-live/status` → `200 application/json {"available":true,"version":1}`; without the feature the route does not exist (404). Nothing is announced to unauthenticated clients, and this answer never contains the token, the address or the pin.
-2. **Pair.** An admin (`settings:write`, which API keys can never hold) clicks *Create Pairing Code*; the console runs `mvgate -pair <public address>` in the container and shows the code **once** (copy button, no storage, `cache-control: no-store`; the audit row records only address and fingerprint). Over plain HTTP the console warns first – a pairing code shown over plain HTTP is only as safe as that connection; use HTTPS, the LAN or a tunnel.
-3. **Revoke.** *Revoke All Pairings* runs `mvgate -rotate-token` and restarts `mvgate`; every old code stops working.
-4. Optional later: one token per paired device (named, revocable individually), stored in the gate volume.
-
-The console never needs the token for anything else, and the viewer never needs a console session for the live data.
-
-### What the viewer does (Beta.16)
-
-- **With a pairing code** it opens one securelink connection to the gate and asks `/healthz`, with a 5 s limit. Only if TLS, pin and both proofs succeed is the agent switched on; otherwise the live switches are not shown at all (`/api/live/status` reports `agent: false`) and the log names the reason – a pin mismatch is reported as a possible attack. It retries every 10 minutes.
-- **Without a pairing code** it asks the console route above (5 s, API key, no redirects followed). No answer or 404 means "Dune Docker does not have this (yet)": switches hidden. `available: true` only produces a log hint that a pairing code is needed – an offer alone never unlocks anything.
-- Agent errors are logged without credentials.
-
-## Agent side
-
-- Read-only `/proc/<pid>/mem`; no ptrace attach, no writes, no injection.
-- The game's command line holds a service auth token; the agent never prints, logs or forwards it.
-- Players are read only with `MV_AGENT_PLAYERS=true`. The viewer shows only players it can match to the console's own online players.
-- PvP: worms and enemies follow players, so their movement can hint at player positions. Do not pair players.
+- Give Realtime Data only to keys that need it, with an expiry date where possible.
+- PvP: worms and enemies follow players, so their movement can hint at player positions. Do not give such keys to players.
+- Serve the Console over HTTPS whenever it is reached over the internet – independent of this feature.
 
 ## Supply chain
 
 - Base images pinned by digest; the agent is built from the MapViewer3D tag `MV_REF` and the build stops if that tag does not point to `MV_COMMIT`.
-- `mvgate`/`mvlink` use the Go standard library only; `go vet` and the tests run in the image build.
 - The agent never updates itself in the container.
 
 ## Reporting

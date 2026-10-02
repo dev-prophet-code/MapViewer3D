@@ -1,57 +1,58 @@
-# Dune Docker integration: Settings → MapViewer3D Live Data
+# Dune Docker integration: API key scope "Realtime Data"
 
-A ready-to-merge change for [Red-Blink/dune-awakening-selfhost-docker](https://github.com/Red-Blink/dune-awakening-selfhost-docker)
-that adds a **MapViewer3D Live Data** section to the Console **Settings** page. There an administrator can see whether
-the `mapviewer-live` stack runs, create a **pairing code** for a MapViewer3D and revoke all pairings – no shell needed.
+A ready-to-merge change for [Red-Blink/dune-awakening-selfhost-docker](https://github.com/Red-Blink/dune-awakening-selfhost-docker).
+It adds **Realtime Data** as its own row to the API key permissions (**Settings → API Keys → Create Key**) and lets the
+Console pass the live data of the MapViewer3D agent to clients whose key holds it.
 
-- Patch: [`0001-settings-mapviewer3d-live-data.patch`](0001-settings-mapviewer3d-live-data.patch)
-- Base: upstream `main` at `da644b7` (applies cleanly with `git am`)
+- Patch: [`0001-api-keys-realtime-data-scope.patch`](0001-api-keys-realtime-data-scope.patch)
+- Base: upstream `main` at `da644b7` (v1.4.44, applies with `git am`)
 - Not submitted as a pull request yet.
+
+## What the admin sees
+
+When creating an API key there is a new row next to Maps, Players and the others:
+
+```
+Realtime Data   [ None | Read ]
+```
+
+- **Read** – the key may stream live sandworms, enemies, civilians, vehicles and sandstorms.
+- **Player positions** – only if the key also has **Players → Read**.
+- `maps:read` does not include it; existing keys gain nothing.
+- Disabling, expiring or revoking the key – or removing the scope – stops an open stream within 10 seconds.
 
 ## What it adds
 
 | File | Purpose |
 |---|---|
-| `console/api/src/services/mapViewerLive.js` | finds the `mvgate` container by compose labels, reads health and key fingerprint, runs `mvgate -pair`, `mvgate -rotate-token` + restart; `execFile` with fixed arguments, the address is validated first |
-| `console/api/src/server.js`, `actions.js` | four routes (below) with IAM actions |
-| `console/web/src/features/settings/MapViewerLiveSection.tsx` | the Settings section (English) |
-| `console/web/src/features/settings/SettingsPanel.tsx` | collapsible entry "MapViewer3D Live Data" above "API Keys" |
-| `console/web/src/api/mapViewerLive.ts`, `styles.css` | API client, a few styles |
-| `console/api/test/mapViewerLive.test.js`, `MapViewerLiveSection.test.tsx` | 9 + 5 tests |
-| `docs/console/mapviewer-live.md` | documentation |
+| `console/api/src/services/realtime.js` | talks to the agent on `127.0.0.1:8796` (loopback only), filters players, trims process ids, stream limits, periodic re-check |
+| `console/api/src/server.js` | routes, `principalMay()` helper, stream route that re-authenticates the key every 10 s |
+| `console/api/src/actions.js`, `policy.js`, `apiKeyScopes.js` | namespace `realtime`, action `realtime:read`, granted to owner and admin |
+| `console/web/src/api/apiKeys.ts` | label "Realtime Data" |
+| tests | `test/realtime.test.js` (9), scope/RBAC parity tests updated, `ApiKeysSection` test for the new row |
+| `docs/console/realtime.md`, `docs/console/api-keys.md` | documentation, scope table |
 
 | Route | Action | |
 |---|---|---|
-| `GET /api/settings/mapviewer-live` | `settings:read` | status, health, fingerprint – no secret |
-| `POST /api/settings/mapviewer-live/pairing-code` | `settings:write` | `{ publicAddress }` → `{ code, address, fingerprint }` |
-| `POST /api/settings/mapviewer-live/revoke` | `settings:write` | new token, restart mvgate |
-| `GET /api/mapviewer-live/status` | `maps:read` | `{ available, version }` for MapViewer3D Beta.16+ |
+| `GET /api/realtime/healthz` | `realtime:read` | availability; `503` without agent |
+| `GET /api/realtime/objects` | `realtime:read` | snapshot |
+| `GET /api/realtime/stream` | `realtime:read` | server-sent events `snap` / `pos` |
 
-## The Settings section
-
-- **Status** – Not Installed / Stopped / Starting / Running / Unhealthy, and the key fingerprint.
-- **Not installed** – shows the three install commands instead of any controls.
-- **Public Address** – prefilled with the address the Console is opened with; `host`, `host:port` or `[IPv6]:port`.
-- **Create Pairing Code** – shown once with Copy and "I've Saved It"; never stored, cached or audited (the audit row has only address and fingerprint). Over plain HTTP the Console warns first.
-- **Revoke All Pairings** – confirmation dialog, then every code stops working.
-
-## Security notes
-
-- Pairing and revoking are `settings:write`; API keys can never hold `settings:*`, so only a signed-in administrator can create a code.
-- `GET /api/mapviewer-live/status` tells a viewer only *whether* the feature exists. It never returns address, pin or token, and an `available: true` alone unlocks nothing.
-- The Console never sees the token except inside the one pairing code it shows; it does not keep it.
+The routes mirror the agent's own (`/healthz`, `/api/objects`, `/stream`), so MapViewer3D uses
+`https://<console>/api/realtime` exactly like a local agent, with its API key as Bearer token.
 
 ## Verified
 
 Against upstream `da644b7`:
 
-- `node --test` (console/api): the new tests pass; the same 25 environment-dependent tests (live DB, Linux shell) fail with and without the patch.
-- `rbacParity`, `operationsPermissionMatrix`, `apiKeyScopes`: 100/100.
-- `vitest run` (console/web): 105 files, 1263 tests pass; `tsc -b` and `vite build` succeed.
+- `node --test` (console/api): new tests pass; RBAC/scope/policy suites 134/134; the same 25
+  environment-dependent tests (live DB, Linux shell) fail with and without the patch.
+- `vitest run` (console/web): all pass; `tsc -b` and `vite build` succeed.
 
 ## Apply
 
 ```bash
 cd dune-awakening-selfhost-docker
-git am /path/to/0001-settings-mapviewer3d-live-data.patch
+git am /path/to/0001-api-keys-realtime-data-scope.patch
+dune console restart
 ```

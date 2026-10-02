@@ -1,42 +1,40 @@
 # MapViewer3D-Echtzeitdaten für Dune Docker
 
-[English](README.md) · [Sicherheit](SECURITY.md)
+[English](README.md) · [Sicherheit](SECURITY.md) · [Einbindung in Dune Docker](dune-docker-integration/README.md)
 
-Echtzeit-**Sandwürmer, Gegner, Zivilisten, Fahrzeuge, Sandstürme** (und auf Wunsch **Spieler**) von einem [Dune-Docker](https://github.com/Red-Blink/dune-awakening-selfhost-docker)-Server in einem **MapViewer3D, der auf deinem eigenen PC läuft** – immer verschlüsselt, gegen Man-in-the-Middle-Angriffe geschützt und nur für Geräte, die der Server-Admin gekoppelt hat.
+Echtzeit-**Sandwürmer, Gegner, Zivilisten, Fahrzeuge, Sandstürme** (und auf Wunsch **Spieler**) von einem [Dune-Docker](https://github.com/Red-Blink/dune-awakening-selfhost-docker)-Server in einem **MapViewer3D, der auf deinem eigenen PC läuft**. Der Zugang ist ein normaler **API-Key** der Console mit dem Recht **Realtime Data**.
 
 > Branch `ddp` von MapViewer3D: in Arbeit, noch nicht Teil eines Releases.
 
-## Warum ein eigener Container?
+## So funktioniert es
 
-Die Live-Map von Dune Docker liest Postgres. Spieler und Fahrzeuge stehen in der Datenbank (alle paar Sekunden gespeichert), **Sandwürmer, NPCs und Stürme aber nicht**: Es gibt sie nur im Speicher des laufenden Spielserver-Prozesses. Der Positions-Agent `mvagent` von MapViewer3D liest sie dort, nur lesend, etwa 10-mal pro Sekunde ([docs/Agent-DE.md](https://github.com/dev-prophet-code/MapViewer3D/blob/main/docs/Agent-DE.md)).
-
-Ein *Community-Addon* von Dune Docker kann das nicht: Addons sind Browser-Seiten in der Console mit wenigen freigegebenen API-Rechten, sie können keine Container starten und keine Prozesse sehen. Darum ist das hier ein kleines **eigenes Compose-Projekt**, das neben Dune Docker läuft und daran nichts verändert.
+Die Live-Map von Dune Docker liest Postgres. Spieler und Fahrzeuge stehen in der Datenbank, **Sandwürmer, NPCs und Stürme aber nicht**: Es gibt sie nur im Speicher des laufenden Spielserver-Prozesses. Der Positions-Agent `mvagent` von MapViewer3D liest sie dort, nur lesend, etwa 10-mal pro Sekunde ([docs/Agent-DE.md](https://github.com/dev-prophet-code/MapViewer3D/blob/main/docs/Agent-DE.md)).
 
 ```
- Dune-Docker-Host                                                     dein PC
-┌───────────────────────────────────────────────┐
-│ dune-server-*-Container (Spielprozesse)       │
-│        ▲ nur lesend /proc/<pid>/mem           │
-│ ┌──────┴──────┐ internes  ┌────────────────┐  │ securelink ┌──────────────────┐
-│ │  mvagent    │──Netz─────│    mvgate      │◄─┼────────────│ MapViewer3D      │
-│ │ root, kein  │  (kein    │ TLS 1.3, fester│  │ TLS 1.3    │ ab Beta.16:      │
-│ │ Port, kein  │ Internet) │ Schlüssel, ge- │  │ :8797      │  -agent-pair     │
-│ │ Internet    │           │ genseit. Nachw.│  │            │ älter: mvlink    │
-│ └─────────────┘           └────────────────┘  │            └──────────────────┘
-└───────────────────────────────────────────────┘
+ Dune-Docker-Host                                                    dein PC
+┌──────────────────────────────────────────────────────┐
+│ dune-server-*-Container (Spielprozesse)              │
+│        ▲ nur lesend /proc/<pid>/mem                  │
+│ ┌──────┴───────┐ 127.0.0.1:8796 ┌─────────────────┐  │ HTTPS     ┌─────────────────┐
+│ │   mvagent    │◄───────────────│ Dune-Docker-    │◄─┼───────────│ MapViewer3D     │
+│ │ kein Port,   │   (loopback)   │ Console         │  │ API-Key   │ ab Beta.16      │
+│ │ kein Login   │                │ /api/realtime/* │  │ „Realtime │                 │
+│ └──────────────┘                └─────────────────┘  │  Data“    └─────────────────┘
+└──────────────────────────────────────────────────────┘
 ```
 
-- **mvagent** – aus den MapViewer3D-Quellen gebaut (Release-Tag `MV_REF`, geprüft gegen `MV_COMMIT`). `pid: host` lässt ihn die Spielserver-Prozesse der Dune-Docker-Container sehen; zum Lesen ihres Speichers braucht er `SYS_PTRACE` + `DAC_OVERRIDE` (und AppArmor `unconfined`, wie die Dune-Container). Alle anderen Rechte sind entzogen, das Dateisystem ist schreibgeschützt, er hat **keinen veröffentlichten Port und kein Internet** (internes Netz).
-- **mvgate** – der einzige veröffentlichte Port (8797/TCP). Es spricht **securelink**: nur TLS 1.3, ein eigener Schlüssel, den der Client fest erwartet, und ein gegenseitiger Token-Nachweis, der an die TLS-Sitzung gebunden ist – das Token selbst geht nie über das Netz. Nur angemeldete Clients erreichen die drei lesenden Agent-Adressen. Läuft ohne root. Einzelheiten: [SECURITY.md](SECURITY.md).
-- **mvlink** – optionales Hilfsprogramm auf deinem PC für MapViewer3D-Versionen vor Beta.16 (siehe unten).
+- **mvagent** (dieses Repository) – ein Container neben Dune Docker. `pid: host`, um die Spielprozesse zu sehen, nur `SYS_PTRACE` + `DAC_OVERRIDE`, AppArmor `unconfined` wie die Dune-Container, schreibgeschütztes Dateisystem. Er lauscht **nur auf 127.0.0.1:8796 des Hosts**; nach außen ist nichts offen.
+- **Dune-Docker-Console** – die einzige Tür. Ihre Routen `/api/realtime/*` prüfen den API-Key wie jeden anderen API-Aufruf. Dafür braucht es die Änderung aus [dune-docker-integration/](dune-docker-integration/README.md), die noch nicht Teil von Dune Docker ist.
+- **MapViewer3D** (ab Beta.16) – fragt die Console kurz, ob Realtime Data für seinen Key verfügbar ist. Wenn nicht (ältere Dune-Docker-Version, kein Agent, Key ohne das Recht, kein HTTPS), werden die Live-Schalter einfach nicht angezeigt.
 
 ## Voraussetzungen
 
-- Ein laufender Dune-Docker-Host (Linux, Docker mit Compose v2 und BuildKit). Unter Docker Desktop/WSL2 genauso: `pid: host` meint dort die Docker-VM, in der auch die Spiel-Container laufen.
-- MapViewer3D auf deinem PC, mit API-Key an die Console angebunden (`apiBase` + `token`, siehe Haupt-README). **Ab Beta.16** verbindet er sich direkt; ältere Versionen (ab Beta.9) nutzen `mvlink`.
-- Geprüft mit Spiel-Build `2134304`; nach einem Spiel-Update ermittelt der Agent seine Offsets selbst neu (siehe Agent-Doku).
+- Ein Dune-Docker-Host (Linux, Docker mit Compose v2 und BuildKit) mit der Console-Änderung aus [dune-docker-integration/](dune-docker-integration/README.md).
+- Die Console ist von deinem PC aus per **HTTPS** erreichbar (z. B. Caddy oder nginx vor Port 8088). MapViewer3D nutzt Realtime Data nicht über unverschlüsseltes HTTP, außer auf demselben Rechner.
+- MapViewer3D **ab Beta.16**, mit einem API-Key an die Console angebunden.
+- Geprüft mit Spiel-Build `2134304`; nach einem Spiel-Update ermittelt der Agent seine Offsets selbst neu.
 
-## 1. Installation (auf dem Dune-Docker-Host)
+## 1. Agent installieren (auf dem Dune-Docker-Host)
 
 ```bash
 git clone --branch ddp --depth 1 https://github.com/dev-prophet-code/MapViewer3D.git mapviewer-live
@@ -46,62 +44,40 @@ docker compose -f docker-compose.mapviewer-live.yml up -d --build
 docker compose -f docker-compose.mapviewer-live.yml logs -f
 ```
 
-Beim ersten Start erzeugt mvgate einen eigenen Schlüssel und ein starkes Token in seinem Volume `mvgate-data` und schreibt den Fingerabdruck des Schlüssels (`sha256/…`) ins Log. Das Agent-Log nennt jeden gefundenen Spielserver-Prozess und wie viele Objekte er liest (Hagga-Becken ≈ 2500, Tiefe Wüste ≈ 250). Die Overmap ist absichtlich „nicht bereit“.
+Das Log nennt jeden Spielserver-Prozess und wie viele Objekte er liest (Hagga-Becken ≈ 2500, Tiefe Wüste ≈ 250). Die Overmap ist absichtlich „nicht bereit“. An der Firewall muss nichts geändert werden.
 
-Port **8797/TCP** in der Firewall öffnen – am besten nur für die IPs, die ihn brauchen (`MV_GATE_ALLOW`).
+## 2. „Realtime Data“ für einen API-Key freischalten
 
-## 2. Koppeln (= freischalten)
+In der Console: **Settings → API Keys → Create Key**. Neben Maps, Players und den anderen gibt es eine Zeile **Realtime Data** mit **None / Read**:
 
-Solange der Server-Admin kein Gerät koppelt, kann niemand etwas lesen.
+- **Read** – Sandwürmer, Gegner, Zivilisten, Fahrzeuge und Stürme.
+- Für Live-**Spieler**positionen zusätzlich **Players → Read** und `MV_AGENT_PLAYERS=true` in `.env`.
+- Key deaktivieren, ablaufen lassen oder widerrufen sperrt den Zugang; ein offener Strom endet innerhalb von 10 Sekunden.
 
-**In der Dune-Docker-Console** (sobald die Einbindung aus [dune-docker-integration/](dune-docker-integration/README.md) Teil von Dune Docker ist): **Settings → MapViewer3D Live Data** → öffentliche Adresse eintragen → **Create Pairing Code**. Der Code wird einmal angezeigt; **Revoke All Pairings** macht alle Codes ungültig. Die Oberfläche ist, wie die ganze Console, auf Englisch.
+Die Console-Oberfläche ist, wie die ganze Console, auf Englisch.
 
-**Auf der Host-Shell** – Kopplungscode mit dem **öffentlichen** Namen oder der IP des Servers erzeugen:
+## 3. MapViewer3D verbinden
 
-```bash
-docker compose -f docker-compose.mapviewer-live.yml exec mvgate mvgate -pair dune.example.org
-```
+Den Key als Console-Token des Viewers verwenden (`apiBase` = HTTPS-Adresse der Console, `token` = der Key). Beim Start fragt der Viewer `/api/realtime/healthz` (höchstens 5 s):
 
-Ausgegeben wird eine Zeile `mvlive1:…`. Sie enthält Adresse, Fingerabdruck und Token: **wie ein Passwort behandeln** und nur über einen vertrauenswürdigen Weg weitergeben (nicht in öffentlichen Chats, nicht über unverschlüsseltes HTTP). Alle Codes auf einmal widerrufen:
+- verfügbar und erlaubt → die Schalter **Sandwürmer (live)**, **Gegner**, **Zivilisten & Händler**, **Fahrzeuge (live)** und die Stürme erscheinen;
+- sonst bleiben sie ausgeblendet und das Log sagt warum (Dune Docker ohne die Funktion, Agent läuft nicht, Key ohne „Realtime Data“, Console nicht per HTTPS, Zertifikat passt nicht). Alle 10 Minuten fragt er erneut.
 
-```bash
-docker compose -f docker-compose.mapviewer-live.yml exec mvgate mvgate -rotate-token
-docker compose -f docker-compose.mapviewer-live.yml restart mvgate
-```
-
-## 3. Lokalen MapViewer3D verbinden
-
-**Ab Beta.16** – den Code in eine Datei (z. B. `pairing.txt`) außerhalb des Programmordners speichern und starten mit
+**Selbst signiertes oder internes Zertifikat** (z. B. Caddy `tls internal`): Der Viewer lehnt es ab und schreibt seinen Fingerabdruck ins Log. Auf dem Server vergleichen und festlegen:
 
 ```bash
-./start.sh -agent-pair /pfad/zu/pairing.txt
-```
-
-oder in die Konfigurationsdatei (`-config`) als `"agentPairing": "mvlive1:…"` schreiben, oder `MV_AGENT_PAIR` setzen. Der Viewer fragt das Gate kurz an (höchstens 5 s):
-
-- Antwort und alles stimmt → die Schalter **Sandwürmer (live)**, **Gegner**, **Zivilisten & Händler**, **Fahrzeuge (live)** und die Stürme erscheinen;
-- keine Antwort, falscher Schlüssel oder falsches Token → die Schalter bleiben ausgeblendet, das Log sagt warum (ein falscher Schlüssel wird als möglicher Angriff gemeldet). Alle 10 Minuten fragt er erneut; neue Schalter erscheinen nach dem Neuladen der Seite.
-
-Ohne Kopplungscode fragt der Viewer nur die Dune-Docker-Console, ob sie diese Funktion anbietet (heute nicht), und lässt die Schalter ausgeblendet.
-
-**Ältere Versionen (Beta.9 – Beta.15)** – `mvlink` auf demselben PC starten; es hält den Code und bietet die Daten nur auf `127.0.0.1` an:
-
-```bash
-cd gate && go build -o mvlink ./cmd/mvlink          # Go ab 1.24; oder für andere Systeme bauen, siehe unten
-./mvlink -pair-file /pfad/zu/pairing.txt
-./start.sh -agent http://127.0.0.1:8798
+./start.sh -api-pin sha256/…        # oder "apiPin" in der Konfigurationsdatei, oder MV_API_PIN
 ```
 
 ## Sicherheit in Kürze
 
-- Nur TLS 1.3, keine Klartext-Variante; der Client nimmt genau den festgelegten Schlüssel an, keine Zertifizierungsstelle beteiligt.
-- Das Token verlässt den PC nie: Beide Seiten weisen mit einem HMAC nach, dass sie es kennen, gebunden an die TLS-Sitzung – ein mitgeschnittener oder weitergereichter Nachweis ist wertlos.
-- Nicht angemeldete Verbindungen erreichen HTTP nie; 10 Fehlversuche pro Minute sperren die IP für 10 Minuten.
-- `mvagent` hat keinen Port und kein Internet; `mvgate` leitet nur `GET` auf `/stream`, `/healthz`, `/api/objects` weiter.
-- `MV_AGENT_PLAYERS=false` lassen, solange keine Live-Spieler gebraucht werden. Im PvP folgen Würmer und Gegner den Spielern: keine Spieler koppeln.
-- Das Volume `mvgate-data` sichern; geht es verloren, bekommt mvgate einen neuen Schlüssel und alle Geräte müssen neu gekoppelt werden.
+- Ein einziger Zugang: der API-Key der Console. Rechte, Ablaufdatum, Rate-Limit, Audit-Log und Widerruf gelten; kein zusätzlicher Port, kein zusätzliches Geheimnis.
+- Der Agent ist nur über das Loopback des Hosts erreichbar; er hat keinen Login und keinen veröffentlichten Port.
+- Spielerpositionen brauchen „Realtime Data“ und „Players → Read“ (und `MV_AGENT_PLAYERS=true`).
+- Der Viewer schickt den Key nur über HTTPS (oder an denselben Rechner) und prüft das Zertifikat – über die Zertifikatsstellen des Systems oder einen festgelegten Fingerabdruck.
+- Im PvP folgen Würmer und Gegner den Spielern: solche Keys nicht an Spieler geben.
 
-Bedrohungsmodell, Protokoll und der Vorschlag für eine Einbindung in Dune Docker: [SECURITY.md](SECURITY.md).
+Einzelheiten: [SECURITY.md](SECURITY.md).
 
 ## Einstellungen (`.env`)
 
@@ -110,48 +86,31 @@ Bedrohungsmodell, Protokoll und der Vorschlag für eine Einbindung in Dune Docke
 | `MV_REF` / `MV_COMMIT` | `beta.15` / dessen Commit | MapViewer3D-Release, aus dem der Agent gebaut wird; zeigt das Tag woanders hin, bricht der Bau ab |
 | `MV_AGENT_PLAYERS` | `false` | auch Spieler lesen |
 | `MV_AGENT_HZ` | `10` | Abtastrate bewegter Objekte |
-| `MV_AGENT_CPUS` | `1.0` | CPU-Grenze des Agenten (die Suche liest den ganzen Prozessspeicher) |
-| `MV_AGENT_APPARMOR` | `unconfined` | Dune Docker startet die Spiel-Container privilegiert und AppArmor-`unconfined`; das Profil `docker-default` darf solche Prozesse nicht lesen (`permission denied`, Kernel-Log `apparmor="DENIED" … peer="unconfined"`), darum braucht der Agent ebenfalls `unconfined`. Seine übrigen Grenzen bleiben. |
-| `MV_GATE_ALLOW` | leer = alle | IPs / CIDRs, die verbinden dürfen |
-| `MV_GATE_BIND` / `MV_GATE_PORT` | `0.0.0.0` / `8797` | wo das Gate auf dem Host lauscht (der Port steht auch im Kopplungscode) |
-| `MV_GATE_MAX_STREAMS` | `8` | gleichzeitige Viewer |
-| `MV_GATE_TOKEN` | leer | leer lassen: mvgate erzeugt selbst ein 256-Bit-Token |
+| `MV_AGENT_CPUS` | `1.0` | CPU-Grenze (die Suche liest den ganzen Prozessspeicher) |
+| `MV_AGENT_PORT` | `8796` | Loopback-Port; die Console liest `DUNE_REALTIME_AGENT_URL` (Standard `http://127.0.0.1:8796`) |
+| `MV_AGENT_APPARMOR` | `unconfined` | Dune Docker startet die Spiel-Container privilegiert und AppArmor-`unconfined`; `docker-default` darf solche Prozesse nicht lesen (`permission denied`, Kernel-Log `apparmor="DENIED" … peer="unconfined"`) |
 
 ## Aktualisieren, stoppen, entfernen
 
 ```bash
-git pull                                                     # neue Compose-Datei/Gate
+git pull
 # neues MapViewer3D-Release: MV_REF und MV_COMMIT in .env setzen, dann
 docker compose -f docker-compose.mapviewer-live.yml up -d --build
-docker compose -f docker-compose.mapviewer-live.yml down     # stoppen (Schlüssel und Token bleiben)
-docker compose -f docker-compose.mapviewer-live.yml down -v  # entfernen samt Schlüssel und Token
+docker compose -f docker-compose.mapviewer-live.yml down
 ```
-
-Im Container aktualisiert sich der Agent nie selbst; ein neues Release heißt neu bauen.
 
 ## Fehlersuche
 
 | Symptom | Ursache / Lösung |
 |---|---|
-| Agent-Log: keine Spielserver-Prozesse | Dune Docker läuft nicht, oder der Container hat kein `pid: host` (Podman/rootless Docker werden nicht unterstützt) |
-| `permission denied` bei `/proc/<pid>/mem` | AppArmor: `MV_AGENT_APPARMOR=unconfined` lassen (Standard; `DENIED` in `sudo dmesg` suchen). SELinux: `label=disable` in `security_opt` von `mvagent` ergänzen. `kernel.yama.ptrace_scope=3` verhindert es ganz. |
-| Viewer-Log: „keine Antwort“ | Port 8797 zu/falsch weitergeleitet, falscher Host im Kopplungscode, IP nicht in `MV_GATE_ALLOW` oder nach Fehlversuchen gesperrt (10 Minuten warten) |
-| Viewer-Log: „anderer Schlüssel“ | mvgate wurde neu aufgesetzt (Volume weg) → neu koppeln; sonst **sitzt jemand dazwischen**: nicht weitermachen |
-| Viewer-Log: „lehnt den Kopplungscode ab“ | Token wurde gewechselt → neuen Kopplungscode holen |
-| nach einem Spiel-Update alles „nicht bereit“ | im Agent-Log nach „neu bestimmt“ schauen; klappt es nicht, `-blocks/-root/-pos` setzen (Agent-Doku) |
-
-Der Container-Healthcheck von mvgate verbindet sich selbst über securelink (`docker compose ps` zeigt `healthy`).
-
-## Entwicklung
-
-```bash
-cd gate && go vet ./... && go test ./...           # securelink, mvgate, mvlink
-docker compose -f docker-compose.mapviewer-live.yml build
-# mvlink für andere Systeme, z. B. Windows:
-cd gate && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o mvlink.exe ./cmd/mvlink
-```
-
-`gate/securelink` und `backend/securelink` im MapViewer3D-Hauptcode müssen identisch bleiben.
+| Agent-Log: keine Spielserver-Prozesse | Dune Docker läuft nicht, oder kein `pid: host` (Podman/rootless Docker werden nicht unterstützt) |
+| `permission denied` bei `/proc/<pid>/mem` | `MV_AGENT_APPARMOR=unconfined` lassen; `DENIED` in `sudo dmesg` suchen; `kernel.yama.ptrace_scope=3` verhindert es ganz |
+| Viewer: „Dune Docker hat Realtime Data nicht“ | Console ohne die Einbindung |
+| Viewer: „Key hat kein Realtime Data“ | dem Key **Realtime Data → Read** geben |
+| Viewer: „Agent läuft nicht“ (503) | diesen Stack starten; sein Log prüfen |
+| Viewer: „nicht per HTTPS“ | Console per HTTPS öffnen (Reverse Proxy) oder den Viewer auf dem Host selbst starten |
+| Viewer: Zertifikatsfehler mit Fingerabdruck | internes Zertifikat: Fingerabdruck auf dem Server vergleichen, dann `-api-pin` |
+| nach einem Spiel-Update alles „nicht bereit“ | im Agent-Log nach „neu bestimmt“ schauen |
 
 ## Lizenz
 
