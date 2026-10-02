@@ -117,6 +117,23 @@ export async function consoleGet(path, ttl) {
   }
 }
 
+// A GET to the console that is read as a stream (Realtime Data: server-sent events). Same rules
+// as every other call: the key as Authorization: Bearer, credentials: 'omit', GET only. EventSource
+// cannot send a header, so the caller reads the response body itself. Throws like consoleGet.
+export async function consoleStream(path, signal) {
+  if (!token) throw fail('token_rejected');
+  let r;
+  try {
+    r = await fetch(path, { method: 'GET', credentials: 'omit', cache: 'no-store', signal, headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream, application/json' } });
+  } catch (e) {
+    if (e?.name === 'AbortError') throw e;
+    throw fail('unreachable', e.message);
+  }
+  if (r.status === 401 || r.status === 403) throw fail('token_rejected');
+  if (!r.ok) throw fail('http_status', String(r.status));
+  return r;
+}
+
 // The console's own map image (public file of the console UI, no key needed) and its
 // calibration from the markers answer.
 export async function mapImage(liveName) {

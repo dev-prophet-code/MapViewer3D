@@ -1,7 +1,8 @@
 # MapViewer3D – Dune Docker Console Addon
 
 Adds a **3D Map** page to Dune Docker Console: Hagga Basin and Deep Desert in 3D with live players, bases (as real
-3D buildings), vehicles, hazards and resources.
+3D buildings), vehicles, hazards and resources – and, when the console offers it, **Realtime Data**: live sandworms,
+enemies, civilians, vehicles and sandstorms (since 0.3.0).
 
 **Nothing to install on the server.** Install the addon, open it, enter an API key, done. There is no container, no
 installer, no extra port, no password and no reverse proxy: the whole viewer runs in your browser inside the addon page.
@@ -27,6 +28,28 @@ Everything is read-only; nothing is written to the game or the database.
 Choose **Read**, never *Read+write*. Revoke or rotate the key any time under *Settings → API Keys*; use **Change** in the
 addon's side panel to enter the new one.
 
+### Realtime Data (optional, since 0.3.0)
+
+Sandworms, enemies, civilians/traders, vehicles and sandstorms are not in the console's database, only in the memory of the
+game servers. The MapViewer3D position agent ([branch `ddp`](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp)) reads
+them, and a console that includes the **Realtime Data** change passes them on at `/api/realtime/*`. To use it:
+
+- on the server, run the agent from branch `ddp`, and the console needs that change (it is a patch for Dune Docker, not yet
+  part of it),
+- give the key one more scope: **Realtime Data → Read** (**None** for everything else stays as it is).
+
+The addon checks this itself when it starts (and again every 10 minutes): if the console does not answer, or the key lacks the
+scope, the five live switches (*Sandworms*, *Sandstorms*, *Enemies*, *Civilians & traders*, *Vehicles (live)*) are simply **not
+shown** and nothing is reported. If the key is disabled, expires or is revoked while the stream is open, the addon stops for good.
+Player positions are not part of this in the addon (the standalone viewer matches them to the console's players); the players
+layer keeps coming from `/api/map/players`.
+
+**Transport.** Like every other call of this page, Realtime Data travels over whatever connection the console page itself uses.
+A browser cannot pin certificates, so the addon cannot make a plain-HTTP console encrypted: on plain HTTP it says so in the live
+status. Open the console via HTTPS (reverse proxy, or the encrypted front door of the MapViewer3D stack in *full console* mode)
+to encrypt the key and the positions. The standalone viewer (a program on your PC) additionally detects that front door
+and offers to use it.
+
 ## How it works
 
 ```
@@ -37,7 +60,9 @@ Browser (addon page inside the console)
 
 - **Live data** comes from the console's own API, with the API key and nothing else. Requests are `GET` only and are sent with
   `credentials: "omit"`, so the browser never attaches the logged-in admin's session. The addon has exactly the rights of that
-  key (`maps: Read`, `bases: Read`). `tests/harness.mjs` is a mock console that records every request lacking the key or
+  key (`maps: Read`, `bases: Read`, and optionally `Realtime Data: Read`). Realtime Data is read as a stream with `fetch` (an
+  `EventSource` cannot send the key header) in `web/js/realtime.js`, which does in the browser what the standalone viewer's server
+  does: one shared connection, each map layer gets only its map and instance. `tests/harness.mjs` is a mock console that records every request lacking the key or
   carrying a session cookie, so this can be checked in a real browser.
 - **Terrain and models** are static data in branch [`cdn`](https://github.com/dev-prophet-code/MapViewer3D/tree/cdn) of this
   repository (terrain tiles for Hagga Basin and the Deep Desert layouts, building models). The addon is pinned to a tag
@@ -87,10 +112,11 @@ Close TCP port `8795` again if you had opened it for other computers. Then creat
 | Path | Purpose |
 |---|---|
 | `addon.json` | Addon manifest (permission `files:addon-data`) |
-| `web/` | The viewer (three.js scene, live layer) and its browser backend: `js/api.js` facade, `js/data.js` verified terrain streaming, `js/console.js` console client with the API key, `js/store.js` private storage |
+| `web/` | The viewer (three.js scene, live layer) and its browser backend: `js/api.js` facade, `js/data.js` verified terrain streaming, `js/console.js` console client with the API key, `js/realtime.js` Realtime Data stream, `js/store.js` private storage |
 | `tools/tilepack.mjs`, `tools/pin-data.mjs` | Cut extracted terrain into the streaming format; pin a data release into the addon. See `tools/README.md` |
 | `tests/unit.mjs` | Data-path tests (tile generator → loader, checksums, tamper checks) |
-| `tests/harness.mjs` | Mock console for trying the addon in a browser without a server |
+| `tests/realtime.mjs` | Realtime Data: per-map filtering, no players, key on every call, revoked key ends the stream, hidden when not offered |
+| `tests/harness.mjs` | Mock console for trying the addon in a browser without a server (`REALTIME=1` adds Realtime Data) |
 | `scripts/validate.js`, `scripts/package.sh`, `scripts/verify-package.sh` | Validation and release packaging |
 
 ## Source of the data

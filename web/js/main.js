@@ -9,6 +9,7 @@ import { Terrain } from './terrain.js';
 import { bindHud, bindUi, showMapInfo } from './ui.js';
 import { initCompass } from './compass.js';
 import { initTheme } from './theme.js';
+import { AGENT_TOGGLES } from './live/agent.js';
 import { askForSetup, editNames, showConnection } from './setup.js';
 import { applyStatic, EMBED, START_MAP, t } from './i18n.js';
 
@@ -100,8 +101,12 @@ async function init() {
   if (!status.configured) status = await askForSetup();
   showConnection(status);
   // Öffentlich gibt es keine Offline-Spieler – der Schalter bliebe immer leer
-  const live = await api.liveStatus().catch(() => ({}));
-  if (live.public) document.querySelector('#liveToggles [data-key="offline"]')?.remove();
+  const st = await api.liveStatus().catch(() => ({}));
+  if (st.public) document.querySelector('#liveToggles [data-key="offline"]')?.remove();
+  // Realtime Data (sandworms, enemies, vehicles, storms) only if the console offers it for this key;
+  // otherwise the switches are simply not shown
+  live.agentEnabled = !!st.agent;
+  if (!st.agent) for (const k of AGENT_TOGGLES) document.querySelector(`#liveToggles [data-key="${k.key}"]`)?.remove();
   await loadMaps();
   running = true;
   renderer.setAnimationLoop(tick);

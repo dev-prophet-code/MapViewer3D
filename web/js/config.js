@@ -3,7 +3,7 @@
 //   addon (checksum pinned by the Red-Blink catalog)
 //     -> CATALOG_SHA256 -> catalog.json -> sha256 of every map index (m/<map>.json)
 //       -> content id of every terrain tile (p/..): the SHA-256 of the tile itself.
-export const ADDON_VERSION = '0.2.0';
+export const ADDON_VERSION = '0.3.0';
 
 export const DATA_REPO = 'dev-prophet-code/MapViewer3D';
 export const DATA_TAG = 'data-v1';

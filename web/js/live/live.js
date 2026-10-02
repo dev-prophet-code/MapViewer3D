@@ -10,6 +10,7 @@ import { Buildables } from './buildables.js';
 import { basePin, label, playerModel, vehicleModel } from './models.js';
 import { worldModel } from './world-models.js';
 import { iconFor, iconPoints, iconSprite, spriteScale } from './icons.js';
+import { AgentLayer, AGENT_TOGGLES } from './agent.js';
 import { t } from '../i18n.js';
 
 // Farben für Erz-, Schrott- und Pflanzensorten (Instanzfarbe der Modelle)
@@ -58,6 +59,7 @@ export const TOGGLES = [
   { key: 'bases3d', on: true },
   { key: 'labels', on: true },
   { key: 'beams', on: false },
+  ...AGENT_TOGGLES, // Würmer, Gegner, Zivilisten, Fahrzeuge live (nur mit Agent, siehe agent.js)
 ];
 
 const FEEDS = { players: 5000, overlays: 20000, poi: 300000, spice: 120000 };
@@ -83,6 +85,9 @@ export class LiveLayer {
     this.group = new THREE.Group();
     world.add(this.group);
     this.buildables = new Buildables();
+    // Live-Positionen aus dem Agenten; nur aktiv, wenn der Server einen hat (agentEnabled)
+    this.agent = new AgentLayer({ group: this.group, camera, canvas, vehicleType, subtypeName });
+    this.agentEnabled = false;
     this.map = null;
     this.data = { players: [], overlays: [], poi: [], spice: [] };
     this.fetchedAt = {};
@@ -91,6 +96,7 @@ export class LiveLayer {
     this.partition = null;
     this.show = Object.fromEntries([...TOGGLES, ...CATEGORIES.map((c) => ({ key: c.key, on: false }))].map((t) => [t.key, t.on]));
     this.players = new Map();
+    this.agent.players = this.players;
     this.vehicles = new Map();
     this.bases = new Map();
     this.layers = {};          // Kategorie → { rows, points, meshes[] }
@@ -136,11 +142,13 @@ export class LiveLayer {
       this.timers.push(setInterval(() => this.refresh(feed), every));
     }
     this.timers.push(setInterval(() => this.updateBases(), 500));
+    if (this.agentEnabled) this.agent.start(this.map, this.partition);
   }
 
   stop() {
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
+    this.agent.stop();
   }
 
   clear() {
@@ -184,6 +192,7 @@ export class LiveLayer {
 
   setShow(key, on) {
     this.show[key] = on;
+    this.agent.setShow(key, on);
     this.applyVisibility();
     if (key === 'bases3d' || key === 'bases') this.updateBases();
   }
@@ -213,7 +222,7 @@ export class LiveLayer {
       seen.add(row.id);
       let p = this.players.get(row.id);
       if (p && p.online !== online) { this.group.remove(p.obj); p = null; }
-      const pos = ueToThree(row.x, row.y, row.z);
+      const pos = this.agent.livePlayer(row.id) ?? ueToThree(row.x, row.y, row.z);
       if (!p) {
         const obj = playerModel(online);
         const lab = label(row.name, { color: online ? '#ffd9a8' : '#cccccc' });
@@ -461,6 +470,7 @@ export class LiveLayer {
       if (!l || !this.show[cat.key]) continue;
       l.positions.forEach((p, i) => test(p, { kind: cat.key, row: l.rows[i], local: p }));
     }
+    this.agent.pick(test);
     return best;
   }
 
@@ -475,7 +485,9 @@ export class LiveLayer {
   update(dt) {
     if (!this.map) return;
     const k = 1 - Math.exp(-dt * 3); // weiche Bewegung zwischen zwei Abrufen
-    for (const p of this.players.values()) p.obj.position.lerp(p.target, k);
+    const kLive = 1 - Math.exp(-dt * 10); // Echtzeitspieler folgen schnell
+    for (const [id, p] of this.players) p.obj.position.lerp(p.target, this.agent.livePlayer(id) ? kLive : k);
+    this.agent.update(dt);
     if (this.selected?.obj) this.highlight.position.copy(this.selected.obj.position);
     const s = 1 + 0.15 * Math.sin(performance.now() / 250);
     const d = this.camera.position.distanceTo(this.highlight.getWorldPosition(new THREE.Vector3()));
@@ -528,6 +540,7 @@ export class LiveLayer {
     this.onStatus?.(
       t('live.status', { online, bases: this.bases.size, built, inView })
       + (age !== null ? t('live.age', { age }) : t('live.loading'))
+      + (this.agentEnabled && this.agent.statusText() ? `\n${this.agent.statusText()}` : '')
       + (err ? `\n⚠ ${err}` : ''),
     );
   }
@@ -615,6 +628,17 @@ function describe({ kind, row, base }) {
         add(t('field.3d'), base?.state === 'error' ? t('base.unavailable') : base?.state === 'loading' ? t('base.loading') : t('base.closer'));
       }
       break;
+    case 'worm': case 'npc': case 'civilian':
+      icon = kind;
+      title = row.name;
+      add(t('field.category'), t(`agent.kind.${kind}`));
+      if (kind !== 'worm') add(t('field.kind'), row.class);
+      break;
+    case 'liveVehicle':
+      icon = 'vehicles';
+      title = subtypeName(vehicleType(row.class));
+      add(t('field.category'), t('toggle.liveVehicles'));
+      break;
     default: {
       const cat = CATEGORIES.find((c) => c.key === kind);
       const catLabel = cat ? t(`cat.${cat.key}`) : kind;
@@ -627,6 +651,6 @@ function describe({ kind, row, base }) {
   add(t('field.partition'), row.partition_id);
   add(t('field.position'), `X ${fmtInt(row.x)} · Y ${fmtInt(row.y)}${row.z ? ` · Z ${fmtInt(row.z)}` : ''}`);
   const spec = kind === 'player' ? iconFor(icon, row) : kind === 'base' ? iconFor('bases', row)
-    : kind === 'vehicle' ? iconFor('vehicles', { subtype: vehicleType(row.class ?? row.name) }) : iconFor(kind, row);
+    : kind === 'vehicle' || kind === 'liveVehicle' ? iconFor('vehicles', { subtype: vehicleType(row.class ?? row.name) }) : iconFor(kind, row);
   return { title, icon, spec, lines };
 }

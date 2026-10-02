@@ -11,6 +11,7 @@
 //   /api/map/..., /api/bases/..., /images/..  a mock console API that ONLY accepts the API key
 //                                             and records every request that carries a session cookie
 //                                             or lacks the key (see /__test/violations)
+//   /api/realtime/*                           with REALTIME=1: Realtime Data (worm moving in a circle, an enemy)
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -62,6 +63,34 @@ const players = { rows: [
   { id: 'p2', name: 'Offline Atreides', online_status: 'Offline', x: 20000, y: -15000, z: 5000, partition_id: 1 },
 ] };
 
+// Realtime Data (REALTIME=1): what the console passes on from the MapViewer3D position agent.
+const rtSnap = () => ({
+  gen: 1, t: Date.now(),
+  sources: [{ map: 'Survival_1', partition: 1, ready: true, n: 3 }, { map: 'DeepDesert_1', partition: 2, ready: true, n: 1 }],
+  objects: [
+    { i: 1, k: 'worm', c: 'BP_Crea_SandwormArrakis_C', s: 0, x: 0, y: 0, z: 5000 },
+    { i: 2, k: 'npc', c: 'BP_Npc_SoldierBase_Character_Baked_C', s: 0, x: 4000, y: 3000, z: 5000 },
+    { i: 3, k: 'worm', c: 'BP_Crea_SandwormArrakis_C', s: 1, x: 0, y: 0, z: 0 },
+  ],
+});
+function realtime(res, p) {
+  if (process.env.REALTIME !== '1') return send(res, 404, { error: 'not found' });
+  if (p === '/api/realtime/healthz') return send(res, 200, { available: true, version: 1, ok: true });
+  if (p === '/api/realtime/objects') return send(res, 200, rtSnap());
+  if (p === '/api/realtime/stream') {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
+    res.write(`event: snap\ndata: ${JSON.stringify(rtSnap())}\n\n`);
+    let a = 0;
+    const tick = setInterval(() => {
+      a += 0.1;
+      res.write(`event: pos\ndata: ${JSON.stringify({ gen: 1, t: Date.now(), d: [[1, Math.round(Math.cos(a) * 20000), Math.round(Math.sin(a) * 20000), 5000]], r: [] })}\n\n`);
+    }, 100);
+    res.on('close', () => clearInterval(tick));
+    return undefined;
+  }
+  return send(res, 404, { error: 'not found' });
+}
+
 function api(req, res, url) {
   const auth = req.headers.authorization;
   if (req.headers.cookie) violations.push(`${req.method} ${url.pathname}: request carried a session cookie`);
@@ -72,6 +101,7 @@ function api(req, res, url) {
   if (req.method !== 'GET') violations.push(`${req.method} ${url.pathname}: not a GET`);
   log.push(url.pathname + url.search);
   const p = url.pathname;
+  if (p.startsWith('/api/realtime/')) return realtime(res, p);
   if (p === '/api/map/partitions') return send(res, 200, { rows: [
     { map: 'HaggaBasin', partition_id: 1, name: 'Survival_1_P1', alive: true },
     { map: 'DeepDesert', partition_id: 2, name: 'DeepDesert_1_P2', alive: true },

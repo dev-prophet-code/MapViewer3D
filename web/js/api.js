@@ -4,6 +4,7 @@
 import { ADDON_VERSION } from './config.js';
 import * as data from './data.js';
 import * as cons from './console.js';
+import * as rt from './realtime.js';
 
 const WORLD = new Map(); // folder name -> catalog entry, filled by maps()
 
@@ -90,7 +91,7 @@ export const api = {
     await cons.saveToken(token);
     return api.setupStatus();
   },
-  setupDelete: () => cons.dropToken(),
+  setupDelete: () => { rt.reset(); return cons.dropToken(); },
   labels: async () => {
     const maps = await listMaps();
     const custom = await cons.customLabels();
@@ -112,7 +113,15 @@ export const api = {
   sample: (map, pts) => data.sampleHeights(map, pts),
 
   // ---- live data ----
-  liveStatus: async () => ({ enabled: cons.hasToken(), public: false }),
+  // agent: the console offers Realtime Data for this key (scope "Realtime Data", needs a console
+  // with the MapViewer3D integration). Without it the live switches are not shown.
+  liveStatus: async () => ({ enabled: cons.hasToken(), public: false, agent: cons.hasToken() && await rt.isAvailable() }),
+  agent: (map, partition) => {
+    const source = WORLD.get(map)?.source;
+    if (!source) return Promise.reject(Object.assign(new Error('unknown map'), { code: 'bad_request' }));
+    return rt.snapshot(source, partition);
+  },
+  agentStream: (map, partition, handlers) => rt.attach(WORLD.get(map)?.source ?? '', partition, handlers),
   liveFeed: (map, feed) => {
     const name = liveName(map);
     if (!name || !TTL[feed]) throw Object.assign(new Error('no live data for this map'), { code: 'http_status', detail: '404' });
