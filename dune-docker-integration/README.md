@@ -6,7 +6,7 @@ Console pass the live data of the MapViewer3D agent to clients whose key holds i
 
 - Patch: [`0001-api-keys-realtime-data-scope.patch`](0001-api-keys-realtime-data-scope.patch)
 - Base: upstream `main` at `da644b7` (v1.4.44, applies with `git am`)
-- Not submitted as a pull request yet.
+- Not submitted as a pull request yet. Prepared PR text: [PULL_REQUEST.md](PULL_REQUEST.md).
 
 ## What the admin sees
 
