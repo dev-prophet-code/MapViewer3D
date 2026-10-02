@@ -24,6 +24,16 @@ sudo ./bin/mvagent-linux-amd64                  # auf dem Spiel-Host, lauscht au
 
 Spieler (mit `-players`) erscheinen in Echtzeit nur als die Online-Spieler der Console, zugeordnet nach Partition und Abstand, im öffentlichen Betrieb (`-public`) nur PvE-Partitionen gezeigt. Der Agent bestimmt seine Speicher-Offsets nach Spiel-Updates selbst neu (geprüft mit Build 2134304). Einzelheiten, Optionen, systemd-Dienst und Grenzen: [docs/Agent-DE.md](docs/Agent-DE.md) · [English](docs/Agent-EN.md).
 
+### Über die Dune-Docker-Console: Realtime Data (seit Beta.16)
+
+Läuft der Viewer **auf dem eigenen PC** statt auf dem Spiel-Host, kommen Würmer, Gegner und Fahrzeuge über die Dune-Docker-Console – mit dem API-Key, den der Viewer ohnehin hat. Dafür:
+
+1. auf dem Spiel-Host den Agenten als Container starten (Branch [`ddp`](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp): `docker compose -f docker-compose.mapviewer-live.yml up -d --build`; er ist nur auf `127.0.0.1` erreichbar),
+2. in der Console dem API-Key unter **Settings → API Keys** das Recht **Realtime Data → Read** geben (Live-Spieler zusätzlich **Players → Read**),
+3. die Console per **HTTPS** anbinden (z. B. `https://mein-server.de`); bei einem selbst signierten oder internen Zertifikat den Fingerabdruck eintragen, den der Viewer beim Einrichten nennt.
+
+Der Viewer fragt beim Start kurz nach. Fehlt etwas davon – oder kennt die Console die Funktion noch nicht –, erscheinen die Schalter einfach nicht und das Log sagt warum. **Hinweis:** Die nötige Änderung an der Console liegt im Branch `ddp` als Patch bereit und ist noch nicht Teil von Dune Docker.
+
 ## Addon für die Dune Docker Console (ohne Server-Installation)
 
 Für Server mit dem Red-Blink-Stack gibt es zusätzlich ein **Addon für die Dune Docker Console** (Branch [`DD-Addon`](https://github.com/dev-prophet-code/MapViewer3D/tree/DD-Addon), in der Konsole unter *Addons*). Es braucht **nichts auf dem Server**: Der Viewer läuft komplett in der Addon-Seite. Addon installieren, **3D Map** öffnen, einen in der Konsole erstellten API-Schlüssel eintragen (*Settings → API Keys*, Bereiche `maps: Read` und `bases: Read`), fertig. Die Live-Daten kommen nur mit diesem Schlüssel aus der Konsolen-API (nie mit der Admin-Sitzung); Gelände und Gebäudemodelle werden aus dem Branch [`cdn`](https://github.com/dev-prophet-code/MapViewer3D/tree/cdn) dieses Repositorys gestreamt und gegen eingebaute Prüfsummen geprüft. Diese Seite beschreibt den eigenständigen Viewer (lokaler Go-Server); das Addon hat ein eigenes README.
@@ -100,6 +110,9 @@ start.bat -addr 0.0.0.0:8795 -password <Passwort>    # Windows
   Zugangsschutz verwenden.
 - Auf Servern ohne Benutzerordner Einstellungen und Schlüssel selbst ablegen,
   **außerhalb** des Projektordners: `-state /var/lib/mapviewer3d -keydir /var/lib/mapviewer3d/key`.
+- Console per HTTPS mit selbst signiertem oder internem Zertifikat (z. B. Caddy
+  `tls internal`): `-api-pin sha256/…` (oder `MV_API_PIN`, `apiPin` in `-config`) – dann wird
+  genau dieser Schlüssel angenommen (seit Beta.16).
 
 Beispiel für einen systemd-Dienst (Linux):
 
@@ -155,15 +168,19 @@ Der Browser fragt nach:
 
 | Feld | Beispiel |
 |---|---|
-| Server (Host, IP oder URL) | `mein-server.de` oder `203.0.113.10` |
+| Server (Host, IP oder URL) | `mein-server.de`, `203.0.113.10` oder `https://mein-server.de` (HTTPS ohne Port = 443) |
 | Port der Console | `8088` (Standard des Stacks) |
-| API-Token | ein API-Schlüssel der Console mit Lesezugriff auf die Kartendaten (`dak_…`) |
+| API-Token | ein API-Schlüssel der Console mit Lesezugriff auf die Kartendaten (`dak_…`), für Realtime Data zusätzlich mit **Realtime Data → Read** |
+| Zertifikats-Fingerabdruck | nur bei selbst signiertem oder internem HTTPS-Zertifikat: `sha256/…` (der Viewer nennt ihn, wenn er das Zertifikat nicht kennt – auf dem Server vergleichen) |
 
 Der Viewer prüft die Verbindung sofort. Ein falscher Token wird abgelehnt und nicht
 gespeichert.
 
 Im Bereich **Verbindung** lassen sich später Server und Token ändern, die
-Zugangsdaten löschen und die Serverinstanzen benennen.
+Zugangsdaten löschen und die Serverinstanzen benennen. **Server wechseln** (seit Beta.16)
+zeigt alle Server, mit denen der Viewer verbunden war; ein Klick wechselt im laufenden
+Programm, ohne den Token neu einzugeben. Jeder Server bleibt verschlüsselt gespeichert
+(`servers/` im Einstellungsordner), bis man ihn mit ✕ entfernt; Instanznamen gelten je Server.
 
 ## Wie die Zugangsdaten geschützt sind
 

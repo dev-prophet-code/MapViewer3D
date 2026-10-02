@@ -30,6 +30,8 @@ Explore Hagga Basin and Deep Desert with players, bases, vehicles, hazards and r
 - 🗺️ **Two maps in 3D** – Hagga Basin (8 × 8 km, 1 m grid) and Deep Desert (22.5 × 22.5 km, 3 m grid), selectable per server instance (PvE, PvP, Creative …).
 - 📡 **Live data** from your server's console: players (smoothly animated), bases, vehicles, storage, locations, hazards, resources, spice fields.
 - 🐛 **Live sandworms, enemies and vehicles** *(optional, since Beta.9)* – a small read-only agent on the game host reads their positions from the game processes (~10 Hz); worms glide across the map. See [docs/Agent-EN.md](docs/Agent-EN.md).
+- 📶 **Realtime Data through the Dune Docker Console** *(Beta.16)* – the same live data on a viewer on your own PC, with your API key's **Realtime Data** permission, HTTPS only; hidden automatically when the server does not offer it.
+- 🔀 **Switch server** *(Beta.16)* – keep several servers and switch between them without restarting.
 - 🏗️ **Bases as real 3D buildings**, assembled from the actual building pieces.
 - 🧭 **Free camera** – mouse wheel rotates, Shift tilts, Ctrl/⌘ zooms; W/A/S/D/Q/E flight, compass, "fly to" on any object.
 - 🎯 **Same icons as the 2D live map**; 3D models take over up close. Every layer can be toggled.
@@ -49,7 +51,7 @@ Explore Hagga Basin and Deep Desert with players, bases, vehicles, hazards and r
 | macOS | double-click `start.command` or run `./start.sh` |
 | Linux | `./start.sh` (or `sh start.sh`) |
 
-3. Your browser opens <http://127.0.0.1:8795>. Enter your server address, console port (default `8088`) and a **read-only API token** (`dak_…`). The connection is verified immediately; a wrong token is rejected and not stored.
+3. Your browser opens <http://127.0.0.1:8795>. Enter your server address (`https://…` without a port means 443), console port (default `8088`) and a **read-only API token** (`dak_…`); only for a self-signed or internal HTTPS certificate also its fingerprint (the viewer shows it). The connection is verified immediately; a wrong token is rejected and not stored. Later, **Switch server** in the *Connection* section changes between all servers you have connected to.
 
 On first start the viewer asks for your console's address and API token; nothing about any server is shipped in the package. To follow the weekly Deep Desert layout automatically, point a server-side viewer at the game files with `-paks <folder with .utoc/.ucas>`; it then builds the terrain of each new Coriolis layout itself. That needs a build with the game-file reader: `cd backend && go build -tags paks -o ../bin/mapviewer-<os>-<arch> ./cmd/mapviewer` (C++ compiler required); the ready-made programs are pure Go and only print this hint.
 
@@ -67,6 +69,16 @@ sudo ./bin/mvagent-linux-amd64                  # on the game host, listens on 1
 ```
 
 Players (with `-players`) are shown in real time only as the console's own online players, matched by partition and distance, and in public mode (`-public`) only PvE partitions are shown. The agent re-detects its memory offsets after game updates (verified with build 2134304). Details, flags, systemd unit and limits: [docs/Agent-EN.md](docs/Agent-EN.md) · [Deutsch](docs/Agent-DE.md).
+
+### Through the Dune Docker Console: Realtime Data (Beta.16)
+
+If the viewer runs **on your own PC** instead of the game host, worms, enemies and vehicles come through the Dune Docker Console – with the API key the viewer already uses:
+
+1. run the agent as a container on the game host (branch [`ddp`](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp): `docker compose -f docker-compose.mapviewer-live.yml up -d --build`; reachable on `127.0.0.1` only),
+2. in the Console grant the API key **Realtime Data → Read** under **Settings → API Keys** (live players additionally **Players → Read**),
+3. connect to the Console via **HTTPS** (e.g. `https://my-server.com`); for a self-signed or internal certificate enter the fingerprint the viewer shows during setup.
+
+The viewer asks briefly at start. If anything is missing – or the Console does not know the feature yet – the switches simply do not appear and the log says why. **Note:** the Console change is a ready patch in branch `ddp` and not yet part of Dune Docker.
 
 ## 🧩 Dune Docker Console addon (no server install)
 

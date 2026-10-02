@@ -17,6 +17,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -29,7 +30,6 @@ import (
 	"time"
 
 	"mapviewer3d/agent"
-	"mapviewer3d/securelink"
 )
 
 type agentObj struct {
@@ -54,10 +54,16 @@ type agentEvent struct {
 type agentLink struct {
 	base string
 	stop context.CancelFunc
-	// client und label: normaler Agent = http.Client, gekoppeltes mvgate =
-	// securelink; label erscheint im Log (ohne Zugangsdaten).
+	// client, header und label: eigener Agent = einfacher http.Client; Realtime
+	// Data der Console = Console-Client (consoletls.go) mit API-Key im Header.
+	// label erscheint im Log (ohne Zugangsdaten).
 	client *http.Client
+	header http.Header
 	label  string
+	// realtime: Verbindung über die Console; denied wird gerufen, wenn sie den
+	// Key ablehnt (401/403: deaktiviert, abgelaufen, widerrufen, Recht entzogen).
+	realtime bool
+	denied   func()
 
 	mu        sync.RWMutex
 	snap      agent.Snapshot
@@ -76,19 +82,13 @@ func (s *Server) UseAgent(base string) error {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("Agent-Adresse %q: erwartet http://host:port", base)
 	}
-	s.startAgent(u.String(), &http.Client{}, u.Redacted())
+	s.startAgent(&agentLink{base: u.String(), client: &http.Client{}, label: u.Redacted()})
 	return nil
 }
 
-// UseAgentPairing verbindet den Server über securelink mit dem mvgate eines
-// Dune-Docker-Hosts (TLS 1.3, festgelegter Schlüssel, Token verlässt den Rechner nie).
-func (s *Server) UseAgentPairing(p securelink.Pairing) {
-	s.startAgent("https://mvgate", &http.Client{Transport: securelink.Transport(p)}, p.String())
-}
-
-func (s *Server) startAgent(base string, client *http.Client, label string) {
+func (s *Server) startAgent(l *agentLink) {
 	ctx, cancel := context.WithCancel(context.Background())
-	l := &agentLink{base: base, client: client, label: label, objs: map[uint32]*agentObj{}, subs: map[chan agentEvent]struct{}{}, stop: cancel}
+	l.objs, l.subs, l.stop = map[uint32]*agentObj{}, map[chan agentEvent]struct{}{}, cancel
 	s.agentMu.Lock()
 	old := s.agent
 	s.agent = l
@@ -116,6 +116,12 @@ func (l *agentLink) run(ctx context.Context) {
 	backoff := time.Second
 	for ctx.Err() == nil {
 		err := l.connect(ctx)
+		var se *agentStatusError
+		if l.denied != nil && errors.As(err, &se) && (se.code == http.StatusUnauthorized || se.code == http.StatusForbidden) {
+			log.Printf("Echtzeitdaten: die Console lehnt den API-Key ab (HTTP %d: deaktiviert, abgelaufen, widerrufen oder ohne \"Realtime Data\") – Schalter beim nächsten Laden ausgeblendet", se.code)
+			l.denied()
+			return
+		}
 		l.mu.Lock()
 		l.connected = false
 		if err != nil {
@@ -137,6 +143,11 @@ func (l *agentLink) run(ctx context.Context) {
 	}
 }
 
+// agentStatusError: der Agent (bzw. die Console) antwortet nicht mit 200.
+type agentStatusError struct{ code int }
+
+func (e *agentStatusError) Error() string { return fmt.Sprintf("HTTP %d", e.code) }
+
 func (l *agentLink) recent(d time.Duration) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -149,6 +160,9 @@ func (l *agentLink) connect(parent context.Context) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, l.base+"/stream", nil)
+	for k, v := range l.header {
+		req.Header[k] = v
+	}
 	req.Header.Set("Accept", "text/event-stream")
 	resp, err := l.client.Do(req)
 	if err != nil {
@@ -156,7 +170,7 @@ func (l *agentLink) connect(parent context.Context) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+		return &agentStatusError{resp.StatusCode}
 	}
 	watchdog := time.AfterFunc(65*time.Second, cancel)
 	defer watchdog.Stop()

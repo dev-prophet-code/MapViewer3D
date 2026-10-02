@@ -15,6 +15,7 @@ export function askForSetup({ cancellable = false } = {}) {
     const form = $('setupForm');
     const err = $('setupError');
     $('setupToken').value = '';
+    $('setupPin').value = '';
     $('setupCancel').hidden = !cancellable;
     err.hidden = true;
     modal.hidden = false;
@@ -33,11 +34,13 @@ export function askForSetup({ cancellable = false } = {}) {
       $('setupSubmit').disabled = true;
       $('setupSubmit').textContent = t('setup.checking');
       try {
-        const status = await api.setupSave($('setupServer').value, +$('setupPort').value || 8088, $('setupToken').value);
+        const status = await api.setupSave($('setupServer').value, +$('setupPort').value || 8088, $('setupToken').value, $('setupPin').value.trim());
         close(status);
       } catch (ex) {
         err.textContent = errorText(ex);
         err.hidden = false;
+        // fremdes Zertifikat: Fingerabdruck vorschlagen – erst nach Vergleich auf dem Server verbinden
+        if (ex.code === 'cert_untrusted' && ex.detail && !$('setupPin').value) $('setupPin').value = ex.detail;
       } finally {
         $('setupSubmit').disabled = false;
         $('setupSubmit').textContent = t('setup.connect');
@@ -83,6 +86,72 @@ export async function editNames() {
   });
 }
 
+// Serverliste: gespeicherte Server, Umschalten im laufenden Programm.
+// Löst mit true auf, wenn auf einen anderen Server gewechselt wurde.
+export function switchServer() {
+  return new Promise((resolve) => {
+    const modal = $('servers');
+    const list = $('serversList');
+    const err = $('serversError');
+    const close = (changed) => {
+      modal.hidden = true;
+      $('serversClose').onclick = null;
+      $('serversAdd').onclick = null;
+      resolve(changed);
+    };
+    const fail = (ex) => { err.textContent = errorText(ex); err.hidden = false; };
+    const render = (rows) => {
+      list.replaceChildren(...rows.map((r) => {
+        const li = document.createElement('li');
+        li.classList.toggle('active', r.active);
+        const name = Object.assign(document.createElement('span'), { className: 'srv-name', textContent: r.server });
+        const meta = Object.assign(document.createElement('span'), {
+          className: 'muted small',
+          textContent: (r.https ? 'HTTPS' : 'HTTP') + (r.pinned ? ` · ${t('servers.pinned')}` : ''),
+        });
+        const use = Object.assign(document.createElement('button'), {
+          type: 'button', className: r.active ? '' : 'primary', disabled: r.active,
+          textContent: r.active ? t('servers.active') : t('servers.use'),
+        });
+        use.onclick = async () => {
+          err.hidden = true;
+          use.disabled = true;
+          use.textContent = t('setup.checking');
+          try {
+            await api.serverUse(r.id);
+            close(true);
+          } catch (ex) {
+            fail(ex);
+            use.disabled = false;
+            use.textContent = t('servers.use');
+          }
+        };
+        const del = Object.assign(document.createElement('button'), {
+          type: 'button', className: 'li-close', textContent: '×', title: t('servers.delete'),
+        });
+        del.hidden = r.active;
+        del.onclick = async () => {
+          if (!confirm(t('servers.delete.confirm', { server: r.server }))) return;
+          try { render(await api.serverDelete(r.id)); } catch (ex) { fail(ex); }
+        };
+        li.append(name, meta, use, del);
+        return li;
+      }));
+      if (!rows.length) list.textContent = t('servers.none');
+    };
+    err.hidden = true;
+    modal.hidden = false;
+    api.servers().then(render, fail);
+    $('serversClose').onclick = () => close(false);
+    $('serversAdd').onclick = async () => {
+      modal.hidden = true;
+      const status = await askForSetup({ cancellable: true });
+      if (status) close(true);
+      else modal.hidden = false;
+    };
+  });
+}
+
 export function showConnection(status) {
   const admin = status.admin !== false;
   $('connInfo').textContent = !admin
@@ -91,5 +160,5 @@ export function showConnection(status) {
       ? t('conn.info', { server: status.server, fp: status.fingerprint })
       : t('conn.none');
   // Besucher eines öffentlichen Viewers dürfen nichts umstellen
-  for (const id of ['connNames', 'connChange', 'connDelete']) $(id).hidden = !admin;
+  for (const id of ['connSwitch', 'connNames', 'connChange', 'connDelete']) $(id).hidden = !admin;
 }

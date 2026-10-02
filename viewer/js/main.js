@@ -10,7 +10,7 @@ import { Terrain } from './terrain.js';
 import { bindHud, bindUi, showMapInfo } from './ui.js';
 import { initCompass } from './compass.js';
 import { initTheme } from './theme.js';
-import { askForSetup, editNames, showConnection } from './setup.js';
+import { askForSetup, editNames, showConnection, switchServer } from './setup.js';
 import { initUpdate } from './update.js';
 import { applyStatic, EMBED, START_MAP, t } from './i18n.js';
 
@@ -177,11 +177,14 @@ addEventListener('message', (e) => {
   }
 });
 
+// Nach einem Serverwechsel neu laden: Kartenliste, Live-Daten und die Schalter
+// für Realtime Data gehören zum neuen Server.
+$('connSwitch').addEventListener('click', async () => {
+  if (await switchServer()) location.reload();
+});
 $('connChange').addEventListener('click', async () => {
   const status = await askForSetup({ cancellable: true });
-  if (!status) return;
-  showConnection(status);
-  await loadMaps();
+  if (status) location.reload();
 });
 $('connNames').addEventListener('click', async () => {
   if (await editNames()) await loadMaps();

@@ -1,6 +1,6 @@
 # Security Policy
 
-Applies to the current release, Dune MapViewer3D Beta.15.
+Applies to the current release, Dune MapViewer3D Beta.16.
 
 ## Reporting a vulnerability
 
@@ -23,6 +23,13 @@ server's auth token). Players are not output unless `-players` is given; the vie
 live player only when it can match it to an online player the console already shows
 (same partition, nearest distance), so no new names or players appear; in public mode only PvE partitions leave the server. Run it only on
 servers you operate. Details: [docs/Agent-EN.md](docs/Agent-EN.md).
+
+## Realtime Data and server list (Beta.16)
+
+- Realtime Data (live worms, NPCs, vehicles, storms) comes only through the Dune Docker Console's `/api/realtime/*`, authorized by the API key's *Realtime Data* scope (players additionally need *Players: Read*). The viewer sends the key there only over **HTTPS** or to a Console on the same machine; redirects are not followed for the check.
+- Console certificates are verified by the system trust store, or – for self-signed / internal certificates – by a **pinned fingerprint** (SHA-256 of the public key; per server, or `-api-pin` for all). Without a pin an untrusted certificate is refused and its fingerprint shown for comparison; a mismatch is reported as a possible attack. This applies to every Console connection, not only Realtime Data.
+- A 401/403 on the open stream (key disabled, expired, revoked or scope removed) ends it.
+- **Switch server** keeps each connected server as its own encrypted file in `servers/` (same master key and protection as `credentials.enc`); the list endpoint never returns tokens, and switching or removing is limited to the local administrator (same checks as setup).
 
 ## Updater (Beta.13)
 

@@ -25,7 +25,10 @@ const send = (url, method, body) => json(url, {
 
 export const api = {
   setupStatus: () => json('api/setup'),
-  setupSave: (server, port, token) => send('api/setup', 'POST', { server, port, token }),
+  setupSave: (server, port, token, pin = '') => send('api/setup', 'POST', { server, port, token, pin }),
+  servers: () => json('api/servers'),
+  serverUse: (id) => send(`api/servers/${encodeURIComponent(id)}/use`, 'POST'),
+  serverDelete: (id) => send(`api/servers/${encodeURIComponent(id)}`, 'DELETE'),
   setupDelete: () => send('api/setup', 'DELETE'),
   labels: () => json('api/setup/labels'),
   saveLabels: (labels) => send('api/setup/labels', 'POST', labels),

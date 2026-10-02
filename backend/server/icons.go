@@ -23,6 +23,9 @@ import (
 
 var iconFile = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}\.(webp|png)$`)
 
+// iconClient lädt Symbole der Console (mit der Zertifikatsprüfung aus consoletls.go).
+var iconClient = newConsoleClient(15 * time.Second)
+
 func (s *Server) iconsDir() string { return filepath.Join(s.stateDir, "icons") }
 
 func (s *Server) icon(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +60,7 @@ func (s *Server) fetchIcon(name, file string) error {
 		return err
 	}
 	// Die Bilder sind öffentliche Dateien der Console-Oberfläche; der Token wird nicht mitgeschickt.
-	resp, err := (&http.Client{Timeout: 15 * time.Second}).Get(lp.cfg.APIBase + "/images/maps/" + name)
+	resp, err := iconClient.Get(lp.cfg.APIBase + "/images/maps/" + name)
 	if err != nil {
 		log.Printf("Symbol %s: %v", name, err)
 		return miss(errIconMissing)

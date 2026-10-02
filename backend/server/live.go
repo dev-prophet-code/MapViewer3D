@@ -31,9 +31,9 @@ type LiveConfig struct {
 	// zeigt Sandwürmer, Gegner und Fahrzeuge live.
 	AgentURL string `json:"agentUrl"`
 
-	// Kopplungscode (mvlive1:…) eines mvgate auf einem Dune-Docker-Host
-	// (Branch ddp): Echtzeitdaten über securelink. Wie ein Passwort behandeln.
-	AgentPairing string `json:"agentPairing"`
+	// Fingerabdruck des Console-Zertifikats (sha256/…), wenn es selbst signiert
+	// oder intern ist (z. B. Caddy "tls internal"); wie -api-pin.
+	APIPin string `json:"apiPin"`
 
 	// Updates automatisch von GitHub installieren (wie -auto-update).
 	AutoUpdate bool `json:"autoUpdate"`
@@ -94,7 +94,7 @@ type liveProxy struct {
 }
 
 func newLiveProxy(cfg *LiveConfig) *liveProxy {
-	return &liveProxy{cfg: cfg, client: &http.Client{Timeout: 60 * time.Second},
+	return &liveProxy{cfg: cfg, client: newConsoleClient(60 * time.Second),
 		cache: map[string]*cached{}, busy: map[string]*sync.Mutex{}}
 }
 

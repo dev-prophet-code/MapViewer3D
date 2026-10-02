@@ -24,6 +24,10 @@ Mit `-players` gestartet, bewegt der Viewer die Online-Spieler der Console in Ec
 
 Ein vollständiges Beispiel (Seite mit eingebautem Viewer, nginx, systemd, Konfiguration mit Server-Adresse und Token sowie den `agentUrl`-Optionen `http://127.0.0.1:8796` oder `auto`) liegt in [examples/website/](../examples/website/README.de.md).
 
+## Über die Dune-Docker-Console (Realtime Data, seit Beta.16)
+
+Ein Viewer auf dem **eigenen PC** bekommt die Daten über die Console statt direkt vom Agenten: Der Agent läuft als Container neben Dune Docker (Branch [`ddp`](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp), nur `127.0.0.1:8796`), die Console gibt sie unter `/api/realtime/*` an API-Keys mit dem Recht **Realtime Data** weiter (Spieler nur zusätzlich mit **Players → Read**). Der Viewer braucht dafür keine Option: Er fragt beim Start mit seinem API-Key kurz nach – nur über HTTPS oder auf demselben Rechner – und blendet die Schalter aus, wenn keine passende Antwort kommt. `-agent` (eigener Agent) hat Vorrang. Einzelheiten: README und SECURITY.md im Branch `ddp`.
+
 ## Schnellstart
 
 ```bash

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -163,7 +164,12 @@ func normalizeServer(server string, port int) (base, display string, err error) 
 	host := u.Hostname()
 	p := u.Port()
 	if p == "" {
-		if port <= 0 {
+		switch {
+		case u.Scheme == "https" && (port <= 0 || port == 8088):
+			// https:// ohne Port ist ein Reverse Proxy (Caddy, nginx) auf 443,
+			// nicht die Console selbst auf 8088
+			port = 443
+		case port <= 0:
 			port = 8088
 		}
 		p = strconv.Itoa(port)
@@ -179,13 +185,18 @@ func normalizeServer(server string, port int) (base, display string, err error) 
 // beim Verbindungsaufbau abgelehnt (Link-Local inkl. Cloud-Metadaten 169.254.169.254,
 // Multicast, 0.0.0.0) – auch nach DNS-Auflösung. Weiterleitungen werden nicht
 // verfolgt und es wird kein Proxy aus der Umgebung benutzt.
-var consoleClient = &http.Client{
-	Timeout:       15 * time.Second,
-	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	Transport: &http.Transport{
-		Proxy:       nil,
-		DialContext: (&net.Dialer{Timeout: 10 * time.Second, Control: blockSpecialTargets}).DialContext,
-	},
+// pin ist der Fingerabdruck, der für diesen Server gelten soll (-api-pin geht vor).
+func setupConsoleClient(pin string) *http.Client {
+	if p := consoleFlagPin.Load(); p != nil && *p != "" {
+		pin = *p
+	}
+	tr := newConsoleTransportWith(&net.Dialer{Timeout: 10 * time.Second, Control: blockSpecialTargets}, func() string { return pin })
+	tr.Proxy = nil
+	return &http.Client{
+		Timeout:       15 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport:     tr,
+	}
 }
 
 // blockSpecialTargets lehnt Zieladressen ab, die keine Console sein können.
@@ -205,19 +216,36 @@ func blockSpecialTargets(network, address string, _ syscall.RawConn) error {
 // Nur für den Browser auf dem Rechner selbst (detailed) gibt es genaue Fehler;
 // aus der Ferne (-remote-setup) bleibt es bei einem Sammelfehler, damit die
 // Prüfung nicht als Port-Scanner für das interne Netz taugt.
-func checkConsole(base, token string, detailed bool) error {
-	err := checkConsoleDetailed(base, token)
+func checkConsole(base, token, pin string, detailed bool) error {
+	err := checkConsoleDetailed(base, token, pin)
 	if err != nil && !detailed {
 		return &setupError{"unreachable", ""}
 	}
 	return err
 }
 
-func checkConsoleDetailed(base, token string) error {
+func checkConsoleDetailed(base, token, pin string) error {
 	req, _ := http.NewRequest(http.MethodGet, base+"/api/map/partitions", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := consoleClient.Do(req)
+	c := setupConsoleClient(pin)
+	defer c.CloseIdleConnections()
+	resp, err := c.Do(req)
 	if err != nil {
+		switch {
+		case errors.Is(err, errConsolePin):
+			return &setupError{"cert_pin", ""}
+		case isCertError(err):
+			// selbst signiert/intern: Fingerabdruck nennen, damit man ihn auf dem
+			// Server vergleichen und eintragen kann
+			if u, perr := url.Parse(base); perr == nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if fp, ferr := peerPin(ctx, hostPort(u)); ferr == nil {
+					return &setupError{"cert_untrusted", fp}
+				}
+			}
+			return &setupError{"cert_untrusted", ""}
+		}
 		return &setupError{"unreachable", shortNetError(err)}
 	}
 	defer resp.Body.Close()
@@ -245,6 +273,7 @@ func (s *Server) setupSave(w http.ResponseWriter, r *http.Request) {
 		Server string `json:"server"`
 		Port   int    `json:"port"`
 		Token  string `json:"token"`
+		Pin    string `json:"pin"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&in); err != nil {
 		fail(w, http.StatusBadRequest, "bad_request", "")
@@ -255,21 +284,27 @@ func (s *Server) setupSave(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "token_format", "")
 		return
 	}
+	in.Pin = strings.TrimSpace(in.Pin)
+	if checkPin(in.Pin) != nil {
+		fail(w, http.StatusBadRequest, "pin_format", "")
+		return
+	}
 	base, _, err := normalizeServer(in.Server, in.Port)
 	if err != nil {
 		failErr(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := checkConsole(base, in.Token, isLocalRequest(r)); err != nil {
+	if err := checkConsole(base, in.Token, in.Pin, isLocalRequest(r)); err != nil {
 		failErr(w, http.StatusBadGateway, err)
 		return
 	}
-	if err := s.store.Save(secure.Credentials{APIBase: base, Token: in.Token}); err != nil {
+	c := secure.Credentials{APIBase: base, Token: in.Token, Pin: in.Pin}
+	if err := s.store.Save(c); err != nil {
 		fail(w, http.StatusInternalServerError, "save_failed", err.Error())
 		return
 	}
-	s.setLive(&LiveConfig{APIBase: base, Token: in.Token})
-	s.clearServerCaches()
+	s.rememberServer(c) // in die Serverliste (servers.go)
+	s.activate(c)
 	s.setupStatus(w, r)
 }
 
@@ -281,9 +316,15 @@ func (s *Server) setupDelete(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, "save_failed", err.Error())
 		return
 	}
+	// der aktive Server verschwindet auch aus der Liste, samt seinen Namen
+	if lp := s.lp(); lp != nil {
+		if st, err := s.serverStore(serverID(lp.cfg.APIBase)); err == nil {
+			st.Delete()
+		}
+	}
+	os.Remove(s.labelsFile())
 	s.setLive(nil)
 	s.clearServerCaches()
-	os.Remove(s.labelsFile())
 	s.setupStatus(w, r)
 }
 
@@ -297,7 +338,14 @@ func (s *Server) clearServerCaches() {
 
 // ---------- Namen der Serverinstanzen ----------
 
-func (s *Server) labelsFile() string { return filepath.Join(s.stateDir, "instance-names.json") }
+// labelsFile: Instanznamen je Server (Serverliste); mit fester Konfiguration
+// oder ohne Verbindung die gemeinsame Datei.
+func (s *Server) labelsFile() string {
+	if lp := s.lp(); lp != nil && !s.fixed && s.store != nil {
+		return filepath.Join(s.stateDir, "instance-names-"+serverID(lp.cfg.APIBase)+".json")
+	}
+	return filepath.Join(s.stateDir, "instance-names.json")
+}
 
 func (s *Server) customLabels() map[string]string {
 	out := map[string]string{}

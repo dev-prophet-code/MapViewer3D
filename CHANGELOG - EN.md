@@ -10,6 +10,26 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ---
 
+## Beta.16 – not yet released
+
+### New
+
+- **Realtime Data from Dune Docker.** Sandworms, enemies, civilians, vehicles and storms now also reach a viewer on your own PC – through the Dune Docker Console, with the API key you already use. Grant it in the Console under **Settings → API Keys** with the new row **Realtime Data** (None / Read); live player positions additionally need **Players → Read**. The viewer asks briefly at start (at most 5 s, then every 10 minutes and after every server switch). If the Console does not answer as expected – Dune Docker without the feature, agent not running, key without the permission – the switches for worms, enemies and vehicles are simply not shown; the log says why. When the key is disabled, expires or is revoked, the viewer disconnects. On the game server the position agent runs as a container reachable on `127.0.0.1` only (branch `ddp`); the Console change is a patch there and not yet part of Dune Docker.
+- **Encrypted only.** Realtime Data is used only when the Console is connected via **HTTPS** or runs on the same machine. With `http://IP:8088` the switches stay off.
+- **Self-signed and internal certificates** (e.g. Caddy `tls internal`): during setup the viewer names the certificate's fingerprint; after comparing it on the server, enter it in the new **Certificate fingerprint** field (or `-api-pin` / `MV_API_PIN` / `apiPin` in `-config`). Exactly that key is then accepted; another one is treated as a possible attack and refused.
+- **Switch server.** New button in the *Connection* section: every server you have connected to stays in an encrypted list; one click switches the running program to another one (the page reloads with its maps and live data) without entering the token again. **Add server …** opens the setup, ✕ removes a server and its token. Instance names are kept per server. Not shown with a fixed configuration (`-config`) or to visitors of a public viewer.
+
+### Fixed
+
+- `https://server` without a port became port 8088; it is now port 443 (reverse proxy in front of the Console).
+- If the viewer cannot reach an agent for a while, the log shows its address without credentials.
+
+### Discarded
+
+- ~~Separate access `mvgate` with a pairing code (`mvlive1:…`, `-agent-pair`) and a Settings section "MapViewer3D Live Data" in the Console~~, **Discarded**: replaced by the API key permission *Realtime Data* – one credential instead of two, no extra port, revocation and expiry like any API key.
+
+---
+
 ## Beta.15 – 10/01/2026
 
 ### Fixed

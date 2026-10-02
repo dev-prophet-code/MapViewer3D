@@ -69,13 +69,13 @@ func TestBlockSpecialTargets(t *testing.T) {
 
 func TestCheckConsoleCollapsesErrorsForRemote(t *testing.T) {
 	// Metadaten-Adresse: bei entferntem Aufrufer nur der Sammelfehler ohne Details
-	err := checkConsole("http://169.254.169.254:80", "dak_test_token", false)
+	err := checkConsole("http://169.254.169.254:80", "dak_test_token", "", false)
 	se, ok := err.(*setupError)
 	if !ok || se.code != "unreachable" || se.detail != "" {
 		t.Fatalf("remote caller got %#v", err)
 	}
 	// Lokaler Aufrufer sieht weiterhin, dass es nicht erreichbar ist
-	err = checkConsole("http://169.254.169.254:80", "dak_test_token", true)
+	err = checkConsole("http://169.254.169.254:80", "dak_test_token", "", true)
 	if se, ok := err.(*setupError); !ok || se.code != "unreachable" {
 		t.Fatalf("local caller got %#v", err)
 	}
@@ -89,7 +89,7 @@ func TestCheckConsoleDoesNotFollowRedirects(t *testing.T) {
 		http.Redirect(w, r, target.URL, http.StatusFound)
 	}))
 	defer redir.Close()
-	err := checkConsole(redir.URL, "dak_test_token", true)
+	err := checkConsole(redir.URL, "dak_test_token", "", true)
 	if hit {
 		t.Fatal("redirect was followed")
 	}

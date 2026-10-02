@@ -37,7 +37,6 @@ import (
 	"mapviewer3d/agent"
 	"mapviewer3d/cdn"
 	"mapviewer3d/secure"
-	"mapviewer3d/securelink"
 	"mapviewer3d/server"
 	"mapviewer3d/updater"
 )
@@ -58,7 +57,7 @@ func main() {
 	paks := flag.String("paks", "", "Ordner mit den Spieldateien (.utoc/.ucas): baut das Deep-Desert-Gelände nach jedem Coriolis-Sturm selbst für das neue Layout")
 	agentURL := flag.String("agent", os.Getenv("MV_AGENT"), "Adresse des Positions-Agenten (mvagent), z. B. http://127.0.0.1:8796: zeigt Sandwürmer, Gegner und Fahrzeuge live; auto = erkennt den Spiel-Host (Linux, root) und startet den Agenten selbst; alternativ MV_AGENT oder agentUrl in -config")
 	cdnFlag := flag.String("cdn", envOr("MV_CDN", "auto"), "Kartendaten (Gelände, Bauteil-Modelle): auto = aus dem Branch cdn auf GitHub streamen (ein Ordner data/ dient als Rückfall), off = nur den lokalen Ordner data/ nutzen, oder eine eigene Adresse (z. B. https://…/cdn/); alternativ MV_CDN oder cdn in -config")
-	agentPair := flag.String("agent-pair", os.Getenv("MV_AGENT_PAIR"), "Kopplungscode (mvlive1:…) oder Datei mit dem Code: Echtzeitdaten vom mvgate eines Dune-Docker-Hosts, verschlüsselt (TLS 1.3, festgelegter Schlüssel); ohne Antwort bleiben die Schalter ausgeblendet; alternativ MV_AGENT_PAIR oder agentPairing in -config")
+	apiPin := flag.String("api-pin", os.Getenv("MV_API_PIN"), "Fingerabdruck (sha256/…) des Zertifikats der Console, wenn es selbst signiert oder intern ist (z. B. Caddy \"tls internal\"): dann wird genau dieser Schlüssel angenommen; alternativ MV_API_PIN oder apiPin in -config")
 	agentPlayers := flag.Bool("agent-players", false, "nur mit -agent auto: der eingebaute Agent liest auch Spieler (Echtzeit-Positionen der Online-Spieler)")
 	autoUpdate := flag.Bool("auto-update", os.Getenv("MV_AUTOUPDATE") == "1", "neue Versionen von GitHub automatisch installieren und neu starten (Standard: nur anzeigen, Installation per Klick); alternativ MV_AUTOUPDATE=1 oder autoUpdate in -config")
 	noUpdate := flag.Bool("no-update-check", os.Getenv("MV_NO_UPDATE") == "1", "nicht auf GitHub nach neuen Versionen suchen (auch MV_NO_UPDATE=1)")
@@ -113,8 +112,8 @@ func main() {
 		if *agentURL == "" {
 			*agentURL = cfg.AgentURL
 		}
-		if *agentPair == "" {
-			*agentPair = cfg.AgentPairing
+		if *apiPin == "" {
+			*apiPin = cfg.APIPin
 		}
 		if cfg.AutoUpdate {
 			*autoUpdate = true
@@ -155,20 +154,15 @@ func main() {
 		log.Printf("Deep Desert: Gelände für neue Coriolis-Layouts wird aus %s selbst gebaut", *paks)
 	}
 
-	if *agentURL != "" && *agentPair != "" {
-		fatalf("-agent und -agent-pair schließen sich aus: entweder ein eigener Agent oder das mvgate eines Dune-Docker-Hosts")
+	if err := server.SetConsolePin(*apiPin); err != nil {
+		fatalf("-api-pin: %v", err)
+	}
+	if *apiPin != "" {
+		log.Printf("Console-Zertifikat: nur der Schlüssel %s wird angenommen", *apiPin)
 	}
 	if *agentURL == "" {
-		var pairing *securelink.Pairing
-		if *agentPair != "" {
-			p, err := loadPairing(*agentPair)
-			if err != nil {
-				fatalf("-agent-pair: %v", err)
-			}
-			pairing = &p
-			log.Printf("Echtzeitdaten: frage %s kurz an …", p)
-		}
-		srv.StartLiveDiscovery(context.Background(), pairing)
+		// Realtime Data von Dune Docker: kurz fragen, sonst Schalter ausblenden (server/realtime.go)
+		srv.StartRealtime(context.Background())
 	}
 	if *agentURL == "auto" {
 		*agentURL = startEmbeddedAgent(*agentPlayers)
@@ -478,17 +472,4 @@ func alreadyRunning(addr string, open bool) {
 		}
 	}
 	fatalf("Der Port %s ist schon belegt – ein anderes Programm (oder ein zweiter Viewer) nutzt ihn.\nMit einem anderen Port starten: start.sh -addr 127.0.0.1:8796", addr)
-}
-
-// loadPairing nimmt den Kopplungscode direkt oder aus einer Datei.
-func loadPairing(v string) (securelink.Pairing, error) {
-	v = strings.TrimSpace(v)
-	if !strings.HasPrefix(v, "mvlive1:") {
-		b, err := os.ReadFile(v)
-		if err != nil {
-			return securelink.Pairing{}, fmt.Errorf("weder Kopplungscode (mvlive1:…) noch lesbare Datei: %v", err)
-		}
-		v = strings.TrimSpace(string(b))
-	}
-	return securelink.ParsePairing(v)
 }

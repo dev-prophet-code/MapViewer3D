@@ -42,6 +42,9 @@ import (
 type Credentials struct {
 	APIBase string `json:"apiBase"` // z. B. http://host:8088
 	Token   string `json:"token"`
+	// Pin: Fingerabdruck (sha256/…) eines selbst signierten oder internen
+	// Zertifikats der Console; leer = Zertifikatsstellen des Systems.
+	Pin string `json:"pin,omitempty"`
 }
 
 type envelope struct {
@@ -80,6 +83,10 @@ func Open(file, keyDir string) (*Store, error) {
 }
 
 func (s *Store) keyFile() string { return filepath.Join(s.keyDir, "master.key") }
+
+// Sibling öffnet eine weitere verschlüsselte Datei mit demselben Hauptschlüssel
+// (gespeicherte Server der Serverliste).
+func (s *Store) Sibling(file string) (*Store, error) { return Open(file, s.keyDir) }
 
 // master liest oder erzeugt den Hauptschlüssel.
 func (s *Store) master(create bool) ([]byte, error) {

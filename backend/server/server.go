@@ -84,9 +84,14 @@ type Server struct {
 
 	agentMu sync.RWMutex
 	agent   *agentLink // Live-Positionen aus dem Agenten (agent.go); nil = aus
-	// liveKick weckt die Abfrage nach Echtzeitdaten (livediscovery.go) nach einer
-	// neuen Einrichtung der Console.
+	// liveKick weckt die Abfrage nach Realtime Data (realtime.go) nach einer
+	// neuen Einrichtung der Console oder wenn sie den Key ablehnt.
 	liveKick chan struct{}
+	// realtimeOn: die Abfrage nach Realtime Data läuft (kein eigener Agent);
+	// realtimeMu verhindert, dass Hintergrundabfrage und Serverwechsel gleichzeitig verbinden.
+	realtimeOn   atomic.Bool
+	realtimeMu   sync.Mutex
+	realtimeLast atomic.Pointer[string] // letzter gemeldeter Zustand (Log nur bei Änderung)
 
 	liveMu     sync.RWMutex
 	liveProxy  *liveProxy    // nil, solange keine Zugangsdaten eingerichtet sind
@@ -130,13 +135,17 @@ func (s *Server) setLive(cfg *LiveConfig) {
 	defer s.liveMu.Unlock()
 	if cfg == nil {
 		s.liveProxy = nil
+		setActivePin("")
 		return
 	}
+	setActivePin(cfg.APIPin)
 	s.liveProxy = newLiveProxy(cfg)
-	select {
-	case s.liveKick <- struct{}{}:
-	default:
+	// neue Zugangsdaten: eine Realtime-Verbindung mit dem alten Key trennen
+	if l := s.agentLink(); l != nil && l.realtime {
+		s.dropAgent(l)
+		return
 	}
+	s.kickRealtime()
 }
 
 // New erstellt den Server. Sind im Store Zugangsdaten gespeichert, wird die
@@ -146,7 +155,8 @@ func New(dataDir, webDir, stateDir string, store *secure.Store) *Server {
 	if store == nil {
 		// feste Konfiguration (-config), siehe UseConfig
 	} else if c, err := store.Load(); err == nil {
-		s.setLive(&LiveConfig{APIBase: c.APIBase, Token: c.Token})
+		s.setLive(&LiveConfig{APIBase: c.APIBase, Token: c.Token, APIPin: c.Pin})
+		s.adoptStoredServer(*c)
 		log.Printf("Verbindung zur Console eingerichtet")
 	} else if err != secure.ErrNotConfigured {
 		log.Printf("Zugangsdaten nicht lesbar (%v) – bitte neu einrichten", err)
@@ -155,6 +165,9 @@ func New(dataDir, webDir, stateDir string, store *secure.Store) *Server {
 	}
 	s.mux.HandleFunc("GET /api/setup", s.setupStatus)
 	s.mux.HandleFunc("POST /api/setup", s.setupSave)
+	s.mux.HandleFunc("GET /api/servers", s.serversGet)
+	s.mux.HandleFunc("POST /api/servers/{id}/use", s.serverUse)
+	s.mux.HandleFunc("DELETE /api/servers/{id}", s.serverDelete)
 	s.mux.HandleFunc("DELETE /api/setup", s.setupDelete)
 	s.mux.HandleFunc("GET /api/setup/labels", s.labelsGet)
 	s.mux.HandleFunc("POST /api/setup/labels", s.labelsSave)
