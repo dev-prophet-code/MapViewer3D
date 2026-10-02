@@ -1,4 +1,4 @@
-From 91b6c808a0a3a92d1581d447bb5cb99979a52a44 Mon Sep 17 00:00:00 2001
+From 3cbedd8a9f3088756fab836890bf44f709e16d12 Mon Sep 17 00:00:00 2001
 From: Stefan Schaefer <stefanschaefer@BlackGuard.fritz.box>
 Date: Fri, 2 Oct 2026 12:31:32 +0200
 Subject: [PATCH] Encrypted API access: optional HTTPS front door for the
@@ -35,12 +35,12 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
  console/api/test/fixtures/tls-front-cert.pem  |  11 +
  console/web/src/api/encryptedApi.ts           |  18 +
  .../settings/EncryptedApiSection.test.tsx     |  62 ++
- .../features/settings/EncryptedApiSection.tsx | 122 ++++
+ .../features/settings/EncryptedApiSection.tsx | 116 ++++
  .../src/features/settings/SettingsPanel.tsx   |   6 +
  console/web/src/styles.css                    |   5 +
  docker-compose.tls-front.yml                  |  38 ++
  docs/README.md                                |   1 +
- docs/console/encrypted-api.md                 |  87 +++
+ docs/console/encrypted-api.md                 |  88 +++
  install.sh                                    |  48 ++
  runtime/scripts/dune                          |   6 +
  runtime/scripts/tls-front.sh                  | 171 ++++++
@@ -49,7 +49,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
  runtime/tls-front/main.go                     | 528 ++++++++++++++++++
  runtime/tls-front/main_test.go                | 310 ++++++++++
  tests/tls-front-script-test.sh                |  89 +++
- 23 files changed, 1824 insertions(+)
+ 23 files changed, 1819 insertions(+)
  create mode 100644 console/api/src/services/encryptedApi.js
  create mode 100644 console/api/test/encryptedApi.test.js
  create mode 100644 console/api/test/fixtures/tls-front-cert.pem
@@ -88,14 +88,14 @@ index d488616..121b5e8 100644
          run: |
            set -euo pipefail
 diff --git a/README.md b/README.md
-index 9f11e71..5bea948 100644
+index 9f11e71..f11c6cf 100644
 --- a/README.md
 +++ b/README.md
 @@ -61,6 +61,7 @@ For public/internet hosting, forward these ports:
  | `31983` | TCP | RabbitMQ Game HTTP Endpoint |
  | `7777-7810` | UDP | Game Traffic |
  | `32000-32015` | UDP | Optional direct public-directory latency probes; relay remains available when closed |
-+| `8797` | TCP | Optional encrypted API access (HTTPS) for tools such as MapViewer3D; see [Encrypted API access](docs/console/encrypted-api.md) |
++| `8797` | TCP | Optional encrypted API access (HTTPS); see [Encrypted API access](docs/console/encrypted-api.md) |
  
  Keep database and internal admin ports private. Do not expose the Web UI to untrusted users.
  
@@ -170,14 +170,14 @@ index b854d5e..bbc0965 100644
      return json(res, 200, await action(), { "cache-control": "no-store" });
 diff --git a/console/api/src/services/encryptedApi.js b/console/api/src/services/encryptedApi.js
 new file mode 100644
-index 0000000..e7a1895
+index 0000000..06b3674
 --- /dev/null
 +++ b/console/api/src/services/encryptedApi.js
 @@ -0,0 +1,134 @@
 +// Encrypted API access: the optional front door (runtime/tls-front, docker-compose.tls-front.yml)
-+// that serves the Console API over HTTPS with its own long-lived key, so tools such as
-+// MapViewer3D can reach the Console without sending the API key in clear text. The front door
-+// forwards only `GET /api/*` with an API key to the unchanged Console (no web UI, no cookies).
++// that serves the Console API over HTTPS with its own long-lived key, so API clients can reach the
++// Console without sending the API key in clear text. The front door forwards only `GET /api/*`
++// with an API key to the unchanged Console (no web UI, no cookies).
 +//
 +// This service shows its state and fingerprint in Settings and turns it on and off. Clients pin
 +// the fingerprint of the KEY (SHA-256 of the certificate's public key, "sha256/<base64url>"); the
@@ -562,10 +562,10 @@ index 0000000..e9eb92c
 +});
 diff --git a/console/web/src/features/settings/EncryptedApiSection.tsx b/console/web/src/features/settings/EncryptedApiSection.tsx
 new file mode 100644
-index 0000000..0f18111
+index 0000000..2725771
 --- /dev/null
 +++ b/console/web/src/features/settings/EncryptedApiSection.tsx
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,116 @@
 +import { useEffect, useState } from "react";
 +import { Copy } from "lucide-react";
 +import { encryptedApiApi, type EncryptedApiStatus } from "../../api/encryptedApi";
@@ -641,9 +641,8 @@ index 0000000..0f18111
 +
 +  return <div className="encrypted-api-section">
 +    <p className="muted">
-+      Serves the Console API over HTTPS with its own long-lived key, for tools such as MapViewer3D. The API key and the data
-+      cannot be read or changed on the network. Only API-key requests (GET) pass: the Console web UI is not offered on this
-+      port, and your normal address keeps working unchanged.
++      Serves the Console API over HTTPS with its own long-lived key, so API keys and data are not sent in clear text.
++      Only API-key requests (GET) pass; the web UI stays on the normal address.
 +    </p>
 +
 +    <div className="action-row">
@@ -679,12 +678,7 @@ index 0000000..0f18111
 +          <button onClick={() => { void copyFingerprint(); }}><Copy size={16} aria-hidden="true" /> {copied ? "Copied" : "Copy"}</button>
 +        </div>
 +      </label>
-+      <p className="muted">
-+        Address: <code>{address}</code>. When a tool such as MapViewer3D asks you to confirm an encrypted connection, compare
-+        its fingerprint with this one. If they are identical, nobody can sit in between. The fingerprint stays the same until
-+        <code> runtime/generated/tls-front</code> is deleted.
-+      </p>
-+      <p className="muted">Allow TCP {status.port} in the server firewall to use it from other computers. The same value is shown by <code>dune encrypted-api fingerprint</code> and at the end of the installer.</p>
++      <p className="muted">Address: <code>{address}</code>. Allow TCP {status.port} in the server firewall.</p>
 +    </div>}
 +  </div>;
 +}
@@ -790,19 +784,18 @@ index 92464f4..00fa94b 100644
  ## Runtime (`runtime/`)
 diff --git a/docs/console/encrypted-api.md b/docs/console/encrypted-api.md
 new file mode 100644
-index 0000000..f63105c
+index 0000000..758aaf1
 --- /dev/null
 +++ b/docs/console/encrypted-api.md
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,88 @@
 +# Encrypted API access
 +
 +**Status:** Optional | **Last Updated:** October 2026
 +
 +The Console listens on plain HTTP (`http://<host>:8088`). That is fine on a trusted network, but over the internet the
 +admin password, API keys and every answer cross the network in clear text. **Encrypted API access** is a small container
-+in front of the unchanged Console that serves the Console **API** over HTTPS, for tools that use API keys (for example
-+[MapViewer3D](https://github.com/dev-prophet-code/MapViewer3D)). Nothing else changes: your normal address keeps working,
-+and nobody has to adapt anything.
++in front of the unchanged Console that serves the Console **API** over HTTPS, for everything that uses API keys. Nothing
++else changes: your normal address keeps working, and nobody has to adapt anything.
 +
 +```
 +tool ──HTTPS :8797, API key──► dune-tls-front ──HTTP 127.0.0.1:8088──► Console (unchanged)
@@ -817,15 +810,17 @@ index 0000000..f63105c
 +sha256/<base64url of the SHA-256 of the certificate's public key>
 +```
 +
-+The fingerprint does not change by itself – not after a restart, not when the certificate is re-issued. It is not secret.
-+**Compare it** with the one a tool shows when it asks you to confirm an encrypted connection: if both are identical,
-+nobody can sit in between. (A tool that learned the fingerprint over the very connection it wants to protect could be
-+handed an attacker's key; the comparison closes that gap.)
++The fingerprint stays the same until `runtime/generated/tls-front` is deleted – not after a restart, not when the
++certificate is re-issued. It is not secret.
++
++**Compare it** with the one a client shows when it asks you to confirm the connection: if both are identical, nobody can
++sit in between. (A client that learned the fingerprint over the very connection it wants to protect could be handed an
++attacker's key; the comparison closes that gap.)
 +
 +You can see it again at any time:
 +
 +- the **end of the installer** prints the address and the fingerprint next to the first admin password;
-+- **Settings → Encrypted API Access** shows status, address and fingerprint with a Copy button;
++- **Settings → Encrypted API Access** shows status, switch, address and fingerprint with a Copy button;
 +- `dune encrypted-api fingerprint` prints it on the host.
 +
 +## What it passes
@@ -882,7 +877,7 @@ index 0000000..f63105c
 +  reach the Console on `127.0.0.1`.
 +- Prefer a real certificate? A reverse proxy with Let's Encrypt in front of the Console works too and needs none of this.
 diff --git a/install.sh b/install.sh
-index b391c46..f7e88b8 100755
+index b391c46..a533294 100755
 --- a/install.sh
 +++ b/install.sh
 @@ -613,6 +613,40 @@ read_admin_password() {
@@ -890,7 +885,7 @@ index b391c46..f7e88b8 100755
  }
  
 +# Encrypted API access (optional): HTTPS with its own long-lived key in front of the
-+# Console, for tools such as MapViewer3D (docs/console/encrypted-api.md). On by
++# Console (docs/console/encrypted-api.md). On by
 +# default for a new install; DUNE_ENCRYPTED_API=0 skips it. A choice made later in
 +# Settings (runtime/generated/tls-front.env) is kept when the installer runs again.
 +start_tls_front() {
@@ -932,13 +927,13 @@ index b391c46..f7e88b8 100755
    fi
 +  if [ -n "${TLS_FRONT_FINGERPRINT:-}" ]; then
 +    echo
-+    echo "Encrypted API access (for tools such as MapViewer3D):"
++    echo "Encrypted API access (HTTPS):"
 +    if [ -n "$finish_public_ip" ] && [ "$finish_public_ip" != "$finish_host_ip" ]; then
 +      echo "  https://$finish_public_ip:$TLS_FRONT_PORT"
 +    else
 +      echo "  https://$finish_host_ip:$TLS_FRONT_PORT"
 +    fi
-+    echo "  Key fingerprint (compare it when a tool asks you to confirm it):"
++    echo "  Key fingerprint:"
 +    echo "  $TLS_FRONT_FINGERPRINT"
 +    echo "Allow TCP $TLS_FRONT_PORT in the server firewall to use it from other computers."
 +    echo "Show it again any time: Settings > Encrypted API Access, or run: dune encrypted-api fingerprint"
@@ -978,7 +973,7 @@ index a0011d0..8971d69 100755
    dune db backup [output-dir]
 diff --git a/runtime/scripts/tls-front.sh b/runtime/scripts/tls-front.sh
 new file mode 100755
-index 0000000..41d92ec
+index 0000000..bb04807
 --- /dev/null
 +++ b/runtime/scripts/tls-front.sh
 @@ -0,0 +1,171 @@
@@ -1006,8 +1001,8 @@ index 0000000..41d92ec
 +  tls-front.sh fingerprint  print the key fingerprint (sha256/..., not secret)
 +
 +The encrypted front door is HTTPS with its own long-lived key in front of the
-+unchanged Console. Clients (for example MapViewer3D) pin the key's fingerprint:
-+compare it with the one shown here before you accept it. TCP port 8797 must be
++unchanged Console. Clients pin the key's fingerprint: compare it with the one
++shown here before you accept it. TCP port 8797 must be
 +allowed by the host firewall to use it from other computers.
 +EOF2
 +}
@@ -1187,7 +1182,7 @@ index 0000000..b4d14b0
 +go 1.24
 diff --git a/runtime/tls-front/main.go b/runtime/tls-front/main.go
 new file mode 100644
-index 0000000..c40131e
+index 0000000..edcf46c
 --- /dev/null
 +++ b/runtime/tls-front/main.go
 @@ -0,0 +1,528 @@
@@ -1476,7 +1471,7 @@ index 0000000..c40131e
 +	now := time.Now()
 +	tpl := &x509.Certificate{
 +		SerialNumber:          serial,
-+		Subject:               pkix.Name{CommonName: "MapViewer3D encrypted front"},
++		Subject:               pkix.Name{CommonName: "Dune Docker encrypted API access"},
 +		NotBefore:             now.Add(-time.Hour),
 +		NotAfter:              now.AddDate(20, 0, 0),
 +		KeyUsage:              x509.KeyUsageDigitalSignature,
@@ -1575,7 +1570,7 @@ index 0000000..c40131e
 +		h.Set("Strict-Transport-Security", "max-age=31536000")
 +
 +		if r.URL.Path == "/mvtls" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
-+			// identification for MapViewer3D; nothing secret, sent without any login
++			// identification for clients; nothing secret, sent without any login
 +			h.Set("Content-Type", "application/json")
 +			h.Set("Cache-Control", "no-store")
 +			h.Set("Access-Control-Allow-Origin", "*")
@@ -1721,7 +1716,7 @@ index 0000000..c40131e
 +}
 diff --git a/runtime/tls-front/main_test.go b/runtime/tls-front/main_test.go
 new file mode 100644
-index 0000000..ee47ba5
+index 0000000..3e86273
 --- /dev/null
 +++ b/runtime/tls-front/main_test.go
 @@ -0,0 +1,310 @@
@@ -1795,7 +1790,7 @@ index 0000000..ee47ba5
 +	return "https://" + inner.Addr().String(), pinOf(id.Leaf), seen
 +}
 +
-+// client trusts exactly the pinned key, like MapViewer3D does.
++// client trusts exactly the pinned key, like a real client does.
 +func client(pin string) *http.Client {
 +	return &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
 +		InsecureSkipVerify: true,

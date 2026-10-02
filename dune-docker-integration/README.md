@@ -81,7 +81,7 @@ See the top of this page (both patches, in order).
 
 The Console speaks plain HTTP on 8088, so the API key and every answer cross the network in clear text. This patch adds an
 **optional front door**: a small container that serves the Console **API** over HTTPS with its own long-lived key and
-forwards to the unchanged Console. Tools such as MapViewer3D pin the key's **fingerprint**; nothing changes for anybody else.
+forwards to the unchanged Console. Clients pin the key's **fingerprint**; nothing changes for anybody else.
 
 ## Where the fingerprint is shown
 

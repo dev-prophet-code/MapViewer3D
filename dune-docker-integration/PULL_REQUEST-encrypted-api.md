@@ -6,8 +6,7 @@
 ## Encrypted API access: optional HTTPS front door for the Console API, fingerprint in the installer and in Settings
 
 The Console speaks plain HTTP on 8088. Over the internet that means the admin password, API keys and every answer cross the
-network in clear text, and tools that use API keys (for example [MapViewer3D](https://github.com/dev-prophet-code/MapViewer3D))
-have no way to be sure whom they talk to. This adds an **optional front door**: a small container that serves the Console
+network in clear text, and anything that uses API keys has no way to be sure whom it talks to. This adds an **optional front door**: a small container that serves the Console
 **API** over HTTPS with its own long-lived key and forwards to the unchanged Console. Clients pin the key's **fingerprint**.
 Nothing changes for anybody who does not use it: the normal address keeps working.
 
@@ -18,7 +17,7 @@ Nothing changes for anybody who does not use it: the normal address keeps workin
 
 - **Installer:** below the first admin password it now prints the encrypted address and the **key fingerprint** and where to see
   it again. `DUNE_ENCRYPTED_API=0` skips it; a choice made later in Settings is kept when the installer runs again.
-- **Settings → Encrypted API Access:** status, an on/off switch, the address and the **Key Fingerprint** with a Copy button.
+- **Settings → Encrypted API Access:** a short section with status, an on/off switch, the address and the **Key Fingerprint** with a Copy button. The explanation (what to compare, when the fingerprint changes) is in the docs, not on the page.
 - **CLI:** `dune encrypted-api enable | disable | status | fingerprint`.
 
 The fingerprint is `sha256/<base64url of the SHA-256 of the certificate's public key>`. It does not change by itself – not

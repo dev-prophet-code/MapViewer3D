@@ -283,7 +283,7 @@ func issue(key *ecdsa.PrivateKey, names []string) ([]byte, error) {
 	now := time.Now()
 	tpl := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "MapViewer3D encrypted front"},
+		Subject:               pkix.Name{CommonName: "Dune Docker encrypted API access"},
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              now.AddDate(20, 0, 0),
 		KeyUsage:              x509.KeyUsageDigitalSignature,
@@ -382,7 +382,7 @@ func newHandler(cfg config) http.Handler {
 		h.Set("Strict-Transport-Security", "max-age=31536000")
 
 		if r.URL.Path == "/mvtls" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
-			// identification for MapViewer3D; nothing secret, sent without any login
+			// identification for clients; nothing secret, sent without any login
 			h.Set("Content-Type", "application/json")
 			h.Set("Cache-Control", "no-store")
 			h.Set("Access-Control-Allow-Origin", "*")

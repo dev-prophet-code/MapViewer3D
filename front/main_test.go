@@ -68,7 +68,7 @@ func start(t *testing.T, env map[string]string) (base string, pin string, seen c
 	return "https://" + inner.Addr().String(), pinOf(id.Leaf), seen
 }
 
-// client trusts exactly the pinned key, like MapViewer3D does.
+// client trusts exactly the pinned key, like a real client does.
 func client(pin string) *http.Client {
 	return &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
 		InsecureSkipVerify: true,
