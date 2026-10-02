@@ -14,6 +14,7 @@ Thanks for helping out!
 
 ```bash
 cd backend && go vet ./... && go test ./...
+# MV_SECURE_PORT=<port> lets the viewer look for the encrypted front door on this machine (tests/development)
 ./start.sh --build     # build and run locally
 ```
 

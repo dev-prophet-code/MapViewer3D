@@ -79,6 +79,13 @@ Browser  ⇄  local viewer server (127.0.0.1)  ⇄  your server's console (API)
   - active maps and instances,
   - map images,
   - players, bases and all other live data.
+- **Several servers (Beta.16):** *Connection → Switch server* keeps every server you
+  connected to (each in its own encrypted file) and switches the running program to
+  another one without entering the token again; instance names are kept per server.
+- **Realtime Data (Beta.16):** with an API key that has the scope *Realtime Data*, sandworms,
+  enemies, civilians, vehicles and storms also reach a viewer on your own PC through the
+  console. The viewer asks at start; if the server does not offer it, the switches are
+  simply not shown. See [docs/Agent-EN.md](docs/Agent-EN.md).
 
 ## Use it on your own website (with real-time data)
 
@@ -155,13 +162,19 @@ fails because of the computer binding.
 - **Connection to the console:** The link between the viewer and the console is only
   as secure as the console itself. If it runs over `http://`, the token crosses the
   network unencrypted. Where possible, reach the console over `https://` (reverse
-  proxy with TLS) or through a VPN or SSH tunnel.
+  proxy with TLS) or through a VPN or SSH tunnel. Since Beta.16 the viewer can also use
+  the **encrypted API access** of a Dune Docker server (HTTPS with its own long-lived
+  key): it finds it by itself, shows the key's fingerprint and switches only after you
+  compared it with the one on the server (Dune Docker: *Settings → Encrypted API Access*,
+  the end of the installer, or `dune encrypted-api fingerprint`). For a self-signed or
+  internal certificate you can also enter the fingerprint yourself (`-api-pin`). Realtime
+  Data is used only over HTTPS or on the same machine.
 - **API token permissions:** Give the token read access to map data only. The viewer
   needs nothing else.
 
 ### Managing your credentials
 
-- **Change:** *Connection → Change* (new server or token).
+- **Change:** *Connection → Change* (new server or token). **Switch server:** *Connection → Switch server*.
 - **Delete:** *Connection → Delete credentials* removes the encrypted file. The
   master key stays and is reused on the next setup.
 - **Rename instances:** *Connection → Name instances*.
