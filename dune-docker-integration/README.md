@@ -18,7 +18,7 @@ dune console restart
 Each patch file holds two commits: ours and the maintainer's follow-up from the pull request (stream closes when player access is removed; encrypted access integrated with the Console's IP restrictions and lifecycle, signed client address, off by default).
 
 
-Both are prepared as pull requests from the branches `realtime-data-scope` and `encrypted-api-access` of a fork. A one-page explanation of how the system works, for maintainers: [OVERVIEW.md](OVERVIEW.md). The data API for other programs (fields, stream format, examples, pinning): [REALTIME-API.md](REALTIME-API.md).
+Both are prepared as pull requests from the branches `realtime-data-scope` and `encrypted-api-access` of a fork. A one-page explanation of how the system works, for maintainers: [OVERVIEW.md](OVERVIEW.md). The data API for other programs (fields, stream format, examples, pinning): [REALTIME-API.md](REALTIME-API.md). Test of both PRs on a real host, step by step: [TEST-REPORT.md](TEST-REPORT.md).
 
 ---
 
