@@ -70,7 +70,7 @@ func TestSecureFrontOfferAndAccept(t *testing.T) {
 	allowLocalProbe(t, front)
 	console := consoleStub(t, false)
 	s, state := storeServer(t)
-	if w := connect(t, s, console.URL, "dak_aaaaaaaaaaaa", ""); w.Code != 200 {
+	if w := connect(t, s, console.URL, "dak_test_aaaaaaaaaaaa", ""); w.Code != 200 {
 		t.Fatalf("Einrichtung: %d %s", w.Code, w.Body.String())
 	}
 	adminCall(t, s, "POST", "/api/setup/labels", map[string]string{"1": "Mein PvE"})
@@ -92,7 +92,7 @@ func TestSecureFrontOfferAndAccept(t *testing.T) {
 	if w := adminCall(t, s, "POST", "/api/setup/secure", map[string]any{"accept": true, "pin": pin}); w.Code != 200 {
 		t.Fatalf("Annahme: %d %s", w.Code, w.Body.String())
 	}
-	if s.lp().cfg.APIBase != front.URL || s.lp().cfg.APIPin != pin || s.lp().cfg.Token != "dak_aaaaaaaaaaaa" {
+	if s.lp().cfg.APIBase != front.URL || s.lp().cfg.APIPin != pin || s.lp().cfg.Token != "dak_test_aaaaaaaaaaaa" {
 		t.Fatalf("aktive Verbindung: %+v", s.lp().cfg)
 	}
 	if st := statusOf(t, s); st["https"] != true || st["secure"] != nil {
@@ -120,7 +120,7 @@ func TestSecureFrontDeclinePersists(t *testing.T) {
 	allowLocalProbe(t, front)
 	console := consoleStub(t, false)
 	s, _ := storeServer(t)
-	connect(t, s, console.URL, "dak_aaaaaaaaaaaa", "")
+	connect(t, s, console.URL, "dak_test_aaaaaaaaaaaa", "")
 	waitOffer(t, s)
 	if w := adminCall(t, s, "POST", "/api/setup/secure", map[string]any{"accept": false}); w.Code != 200 {
 		t.Fatalf("%d", w.Code)
@@ -147,7 +147,7 @@ func TestSecureFrontAutoWithKnownPin(t *testing.T) {
 	if err := SetConsolePin(pin); err != nil {
 		t.Fatal(err)
 	}
-	connect(t, s, console.URL, "dak_aaaaaaaaaaaa", "")
+	connect(t, s, console.URL, "dak_test_aaaaaaaaaaaa", "")
 	for i := 0; i < 100 && s.lp().cfg.APIBase != front.URL; i++ {
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -160,7 +160,7 @@ func TestSecureFrontAutoWithKnownPin(t *testing.T) {
 func TestSecureFrontNotOffered(t *testing.T) {
 	console := consoleStub(t, false)
 	s, _ := storeServer(t)
-	connect(t, s, console.URL, "dak_aaaaaaaaaaaa", "") // 127.0.0.1 und kein Test-Schalter: lokal -> keine Suche
+	connect(t, s, console.URL, "dak_test_aaaaaaaaaaaa", "") // 127.0.0.1 und kein Test-Schalter: lokal -> keine Suche
 	time.Sleep(300 * time.Millisecond)
 	if statusOf(t, s)["secure"] != nil {
 		t.Fatal("lokale Console bekam ein Angebot")
@@ -170,7 +170,7 @@ func TestSecureFrontNotOffered(t *testing.T) {
 	defer other.Close()
 	allowLocalProbe(t, other)
 	s2, _ := storeServer(t)
-	connect(t, s2, console.URL, "dak_aaaaaaaaaaaa", "")
+	connect(t, s2, console.URL, "dak_test_aaaaaaaaaaaa", "")
 	time.Sleep(500 * time.Millisecond)
 	if statusOf(t, s2)["secure"] != nil {
 		t.Fatal("fremder TLS-Dienst als Eingang erkannt")

@@ -80,10 +80,10 @@ func listServers(t *testing.T, s *Server) []serverEntry {
 func TestServerListSwitch(t *testing.T) {
 	a, b := consoleStub(t, false), consoleStub(t, false)
 	s, state := storeServer(t)
-	if w := connect(t, s, a.URL, "dak_aaaaaaaaaaaa", ""); w.Code != 200 {
+	if w := connect(t, s, a.URL, "dak_test_aaaaaaaaaaaa", ""); w.Code != 200 {
 		t.Fatalf("A: %d %s", w.Code, w.Body.String())
 	}
-	if w := connect(t, s, b.URL, "dak_bbbbbbbbbbbb", ""); w.Code != 200 {
+	if w := connect(t, s, b.URL, "dak_test_bbbbbbbbbbbb", ""); w.Code != 200 {
 		t.Fatalf("B: %d %s", w.Code, w.Body.String())
 	}
 	list := listServers(t, s)
@@ -106,7 +106,7 @@ func TestServerListSwitch(t *testing.T) {
 	if w := adminCall(t, s, "POST", "/api/servers/"+idA+"/use", nil); w.Code != 200 {
 		t.Fatalf("Wechsel: %d %s", w.Code, w.Body.String())
 	}
-	if s.lp() == nil || s.lp().cfg.APIBase != a.URL || s.lp().cfg.Token != "dak_aaaaaaaaaaaa" {
+	if s.lp() == nil || s.lp().cfg.APIBase != a.URL || s.lp().cfg.Token != "dak_test_aaaaaaaaaaaa" {
 		t.Fatal("aktive Verbindung nicht A")
 	}
 	if s.customLabels()["1"] != "" {
@@ -130,7 +130,7 @@ func TestServerListSwitch(t *testing.T) {
 func TestServerListRemoteForbidden(t *testing.T) {
 	a := consoleStub(t, false)
 	s, _ := storeServer(t)
-	connect(t, s, a.URL, "dak_aaaaaaaaaaaa", "")
+	connect(t, s, a.URL, "dak_test_aaaaaaaaaaaa", "")
 	r := httptest.NewRequest("GET", "http://map.example.org/api/servers", nil)
 	r.RemoteAddr, r.Host = "198.51.100.7:4000", "map.example.org"
 	w := httptest.NewRecorder()
@@ -152,17 +152,17 @@ func TestServerListRemoteForbidden(t *testing.T) {
 func TestSetupPinnedCertificate(t *testing.T) {
 	c := consoleStub(t, true)
 	s, _ := storeServer(t)
-	w := connect(t, s, c.URL, "dak_cccccccccccc", "")
+	w := connect(t, s, c.URL, "dak_test_cccccccccccc", "")
 	var e struct{ Code, Detail string }
 	json.Unmarshal(w.Body.Bytes(), &e)
 	pin := CertPin(c.Certificate())
 	if w.Code != http.StatusBadGateway || e.Code != "cert_untrusted" || e.Detail != pin {
 		t.Fatalf("ohne Pin: %d %+v", w.Code, e)
 	}
-	if w := connect(t, s, c.URL, "dak_cccccccccccc", "sha256/"+strings.Repeat("A", 43)); w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), "cert_pin") {
+	if w := connect(t, s, c.URL, "dak_test_cccccccccccc", "sha256/"+strings.Repeat("A", 43)); w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), "cert_pin") {
 		t.Fatalf("falscher Pin: %d %s", w.Code, w.Body.String())
 	}
-	if w := connect(t, s, c.URL, "dak_cccccccccccc", pin); w.Code != 200 {
+	if w := connect(t, s, c.URL, "dak_test_cccccccccccc", pin); w.Code != 200 {
 		t.Fatalf("mit Pin: %d %s", w.Code, w.Body.String())
 	}
 	if l := listServers(t, s); len(l) != 1 || !l[0].Pinned || !l[0].HTTPS {
