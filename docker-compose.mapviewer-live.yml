@@ -1,10 +1,13 @@
-# MapViewer3D Realtime Data agent for a Dune Docker host: live sandworms,
-# enemies, civilians, vehicles, storms (optionally players), read from the
-# game server processes.
+# MapViewer3D for a Dune Docker host.
 #
-# The agent has no login. It listens on 127.0.0.1:8796 of the host only, and
-# the Dune Docker Console is the one door to it (API key scope "Realtime Data",
-# GET /api/realtime/*). Nothing is published to the network.
+#   mvagent  live sandworms, enemies, civilians, vehicles, storms (optionally
+#            players), read from the game server processes. No login; listens
+#            on 127.0.0.1:8796 of the host only. The Dune Docker Console is the
+#            one door to it (API key scope "Realtime Data", GET /api/realtime/*).
+#   mvtls    optional encrypted front door for the Console API (HTTPS, own
+#            long-lived key, pinned by the viewer). Forwards to the unchanged
+#            Console on 127.0.0.1:8088. Nobody else has to change anything.
+#            Start it with:  --profile tls
 #
 #   cp .env.example .env
 #   docker compose -f docker-compose.mapviewer-live.yml up -d --build
@@ -48,3 +51,33 @@ services:
     logging:
       driver: json-file
       options: {max-size: 10m, max-file: "3"}
+
+  # Encrypted front door (optional, profile "tls"). Host networking: it reaches
+  # the Console on the host's loopback and listens on MV_TLS_BIND:MV_TLS_PORT.
+  mvtls:
+    profiles: [tls]
+    build:
+      context: .
+      target: tls
+    image: mapviewer-live/mvtls:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      MV_TLS_ADDR: ${MV_TLS_BIND:-0.0.0.0}:${MV_TLS_PORT:-8797}
+      MV_TLS_UPSTREAM: ${MV_TLS_UPSTREAM:-http://127.0.0.1:8088}
+      MV_TLS_NAMES: ${MV_TLS_NAMES:-}
+      MV_TLS_ALLOW: ${MV_TLS_ALLOW:-}
+      MV_TLS_FULL: ${MV_TLS_FULL:-false}
+    volumes:
+      - mvtls-data:/data
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+
+volumes:
+  # key and certificate of the encrypted front door: back it up, never share it
+  mvtls-data: {}

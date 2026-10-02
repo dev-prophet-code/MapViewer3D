@@ -1,11 +1,16 @@
-# MapViewer3D Realtime Data agent for Dune Docker hosts.
+# MapViewer3D Realtime Data for Dune Docker hosts.
 #
-# mvagent, built from the MapViewer3D sources at MV_REF and verified against
-# MV_COMMIT, as a static Go binary on a distroless base without a shell. Base
-# images are pinned by digest.
+#   target "agent": mvagent, built from the MapViewer3D sources at MV_REF and
+#                   verified against MV_COMMIT
+#   target "tls":   mvtls, the encrypted front door for the Console API (this
+#                   repository, stdlib only, tests run in the build)
+#
+# Static Go binaries on distroless bases without a shell. Base images are pinned
+# by digest.
 
 ARG GO_IMAGE=golang:1.26-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c
 ARG RUN_IMAGE=gcr.io/distroless/static-debian12@sha256:d75cdd72874d4790092fcb1b058493ecf6bb5bf2b2b897045b00ff01d91843f2
+ARG RUN_IMAGE_NONROOT=gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 
 FROM ${GO_IMAGE} AS build
 RUN apk add --no-cache git
@@ -26,3 +31,18 @@ FROM ${RUN_IMAGE} AS agent
 COPY --from=build /out/mvagent /usr/local/bin/mvagent
 ENTRYPOINT ["/usr/local/bin/mvagent"]
 CMD ["-addr", "127.0.0.1:8796"]
+
+FROM ${GO_IMAGE} AS build-tls
+WORKDIR /src
+COPY front/ ./
+RUN CGO_ENABLED=0 go vet ./... && CGO_ENABLED=0 go test ./... \
+ && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/mvtls . \
+ && mkdir -p /out/data
+
+FROM ${RUN_IMAGE_NONROOT} AS tls
+COPY --from=build-tls /out/mvtls /usr/local/bin/mvtls
+# key and certificate live here (named volume, owned by nonroot)
+COPY --from=build-tls --chown=65532:65532 --chmod=700 /out/data /data
+VOLUME /data
+HEALTHCHECK --interval=30s --timeout=8s --start-period=10s CMD ["/usr/local/bin/mvtls", "-healthcheck"]
+ENTRYPOINT ["/usr/local/bin/mvtls"]

@@ -100,7 +100,10 @@ Realtime Data   [ None | Read ]
 - The agent is reachable only on the host's loopback; the Console refuses any other agent URL.
 - Transport: keys and positions travel inside the Console connection. Serve the Console over HTTPS when it is reached
   over the internet. The MapViewer3D client uses Realtime Data only over HTTPS (or on the same machine) and checks the
-  certificate against the system trust store or a pinned fingerprint.
+  certificate against the system trust store or a pinned fingerprint. For installations whose Console only speaks plain
+  HTTP, the MapViewer3D stack (branch `ddp`) ships an optional encrypted front door, `mvtls`: HTTPS with its own
+  long-lived key in front of the unchanged Console (API door: only `GET /api/*` with a key, no web UI, no cookies). It
+  needs no change in this repository and nobody else has to change anything.
 - PvP: worms and enemies follow players, so their movement can hint at player positions. The docs say not to give such
   keys to players.
 

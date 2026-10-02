@@ -8,6 +8,13 @@ Console pass the live data of the MapViewer3D agent to clients whose key holds i
 - Base: upstream `main` at `da644b7` (v1.4.44, applies with `git am`)
 - Not submitted as a pull request yet. Prepared PR text: [PULL_REQUEST.md](PULL_REQUEST.md).
 
+## Transport
+
+The patch itself does not change how the Console is reached. A Console that only speaks plain HTTP can be put behind the
+optional encrypted front door of this stack, `mvtls` (compose profile `tls`; see the [README](../README.md#encrypted-connection)
+and [SECURITY.md](../SECURITY.md)): HTTPS with its own long-lived key that MapViewer3D pins, forwarding to the unchanged
+Console. Nothing in Dune Docker has to change for it, and everybody else keeps using the Console as before.
+
 ## What the admin sees
 
 When creating an API key there is a new row next to Maps, Players and the others:
