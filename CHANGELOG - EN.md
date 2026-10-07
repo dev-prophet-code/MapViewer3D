@@ -10,7 +10,7 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ---
 
-## Beta.16 – not yet released
+## Beta.16 – 10/07/2026
 
 ### New
 
@@ -22,7 +22,7 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ### Notes
 
-- The changes Dune Docker needs (API key scope *Realtime Data*, encrypted API access with the fingerprint in the installer and in Settings) are ready as two patches in branch `ddp` and are not yet part of Dune Docker. Without them the realtime switches stay hidden and the viewer behaves like Beta.15.
+- The changes Dune Docker needs (API key scope *Realtime Data*, encrypted API access with the fingerprint in the installer and in Settings) are ready as two patches in branch `ddp` and are not yet part of Dune Docker. Without them the realtime switches stay hidden and the viewer behaves like Beta.15. Both are open as pull requests at Red-Blink; the viewer works with every Dune Docker release up to v1.4.47 (the API routes it uses are unchanged there).
 
 ### Fixed
 
