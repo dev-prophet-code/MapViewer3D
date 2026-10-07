@@ -11,11 +11,11 @@ Two ready-to-merge changes for [Red-Blink/dune-awakening-selfhost-docker](https:
 
 ```bash
 cd dune-awakening-selfhost-docker
-git am /path/to/0001-api-keys-realtime-data-scope.patch      # either one on its own,
-git am /path/to/0002-encrypted-api-access.patch              # or both (resolve the small conflicts)
+git apply /path/to/0001-api-keys-realtime-data-scope.patch   # either one on its own,
+git apply --3way /path/to/0002-encrypted-api-access.patch    # or both (resolve the small conflicts)
 dune console restart
 ```
-Each patch file holds two commits: ours and the maintainer's follow-up from the pull request (stream closes when player access is removed; encrypted access integrated with the Console's IP restrictions and lifecycle, signed client address, off by default).
+Each patch is the complete diff of its pull request against Dune Docker v1.4.47 (`main`), ours plus the maintainer's follow-up commits (stream closes when player access is removed; encrypted access integrated with the Console's IP restrictions and lifecycle, signed client address, off by default).
 
 
 Both are prepared as pull requests from the branches `realtime-data-scope` and `encrypted-api-access` of a fork. A one-page explanation of how the system works, for maintainers: [OVERVIEW.md](OVERVIEW.md). The data API for other programs (fields, stream format, examples, pinning): [REALTIME-API.md](REALTIME-API.md). Test of both PRs on a real host, step by step: [TEST-REPORT.md](TEST-REPORT.md).

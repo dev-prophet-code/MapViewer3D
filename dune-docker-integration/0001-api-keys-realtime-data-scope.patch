@@ -1,46 +1,5 @@
-From 2d95875d0f45b39c1f5cc5d872c8cab31984fff9 Mon Sep 17 00:00:00 2001
-From: dev-prophet-code <dev-prophet-code@users.noreply.github.com>
-Date: Fri, 2 Oct 2026 13:45:22 +0200
-Subject: [PATCH 1/2] API keys: new scope "Realtime Data" for live sandworms,
- NPCs, vehicles and storms
-
-Realtime Data is its own read-only namespace (realtime:read), shown as a
-separate row "Realtime Data" (None / Read) when creating an API key. The
-Console proxies the optional MapViewer3D position agent (mvagent on
-127.0.0.1:8796, no login) so every request goes through the normal API key /
-session authorization:
-
-- GET /api/realtime/healthz, /api/realtime/objects, /api/realtime/stream (SSE)
-- player positions only with players:read as well; otherwise removed from
-  snapshots and position updates
-- open streams re-check the key every 10 s: disabling, expiring, revoking or
-  removing the scope ends the stream; 4 streams per key, 16 in total
-- no process ids are passed on; agent URL must be plain HTTP on loopback
-- tiers: owner and admin; maps:read does not include it
-- tests: test/realtime.test.js, scope/RBAC parity tests, ApiKeysSection test;
-  docs/console/realtime.md and the api-keys scope table
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
----
- console/api/src/actions.js                    |   8 +
- console/api/src/apiKeyScopes.js               |   2 +-
- console/api/src/policy.js                     |   1 +
- console/api/src/server.js                     |  50 ++++
- console/api/src/services/realtime.js          | 236 ++++++++++++++++++
- console/api/test/apiKeyScopes.test.js         |  10 +-
- console/api/test/rbacParity.test.js           |   2 +-
- console/api/test/realtime.test.js             | 183 ++++++++++++++
- console/web/src/api/apiKeys.ts                |   1 +
- .../features/settings/ApiKeysSection.test.tsx |  15 ++
- docs/console/api-keys.md                      |   7 +-
- docs/console/realtime.md                      |  66 +++++
- 12 files changed, 571 insertions(+), 10 deletions(-)
- create mode 100644 console/api/src/services/realtime.js
- create mode 100644 console/api/test/realtime.test.js
- create mode 100644 docs/console/realtime.md
-
 diff --git a/console/api/src/actions.js b/console/api/src/actions.js
-index 0c5cdd7..b9bb90d 100644
+index 563ead3..4b491d9 100644
 --- a/console/api/src/actions.js
 +++ b/console/api/src/actions.js
 @@ -50,6 +50,7 @@ export const NAMESPACES = {
@@ -66,10 +25,10 @@ index 0c5cdd7..b9bb90d 100644
    "POST /api/settings/public-directory/claim": "settings:write",
    "POST /api/settings/server-startup":          "settings:write",
 diff --git a/console/api/src/apiKeyScopes.js b/console/api/src/apiKeyScopes.js
-index 14770f0..a2faf6b 100644
+index cf21e07..94639e7 100644
 --- a/console/api/src/apiKeyScopes.js
 +++ b/console/api/src/apiKeyScopes.js
-@@ -78,7 +78,7 @@ export const SCOPE_LEVELS = Object.freeze(["read", "write"]);
+@@ -82,7 +82,7 @@ export const SCOPE_LEVELS = Object.freeze(["read", "write"]);
  // shows up in the UI on its own rather than silently disappearing.
  const PREFERRED_ORDER = [
    "players", "bases", "vehicles", "guilds", "storage", "blueprints",
@@ -91,7 +50,7 @@ index e6bacb0..0dddba2 100644
        { Effect: "Deny", Action: [
          "settings:*",
 diff --git a/console/api/src/server.js b/console/api/src/server.js
-index afa85ab..b854d5e 100644
+index 7bfd493..51b7252 100644
 --- a/console/api/src/server.js
 +++ b/console/api/src/server.js
 @@ -40,6 +40,7 @@ import { looksLikeTar, mintSystemBackupName, normalizeImportedSystemMetadata, re
@@ -120,19 +79,10 @@ index afa85ab..b854d5e 100644
    if (path.startsWith("/api/settings/api-keys/")) return apiKeyItemRoute(req, res, path);
    if (path === "/api/settings/iam/policy/test" && req.method === "POST") {
      const body = await readJson(req);
-@@ -2712,6 +2717,51 @@ async function adminPasswordRoute(req, res) {
+@@ -2724,6 +2729,42 @@ async function adminPasswordRoute(req, res) {
    return json(res, 200, { ok: true });
  }
  
-+// Whether the principal of this request may perform `action`, by the same two
-+// gates handleApi applies (policy engine, then the key's own scope map) --
-+// without writing a response. Used for the optional parts of a reply, such as
-+// player positions in Realtime Data.
-+function principalMay(req, action) {
-+  if (!req.authSession || !evaluate(req.authSession, action)) return false;
-+  return !req.authApiKey || apiKeys.allows(req.authApiKey, action);
-+}
-+
 +async function realtimeRoute(res, action) {
 +  try {
 +    return json(res, 200, await action(), { "cache-control": "no-store" });
@@ -174,10 +124,10 @@ index afa85ab..b854d5e 100644
    const created = await apiKeys.create({
 diff --git a/console/api/src/services/realtime.js b/console/api/src/services/realtime.js
 new file mode 100644
-index 0000000..32625e5
+index 0000000..aa4f123
 --- /dev/null
 +++ b/console/api/src/services/realtime.js
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,241 @@
 +// Realtime Data: live sandworms, enemies, civilians, vehicles and sandstorms
 +// (optionally players) read from the game server processes by the optional
 +// MapViewer3D position agent `mvagent`
@@ -322,7 +272,12 @@ index 0000000..32625e5
 +      const upstream = http.get(new URL("/stream", base), { headers: { accept: "text/event-stream" } });
 +      const recheck = setInterval(() => {
 +        if (!stillAllowed()) return finish();
-+        players = Boolean(allowPlayers());
++        const nextPlayers = Boolean(allowPlayers());
++        // Previously admitted player IDs remain in the delta cache until the
++        // next snapshot. End this stream on a downgrade rather than leaking
++        // their positions in the meantime; reconnect applies the new scope.
++        if (players && !nextPlayers) return finish();
++        players = nextPlayers;
 +      }, recheckMs);
 +
 +      function finish() {
@@ -415,7 +370,7 @@ index 0000000..32625e5
 +  };
 +}
 diff --git a/console/api/test/apiKeyScopes.test.js b/console/api/test/apiKeyScopes.test.js
-index c97dea0..6168499 100644
+index 7c5c97c..684fc8d 100644
 --- a/console/api/test/apiKeyScopes.test.js
 +++ b/console/api/test/apiKeyScopes.test.js
 @@ -73,11 +73,11 @@ test("carepackage:scan is a write despite its verb-shaped name", () => {
@@ -444,7 +399,7 @@ index c97dea0..6168499 100644
  
  test("scopeCatalog reports write support for the UI", () => {
 diff --git a/console/api/test/rbacParity.test.js b/console/api/test/rbacParity.test.js
-index e32cd97..a33a637 100644
+index d1b3836..b44bd47 100644
 --- a/console/api/test/rbacParity.test.js
 +++ b/console/api/test/rbacParity.test.js
 @@ -138,7 +138,7 @@ test("parity: all IAM actions reference known namespaces", () => {
@@ -458,10 +413,10 @@ index e32cd97..a33a637 100644
      if (typeof action !== "string") continue;
 diff --git a/console/api/test/realtime.test.js b/console/api/test/realtime.test.js
 new file mode 100644
-index 0000000..0074754
+index 0000000..9ec6cb8
 --- /dev/null
 +++ b/console/api/test/realtime.test.js
-@@ -0,0 +1,183 @@
+@@ -0,0 +1,207 @@
 +import { test } from "node:test";
 +import assert from "node:assert/strict";
 +import http from "node:http";
@@ -584,6 +539,30 @@ index 0000000..0074754
 +  }
 +});
 +
++test("removing only players:read ends a stream without waiting for another snapshot", async () => {
++  const agent = await fakeAgent();
++  const realtime = createRealtime({ agentUrl: agent.url, recheckMs: 20 });
++  let players = true;
++  const { front, events, done } = await openStream(realtime, {
++    principal: "apikey:downgrade", allowPlayers: () => players, stillAllowed: () => true
++  });
++  try {
++    await new Promise(resolve => setTimeout(resolve, 100));
++    assert.ok(events.some(e => e.name === "pos" && e.data.d.some(d => d[0] === 3)));
++    players = false;
++    await Promise.race([done, new Promise((_, reject) => {
++      const timer = setTimeout(() => reject(new Error("scope downgrade did not end the stream")), 1000);
++      timer.unref();
++    })]);
++    const count = events.length;
++    await new Promise(resolve => setTimeout(resolve, 60));
++    assert.equal(events.length, count);
++    assert.equal(realtime.openStreams(), 0);
++  } finally {
++    front.closeAllConnections(); front.close(); agent.server.close();
++  }
++});
++
 +test("stream with players:read keeps players", async () => {
 +  const agent = await fakeAgent();
 +  const realtime = createRealtime({ agentUrl: agent.url });
@@ -681,7 +660,7 @@ index d42dce8..a851051 100644
 +  expect(within(group).queryByRole("radio", { name: /Read\+Write/ })).toBeNull();
 +});
 diff --git a/docs/console/api-keys.md b/docs/console/api-keys.md
-index 8284a47..3bfd729 100644
+index 7c41caf..ad5aa28 100644
 --- a/docs/console/api-keys.md
 +++ b/docs/console/api-keys.md
 @@ -104,6 +104,7 @@ namespace" rule, so Create stays disabled until something is selected.
@@ -777,73 +756,3 @@ index 0000000..182d35e
 +HTTPS or on the same machine, and checks the Console certificate – by the
 +system trust store or by a pinned fingerprint for a self-signed / internal
 +certificate.
--- 
-2.54.0 (Apple Git-157)
-
-
-From 200c05fc8469ed7baaf5ddc5106bd345c14824e5 Mon Sep 17 00:00:00 2001
-From: Red-Blink <34422787+Red-Blink@users.noreply.github.com>
-Date: Fri, 2 Oct 2026 18:03:42 +0300
-Subject: [PATCH 2/2] Close realtime streams when player access is removed
-
----
- console/api/src/services/realtime.js |  7 ++++++-
- console/api/test/realtime.test.js    | 24 ++++++++++++++++++++++++
- 2 files changed, 30 insertions(+), 1 deletion(-)
-
-diff --git a/console/api/src/services/realtime.js b/console/api/src/services/realtime.js
-index 32625e5..aa4f123 100644
---- a/console/api/src/services/realtime.js
-+++ b/console/api/src/services/realtime.js
-@@ -142,7 +142,12 @@ export function createRealtime({
-       const upstream = http.get(new URL("/stream", base), { headers: { accept: "text/event-stream" } });
-       const recheck = setInterval(() => {
-         if (!stillAllowed()) return finish();
--        players = Boolean(allowPlayers());
-+        const nextPlayers = Boolean(allowPlayers());
-+        // Previously admitted player IDs remain in the delta cache until the
-+        // next snapshot. End this stream on a downgrade rather than leaking
-+        // their positions in the meantime; reconnect applies the new scope.
-+        if (players && !nextPlayers) return finish();
-+        players = nextPlayers;
-       }, recheckMs);
- 
-       function finish() {
-diff --git a/console/api/test/realtime.test.js b/console/api/test/realtime.test.js
-index 0074754..9ec6cb8 100644
---- a/console/api/test/realtime.test.js
-+++ b/console/api/test/realtime.test.js
-@@ -120,6 +120,30 @@ test("stream without players:read drops player objects and their positions", asy
-   }
- });
- 
-+test("removing only players:read ends a stream without waiting for another snapshot", async () => {
-+  const agent = await fakeAgent();
-+  const realtime = createRealtime({ agentUrl: agent.url, recheckMs: 20 });
-+  let players = true;
-+  const { front, events, done } = await openStream(realtime, {
-+    principal: "apikey:downgrade", allowPlayers: () => players, stillAllowed: () => true
-+  });
-+  try {
-+    await new Promise(resolve => setTimeout(resolve, 100));
-+    assert.ok(events.some(e => e.name === "pos" && e.data.d.some(d => d[0] === 3)));
-+    players = false;
-+    await Promise.race([done, new Promise((_, reject) => {
-+      const timer = setTimeout(() => reject(new Error("scope downgrade did not end the stream")), 1000);
-+      timer.unref();
-+    })]);
-+    const count = events.length;
-+    await new Promise(resolve => setTimeout(resolve, 60));
-+    assert.equal(events.length, count);
-+    assert.equal(realtime.openStreams(), 0);
-+  } finally {
-+    front.closeAllConnections(); front.close(); agent.server.close();
-+  }
-+});
-+
- test("stream with players:read keeps players", async () => {
-   const agent = await fakeAgent();
-   const realtime = createRealtime({ agentUrl: agent.url });
--- 
-2.54.0 (Apple Git-157)
-
