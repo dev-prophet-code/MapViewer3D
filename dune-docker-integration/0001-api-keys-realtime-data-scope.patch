@@ -1,3 +1,17 @@
+diff --git a/.env.example b/.env.example
+index 2531d0f..658f884 100755
+--- a/.env.example
++++ b/.env.example
+@@ -86,6 +86,9 @@ DUNE_COMPOSE_PROJECT_NAME=
+ ADMIN_BIND_HOST=auto
+ ADMIN_BIND_PORT=8088
+ ADMIN_AUTH_DISABLED=0
++# Realtime Data (optional position agent). Empty = http://127.0.0.1:8796; only
++# plain HTTP on loopback is accepted.
++DUNE_REALTIME_AGENT_URL=
+ ADMIN_SECURE_COOKIES=0
+ ADMIN_PASSWORD=
+ ADMIN_TASK_RETENTION=200
 diff --git a/console/api/src/actions.js b/console/api/src/actions.js
 index 563ead3..4b491d9 100644
 --- a/console/api/src/actions.js
@@ -37,6 +51,38 @@ index cf21e07..94639e7 100644
    "server", "logs", "backups", "updates", "carepackage", "addons",
    "admin"
  ];
+diff --git a/console/api/src/auth.js b/console/api/src/auth.js
+index c3cd17a..7529a13 100644
+--- a/console/api/src/auth.js
++++ b/console/api/src/auth.js
+@@ -61,6 +61,18 @@ export function createAuth(config) {
+     return session;
+   }
+ 
++  // Like readSession, but for long-lived checks (open streams): it never
++  // renews the idle expiry and never deletes anything.
++  function peekSession(req) {
++    if (config.authDisabled) return { id: "dev", csrf: "dev", expiresAt: Number.MAX_SAFE_INTEGER, tier: "owner" };
++    const raw = parseCookies(req.headers.cookie || "").get("asc_session");
++    if (!raw) return null;
++    const [id, sig] = raw.split(".");
++    if (!id || !sig || !constantTimeStringEqual(sign(id), sig)) return null;
++    const session = sessions.get(id);
++    return session && session.expiresAt >= now() ? session : null;
++  }
++
+   async function passwordMatches(value) {
+     // ADMIN_PASSWORD is an operator-supplied literal. Password files may be
+     // either the legacy plaintext format or the scrypt format written by a
+@@ -85,7 +97,7 @@ export function createAuth(config) {
+     return session;
+   }
+ 
+-  return { makeSession, readSession, passwordMatches, requireAuth };
++  return { makeSession, readSession, peekSession, passwordMatches, requireAuth };
+ }
+ 
+ export function setSessionCookie(res, session, config = {}) {
 diff --git a/console/api/src/policy.js b/console/api/src/policy.js
 index e6bacb0..0dddba2 100644
 --- a/console/api/src/policy.js
@@ -50,7 +96,7 @@ index e6bacb0..0dddba2 100644
        { Effect: "Deny", Action: [
          "settings:*",
 diff --git a/console/api/src/server.js b/console/api/src/server.js
-index 136e50d..d02559d 100644
+index 136e50d..a828746 100644
 --- a/console/api/src/server.js
 +++ b/console/api/src/server.js
 @@ -41,6 +41,7 @@ import { looksLikeTar, mintSystemBackupName, normalizeImportedSystemMetadata, re
@@ -79,7 +125,7 @@ index 136e50d..d02559d 100644
    if (path.startsWith("/api/settings/api-keys/")) return apiKeyItemRoute(req, res, path);
    if (path === "/api/settings/iam/policy/test" && req.method === "POST") {
      const body = await readJson(req);
-@@ -2726,6 +2731,42 @@ async function adminPasswordRoute(req, res) {
+@@ -2726,6 +2731,46 @@ async function adminPasswordRoute(req, res) {
    return json(res, 200, { ok: true });
  }
  
@@ -100,7 +146,9 @@ index 136e50d..d02559d 100644
 +  const principal = req.authApiKey ? `apikey:${req.authApiKey.id}` : `session:${req.authSession?.id || "unknown"}`;
 +  const current = () => {
 +    if (!req.authApiKey) {
-+      const session = auth.readSession(req);
++      // peekSession does not renew the idle expiry: an open stream must not
++      // keep an abandoned browser login alive.
++      const session = auth.peekSession(req);
 +      return session ? { session, key: null } : null;
 +    }
 +    const bearer = apiKeys.authenticate(req);
@@ -111,7 +159,9 @@ index 136e50d..d02559d 100644
 +    if (!now || !evaluate(now.session, action)) return false;
 +    return !now.key || apiKeys.allows(now.key, action);
 +  };
-+  audit(config, req, "realtime.stream-open", { principal });
++  // The session id is half of the login cookie: never write it to the audit log.
++  // audit() already records who the caller is; a key's id is not a secret.
++  audit(config, req, "realtime.stream-open", req.authApiKey ? { apiKey: req.authApiKey.id } : {});
 +  realtime.stream(req, res, {
 +    principal,
 +    allowPlayers: () => may("players:read"),
@@ -124,10 +174,10 @@ index 136e50d..d02559d 100644
    const created = await apiKeys.create({
 diff --git a/console/api/src/services/realtime.js b/console/api/src/services/realtime.js
 new file mode 100644
-index 0000000..aa4f123
+index 0000000..942a055
 --- /dev/null
 +++ b/console/api/src/services/realtime.js
-@@ -0,0 +1,241 @@
+@@ -0,0 +1,266 @@
 +// Realtime Data: live sandworms, enemies, civilians, vehicles and sandstorms
 +// (optionally players) read from the game server processes by the optional
 +// MapViewer3D position agent `mvagent`
@@ -199,7 +249,15 @@ index 0000000..aa4f123
 +  maxStreamsPerPrincipal = 4,
 +  recheckMs = RECHECK_MS
 +} = {}) {
-+  const base = parseAgentUrl(agentUrl);
++  // A bad DUNE_REALTIME_AGENT_URL must only disable Realtime Data, never keep
++  // the Console from starting: the error is kept and answered per request.
++  let base = null;
++  let baseError = null;
++  try {
++    base = parseAgentUrl(agentUrl);
++  } catch (error) {
++    baseError = error instanceof RealtimeError ? error : new RealtimeError("DUNE_REALTIME_AGENT_URL cannot be used.", 500);
++  }
 +  const open = new Map(); // principal -> number of open streams
 +  let total = 0;
 +
@@ -230,6 +288,7 @@ index 0000000..aa4f123
 +  return {
 +    // GET /api/realtime/healthz. 503 when the agent is not installed or down.
 +    async health() {
++      if (baseError) throw baseError;
 +      let answer;
 +      try {
 +        answer = await get("/healthz");
@@ -241,6 +300,7 @@ index 0000000..aa4f123
 +
 +    // GET /api/realtime/objects
 +    async objects({ allowPlayers }) {
++      if (baseError) throw baseError;
 +      const kinds = allowPlayers ? [...REALTIME_KINDS, "player"] : REALTIME_KINDS;
 +      let snapshot;
 +      try {
@@ -255,6 +315,11 @@ index 0000000..aa4f123
 +    // allowPlayers and stillAllowed are re-evaluated every recheckMs, so a
 +    // disabled, expired or revoked key (or a removed scope) ends the stream.
 +    stream(req, res, { principal, allowPlayers, stillAllowed }) {
++      if (baseError) {
++        res.writeHead(baseError.status, withSecurityHeaders({ "content-type": "application/json; charset=utf-8" }));
++        res.end(JSON.stringify({ available: false, error: baseError.message }));
++        return;
++      }
 +      const mine = open.get(principal) || 0;
 +      if (total >= maxStreams || mine >= maxStreamsPerPrincipal) {
 +        res.writeHead(429, withSecurityHeaders({ "content-type": "application/json; charset=utf-8", "retry-after": "30" }));
@@ -299,10 +364,15 @@ index 0000000..aa4f123
 +      }
 +
 +      function handle(block) {
-+        if (block.startsWith(":")) return send(`${block}\n\n`); // keep-alive comment
++        const lines = block.split("\n");
++        // A block of only comments is a keep-alive and goes on as it is. A comment
++        // line inside an event block is dropped; the rest is filtered like any
++        // event, so no payload can skip the player and visibility filter.
++        if (lines.every((line) => line.startsWith(":"))) return send(`${lines.join("\n")}\n\n`);
 +        let name = "";
 +        let data = "";
-+        for (const line of block.split("\n")) {
++        for (const line of lines) {
++          if (line.startsWith(":")) continue;
 +          if (line.startsWith("event:")) name = line.slice(6).trim();
 +          else if (line.startsWith("data:")) data += line.slice(5).trim();
 +        }
@@ -342,6 +412,11 @@ index 0000000..aa4f123
 +        response.setEncoding("utf8");
 +        response.on("data", (chunk) => {
 +          pending += chunk;
++          // SSE allows CRLF, LF and CR line ends. Normalise to LF before looking
++          // for the blank line; a CR at the very end may be half of a CRLF, so it
++          // waits for the next chunk.
++          const held = pending.endsWith("\r") ? "\r" : "";
++          pending = pending.slice(0, pending.length - held.length).replace(/\r\n?/g, "\n") + held;
 +          if (pending.length > MAX_BODY_BYTES) return finish();
 +          let index;
 +          while ((index = pending.indexOf("\n\n")) >= 0) {
@@ -398,6 +473,28 @@ index 7c5c97c..684fc8d 100644
  });
  
  test("scopeCatalog reports write support for the UI", () => {
+diff --git a/console/api/test/auth.test.js b/console/api/test/auth.test.js
+index d5f68a7..587b890 100644
+--- a/console/api/test/auth.test.js
++++ b/console/api/test/auth.test.js
+@@ -104,3 +104,17 @@ function fakeResponse() {
+     }
+   };
+ }
++
++test("peekSession checks a session without renewing its idle expiry", () => {
++  let currentTime = 1_700_000_000_000;
++  const auth = createAuth({ sessionSecret: "secret", adminPassword: "admin", authDisabled: false, now: () => currentTime });
++  const session = auth.makeSession();
++  const req = { headers: { cookie: `asc_session=${encodeURIComponent(session.cookie)}` } };
++  const first = auth.peekSession(req).expiresAt;
++  currentTime += 60 * 60 * 1000;
++  assert.equal(auth.peekSession(req).expiresAt, first, "peek must not slide the expiry");
++  assert.ok(auth.readSession(req).expiresAt > first, "readSession still renews");
++  currentTime += 13 * 60 * 60 * 1000;
++  assert.equal(auth.peekSession(req), null);
++  assert.equal(auth.peekSession({ headers: { cookie: "asc_session=forged.value" } }), null);
++});
 diff --git a/console/api/test/rbacParity.test.js b/console/api/test/rbacParity.test.js
 index d1b3836..b44bd47 100644
 --- a/console/api/test/rbacParity.test.js
@@ -413,10 +510,10 @@ index d1b3836..b44bd47 100644
      if (typeof action !== "string") continue;
 diff --git a/console/api/test/realtime.test.js b/console/api/test/realtime.test.js
 new file mode 100644
-index 0000000..9ec6cb8
+index 0000000..4e13d76
 --- /dev/null
 +++ b/console/api/test/realtime.test.js
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,294 @@
 +import { test } from "node:test";
 +import assert from "node:assert/strict";
 +import http from "node:http";
@@ -438,12 +535,17 @@ index 0000000..9ec6cb8
 +const POS = { gen: 1, t: 2, d: [[1, 10, 20, 30], [3, 70, 80, 90]], r: [] };
 +
 +// Stand-in for mvagent on loopback.
-+async function fakeAgent() {
++async function fakeAgent({ streamBody } = {}) {
 +  const server = http.createServer((req, res) => {
 +    if (req.url === "/healthz") return res.end(JSON.stringify({ ok: true, ready: 1, sources: SNAP.sources }));
 +    if (req.url.startsWith("/api/objects")) {
 +      const kinds = new URL(req.url, "http://x").searchParams.get("kinds").split(",");
 +      return res.end(JSON.stringify({ ...SNAP, objects: SNAP.objects.filter((o) => kinds.includes(o.k)) }));
++    }
++    if (req.url === "/stream" && streamBody) {
++      res.writeHead(200, { "content-type": "text/event-stream" });
++      streamBody(res, req);
++      return undefined;
 +    }
 +    if (req.url === "/stream") {
 +      res.writeHead(200, { "content-type": "text/event-stream" });
@@ -624,6 +726,88 @@ index 0000000..9ec6cb8
 +  assert.match(route, /stillAllowed: \(\) => may\("realtime:read"\)/);
 +  assert.match(route, /allowPlayers: \(\) => may\("players:read"\)/);
 +});
++
++test("a comment line in front of an event cannot skip the player filter", async () => {
++  const leak = { gen: 1, t: 3, d: [[3, 1, 1, 1], [1, 2, 2, 2]], r: [] };
++  const agent = await fakeAgent({
++    streamBody(res, req) {
++      res.write(`event: snap\ndata: ${JSON.stringify(SNAP)}\n\n`);
++      const tick = setInterval(() => res.write(`: hb\nevent: pos\ndata: ${JSON.stringify(leak)}\n\n`), 20);
++      req.on("close", () => clearInterval(tick));
++    }
++  });
++  const realtime = createRealtime({ agentUrl: agent.url });
++  const { front, events } = await openStream(realtime, { principal: "apikey:c", allowPlayers: () => false, stillAllowed: () => true });
++  try {
++    await new Promise((resolve) => setTimeout(resolve, 150));
++    const pos = events.filter((e) => e.name === "pos");
++    assert.ok(pos.length > 0, "the allowed object must still arrive");
++    assert.ok(pos.every((e) => e.data.d.every((d) => d[0] !== 3)), "a player position leaked through a comment line");
++  } finally {
++    front.closeAllConnections(); front.close(); agent.server.close();
++  }
++});
++
++test("CRLF line endings from the agent are framed like LF, also when split across chunks", async () => {
++  const agent = await fakeAgent({
++    streamBody(res, req) {
++      const snap = JSON.stringify(SNAP);
++      res.write(`event: snap\r\ndata: ${snap}\r\n\r\n`);
++      // a CRLF cut in the middle must not turn into two block ends
++      res.write(`event: pos\r\ndata: ${JSON.stringify(POS)}\r`);
++      setTimeout(() => res.write("\n\r"), 20);
++      setTimeout(() => res.write("\n"), 40);
++      req.on("close", () => {});
++    }
++  });
++  const realtime = createRealtime({ agentUrl: agent.url });
++  const { front, events } = await openStream(realtime, { principal: "apikey:crlf", allowPlayers: () => false, stillAllowed: () => true });
++  try {
++    await new Promise((resolve) => setTimeout(resolve, 200));
++    assert.equal(events.filter((e) => e.name === "snap").length, 1);
++    const pos = events.filter((e) => e.name === "pos");
++    assert.equal(pos.length, 1);
++    assert.deepEqual(pos[0].data.d.map((d) => d[0]), [1]);
++  } finally {
++    front.closeAllConnections(); front.close(); agent.server.close();
++  }
++});
++
++test("a bad agent address does not stop the Console: only Realtime Data answers with the reason", async () => {
++  let realtime;
++  assert.doesNotThrow(() => { realtime = createRealtime({ agentUrl: "http://10.0.0.5:8796" }); });
++  await assert.rejects(realtime.health(), (error) => error instanceof RealtimeError && /127\.0\.0\.1/.test(error.message));
++  await assert.rejects(realtime.objects({ allowPlayers: false }), RealtimeError);
++  const front = http.createServer((req, res) => realtime.stream(req, res, { principal: "apikey:bad", allowPlayers: () => false, stillAllowed: () => true }));
++  await new Promise((resolve) => front.listen(0, "127.0.0.1", resolve));
++  try {
++    const answer = await new Promise((resolve) => http.get(`http://127.0.0.1:${front.address().port}/`, (res) => {
++      let body = "";
++      res.on("data", (c) => { body += c; });
++      res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(body) }));
++    }));
++    assert.equal(answer.status, 500);
++    assert.equal(answer.body.available, false);
++    assert.equal(realtime.openStreams(), 0);
++  } finally {
++    front.close();
++  }
++});
++
++test("the stock Compose file and .env.example pass the agent address through", () => {
++  const compose = readFileSync(new URL("../../../docker-compose.web.yml", import.meta.url), "utf8");
++  assert.match(compose, /^\s+DUNE_REALTIME_AGENT_URL: "\$\{DUNE_REALTIME_AGENT_URL:-\}"$/m);
++  assert.match(readFileSync(new URL("../../../.env.example", import.meta.url), "utf8"), /^DUNE_REALTIME_AGENT_URL=$/m);
++});
++
++test("the stream recheck does not renew a browser session; the audit entry has no session id", () => {
++  const server = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
++  const start = server.indexOf("function realtimeStreamRoute");
++  const body = server.slice(start, server.indexOf("async function apiKeyCreateRoute", start));
++  assert.doesNotMatch(body, /readSession/, "the recheck must not slide the session expiry");
++  assert.match(body, /peekSession/);
++  assert.doesNotMatch(body, /audit\([^)]*\{ principal \}/, "session id in the audit log");
++});
 diff --git a/console/web/src/api/apiKeys.ts b/console/web/src/api/apiKeys.ts
 index 585de09..b36530d 100644
 --- a/console/web/src/api/apiKeys.ts
@@ -659,6 +843,20 @@ index d42dce8..a851051 100644
 +  expect(within(group).getByRole("radio", { name: /^Read realtime/ })).toBeInTheDocument();
 +  expect(within(group).queryByRole("radio", { name: /Read\+Write/ })).toBeNull();
 +});
+diff --git a/docker-compose.web.yml b/docker-compose.web.yml
+index 6ddf651..f7b3c69 100644
+--- a/docker-compose.web.yml
++++ b/docker-compose.web.yml
+@@ -36,6 +36,9 @@ services:
+       ADMIN_BIND_HOST: "${ADMIN_BIND_HOST:-0.0.0.0}"
+       ADMIN_BIND_PORT: "${ADMIN_WEB_PORT:-${ADMIN_BIND_PORT:-8088}}"
+       ADMIN_AUTH_DISABLED: "${ADMIN_AUTH_DISABLED:-0}"
++      # Realtime Data: where the optional MapViewer3D position agent listens
++      # (plain HTTP on loopback only). Empty = http://127.0.0.1:8796.
++      DUNE_REALTIME_AGENT_URL: "${DUNE_REALTIME_AGENT_URL:-}"
+       ADMIN_SECURE_COOKIES: "${ADMIN_SECURE_COOKIES:-0}"
+       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+       ADMIN_TASK_RETENTION: "${ADMIN_TASK_RETENTION:-200}"
 diff --git a/docs/console/api-keys.md b/docs/console/api-keys.md
 index 7c41caf..ad5aa28 100644
 --- a/docs/console/api-keys.md
@@ -686,10 +884,10 @@ index 7c41caf..ad5aa28 100644
  ### Two read exceptions
 diff --git a/docs/console/realtime.md b/docs/console/realtime.md
 new file mode 100644
-index 0000000..182d35e
+index 0000000..7ab049a
 --- /dev/null
 +++ b/docs/console/realtime.md
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,69 @@
 +# Realtime Data
 +
 +**Status:** Optional | **Last Updated:** October 2026
@@ -715,7 +913,10 @@ index 0000000..182d35e
 +```
 +
 +`DUNE_REALTIME_AGENT_URL` (default `http://127.0.0.1:8796`) points the Console
-+at the agent; only plain HTTP on loopback is accepted.
++at the agent; only plain HTTP on loopback is accepted. The stock Compose file
++passes it through from `.env`. A value that is not accepted turns off Realtime
++Data only (its routes answer with the reason); the rest of the Console starts
++as usual.
 +
 +## Permission: API key scope "Realtime Data"
 +
