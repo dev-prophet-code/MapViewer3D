@@ -1,7 +1,7 @@
 # Dune Docker integration
 
 Two ready-to-merge changes for [Red-Blink/dune-awakening-selfhost-docker](https://github.com/Red-Blink/dune-awakening-selfhost-docker),
-**independent of each other**: each applies directly with `git am` on upstream `main` at `da644b7` (v1.4.44). They touch neighbouring lines of
+**independent of each other**: each applies directly with `git apply` on upstream `main` at `6b2ea8f9` (v1.4.48 plus later commits). They touch neighbouring lines of
 `server.js`, `actions.js` and `SettingsPanel.tsx`, so the one merged second needs a trivial conflict resolution:
 
 | # | Patch | What it adds | PR text |
@@ -15,7 +15,9 @@ git apply /path/to/0001-api-keys-realtime-data-scope.patch   # either one on its
 git apply --3way /path/to/0002-encrypted-api-access.patch    # or both (resolve the small conflicts)
 dune console restart
 ```
-Each patch is the complete diff of its pull request against Dune Docker v1.4.47 (`main`), ours plus the maintainer's follow-up commits (stream closes when player access is removed; encrypted access integrated with the Console's IP restrictions and lifecycle, signed client address, off by default).
+Each patch is the complete diff of its pull request against Dune Docker `main` (`6b2ea8f9`, v1.4.48 and later), ours plus the maintainer's follow-up commits (stream closes when the player scope is removed; encrypted access integrated with the Console's IP restrictions and lifecycle, signed client address, off by default, health check of the configured address, non-root container, IP restrictions that were silently ignored before need a review in Settings before they become active).
+
+The pull request branch of patch 2 additionally contains patch 1 (merged in so that it stays mergeable after patch 1); the patch file here is the independent version.
 
 
 Both are prepared as pull requests from the branches `realtime-data-scope` and `encrypted-api-access` of a fork. A one-page explanation of how the system works, for maintainers: [OVERVIEW.md](OVERVIEW.md). The data API for other programs (fields, stream format, examples, pinning): [REALTIME-API.md](REALTIME-API.md). Test of both PRs on a real host, step by step: [TEST-REPORT.md](TEST-REPORT.md).

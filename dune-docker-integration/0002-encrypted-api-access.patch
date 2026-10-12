@@ -1,5 +1,5 @@
 diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
-index f8f3fe2..9fbf131 100644
+index 0fffa21..c0e8ae5 100644
 --- a/.github/workflows/ci.yml
 +++ b/.github/workflows/ci.yml
 @@ -108,6 +108,10 @@ jobs:
@@ -13,7 +13,7 @@ index f8f3fe2..9fbf131 100644
        - name: Test stable farm readiness gating
          run: bash tests/farm-readiness-test.sh
        - name: Test current-start readiness and login queue safety
-@@ -242,6 +246,8 @@ jobs:
+@@ -274,6 +278,8 @@ jobs:
        # 2.2.40 while db.sh required 2.3 for --aead-algo: every check was green.
        - name: Build the console image
          run: docker build -f console/api/Dockerfile -t dune-console:ci .
@@ -35,10 +35,10 @@ index 9f11e71..f11c6cf 100644
  Keep database and internal admin ports private. Do not expose the Web UI to untrusted users.
  
 diff --git a/console/api/src/actions.js b/console/api/src/actions.js
-index 563ead3..5ecd518 100644
+index 563ead3..faabff2 100644
 --- a/console/api/src/actions.js
 +++ b/console/api/src/actions.js
-@@ -172,6 +172,10 @@ export const ROUTE_ACTIONS = {
+@@ -172,6 +172,11 @@ export const ROUTE_ACTIONS = {
    "GET /api/settings/api-keys":                "settings:read",
    "GET /api/settings/api-keys/catalog":        "settings:read",
    "POST /api/settings/api-keys":               "settings:write",
@@ -46,23 +46,53 @@ index 563ead3..5ecd518 100644
 +  // key fingerprint and turns it on or off. Settings, so never reachable with an API key.
 +  "GET /api/settings/encrypted-api":           "settings:read",
 +  "POST /api/settings/encrypted-api":          "settings:write",
++  "POST /api/settings/console-access/confirm": "settings:write",
    "POST /api/settings/public-directory":       "settings:write",
    "POST /api/settings/public-directory/claim": "settings:write",
    "POST /api/settings/server-startup":          "settings:write",
+diff --git a/console/api/src/config.js b/console/api/src/config.js
+index 1b77bab..e507d7e 100644
+--- a/console/api/src/config.js
++++ b/console/api/src/config.js
+@@ -463,6 +463,7 @@ export function publicConfig(config) {
+     adminPasswordEnvManaged: config.adminPasswordEnvManaged,
+     secureCookies: config.secureCookies,
+     allowHostBootstrap: config.allowHostBootstrap,
+-    mockMode: config.mockMode
++    mockMode: config.mockMode,
++    consoleAccessReviewRequired: Boolean(config.consoleAccessReviewRequired)
+   };
+ }
 diff --git a/console/api/src/server.js b/console/api/src/server.js
-index 7bfd493..b47712a 100644
+index 136e50d..2fb0ce7 100644
 --- a/console/api/src/server.js
 +++ b/console/api/src/server.js
-@@ -40,6 +40,8 @@ import { looksLikeTar, mintSystemBackupName, normalizeImportedSystemMetadata, re
+@@ -41,6 +41,9 @@ import { looksLikeTar, mintSystemBackupName, normalizeImportedSystemMetadata, re
  import { createTarHeader, tarArchiveLength, tarPadding, TAR_TRAILER_BYTES, createBackupDownloadArchive, enrichBackupRows, nextImportedBackupName, normalizeImportedBackupMetadata, readCurrentBattlegroupId, validBackupDownloadName } from "./services/backups.js";
  import { createMemoryBalancer } from "./services/memoryBalancer.js";
  import { collectContainerHealth } from "./services/containerHealth.js";
 +import { createEncryptedApi, EncryptedApiError } from "./services/encryptedApi.js";
 +import { tlsClientAddress } from "./services/tlsClientAddress.js";
++import { createConsoleAccess } from "./services/consoleAccess.js";
  import { parseMemorySwapStatus } from "./services/memorySwap.js";
  import { createDeathPoller } from "./deathPoller.js";
  import { updateEnvFileValue as updateEnvValue } from "./services/envFile.js";
-@@ -167,6 +169,7 @@ function shouldNoteApiKeyAuthThrottle(failureKey, at = Date.now()) {
+@@ -101,6 +104,14 @@ import { playerListSettingsView, resolvePlayerInactiveWeeks, savePlayerListSetti
+ import { resolveAutoStartBattlegroup, saveServerStartupSettings, serverStartupSettingsView } from "./services/serverStartupSettings.js";
+ 
+ const config = loadConfig();
++const consoleAccess = createConsoleAccess({
++  repoRoot: config.repoRoot,
++  configured: process.env.DUNE_CONFIGURED_ADMIN_ALLOWED_IPS,
++  legacy: process.env.ADMIN_ALLOWED_IPS
++});
++config.allowedIps = consoleAccess.activeIps();
++Object.defineProperty(config, "consoleAccessReviewRequired", { get: () => consoleAccess.status().pending });
++if (config.consoleAccessReviewRequired) console.warn("Console IP restrictions await confirmation in Settings; existing access is preserved.");
+ const hardwareStatus = createHardwareStatusProvider({ filesystemPath: config.repoRoot });
+ const readCommandCache = createReadCommandCache();
+ // Status commands walk Docker, PostgreSQL, RabbitMQ, and logs. Keep a fresh
+@@ -168,6 +179,7 @@ function shouldNoteApiKeyAuthThrottle(failureKey, at = Date.now()) {
    return true;
  }
  const apiKeys = createApiKeyStore({ file: config.apiKeysFile });
@@ -70,7 +100,7 @@ index 7bfd493..b47712a 100644
  // Proof that a restore was previewed, for the apply that follows it. In memory
  // beside the sessions it is keyed by -- see the module header for why it is not
  // persisted.
-@@ -298,8 +301,14 @@ process.on("unhandledRejection", (error) => {
+@@ -299,8 +311,14 @@ process.on("unhandledRejection", (error) => {
  });
  
  createServer(async (req, res) => {
@@ -86,16 +116,36 @@ index 7bfd493..b47712a 100644
      if (!config.allowedIps.includes(remoteIp)) {
        res.writeHead(403, { "content-type": "application/json" });
        res.end(JSON.stringify({ error: "Access denied: IP not in ADMIN_ALLOWED_IPS" }));
-@@ -956,6 +965,8 @@ async function handleApi(req, res) {
+@@ -957,6 +975,19 @@ async function handleApi(req, res) {
      return json(res, 200, { keys: apiKeys.list() });
    }
    if (path === "/api/settings/api-keys" && req.method === "POST") return apiKeyCreateRoute(req, res);
 +  if (path === "/api/settings/encrypted-api" && req.method === "GET") return encryptedApiRoute(res, () => encryptedApi.status());
++  if (path === "/api/settings/console-access/confirm" && req.method === "POST") {
++    const body = await readJson(req);
++    try {
++      const result = consoleAccess.confirm(body, remoteIpOf(req));
++      config.allowedIps = consoleAccess.activeIps();
++      audit(config, req, "settings.console-access-confirm", { activeCount: result.activeCount });
++      return json(res, 200, result);
++    } catch (error) {
++      return json(res, 409, { error: error.message });
++    }
++  }
 +  if (path === "/api/settings/encrypted-api" && req.method === "POST") return encryptedApiToggleRoute(req, res);
    if (path.startsWith("/api/settings/api-keys/")) return apiKeyItemRoute(req, res, path);
    if (path === "/api/settings/iam/policy/test" && req.method === "POST") {
      const body = await readJson(req);
-@@ -2724,6 +2735,24 @@ async function adminPasswordRoute(req, res) {
+@@ -1389,7 +1420,7 @@ async function handleApi(req, res) {
+     return task(req, res, "settings", "experimentalTanksApply", await readJson(req));
+   }
+   if (path === "/api/settings" && req.method === "POST") return writeConfig(req, res);
+-  if (path === "/api/settings") return json(res, 200, await setupState());
++  if (path === "/api/settings") return json(res, 200, await setupState(remoteIpOf(req)));
+ 
+   return json(res, 404, { error: "Not found" });
+ }
+@@ -2726,6 +2757,24 @@ async function adminPasswordRoute(req, res) {
    return json(res, 200, { ok: true });
  }
  
@@ -120,7 +170,7 @@ index 7bfd493..b47712a 100644
  async function apiKeyCreateRoute(req, res) {
    const body = await readJson(req);
    const created = await apiKeys.create({
-@@ -2837,6 +2866,7 @@ function scheduleConsoleRestart(port) {
+@@ -2839,6 +2888,7 @@ function scheduleConsoleRestart(port) {
        "docker compose -f docker-compose.web.yml build redblink-dune-docker-console >> runtime/generated/console-restart.log 2>&1",
        "docker rm -f redblink-dune-docker-console >> runtime/generated/console-restart.log 2>&1 || true",
        "docker compose -f docker-compose.web.yml up -d redblink-dune-docker-console >> runtime/generated/console-restart.log 2>&1",
@@ -128,7 +178,24 @@ index 7bfd493..b47712a 100644
        `echo "[$(date -Is)] Dune Docker Console restart command finished" >> runtime/generated/console-restart.log`
      ].join("\n");
      const child = spawn("docker", buildSelfUpdateHelperDockerArgs({
-@@ -6765,9 +6795,11 @@ function mockCommand(operation) {
+@@ -6373,7 +6423,7 @@ function readLogs(service, options) {
+   return runDockerLogs(service, options);
+ }
+ 
+-async function setupState() {
++async function setupState(clientIp) {
+   const env = existsSync(resolve(config.repoRoot, ".env"));
+   const token = existsSync(resolve(config.secretsDir, "funcom-token.txt"));
+   const battlegroup = existsSync(resolve(config.generatedDir, "battlegroup.env"));
+@@ -6383,6 +6433,7 @@ async function setupState() {
+     serverConfig: readSetupConfigValues(),
+     publicDirectory: publicDirectorySettings(),
+     serverStartup: serverStartupSettingsView(config.repoRoot),
++    consoleAccess: consoleAccess.status(clientIp),
+     files: {
+       env,
+       token,
+@@ -6767,9 +6818,11 @@ function mockCommand(operation) {
  
  // Best-effort client address, IPv4-mapped IPv6 unwrapped. No X-Forwarded-For
  // handling, matching every other limiter here -- behind a reverse proxy this
@@ -141,6 +208,64 @@ index 7bfd493..b47712a 100644
    return (req?.socket?.remoteAddress || "").replace(/^::ffff:/, "") || null;
  }
  
+diff --git a/console/api/src/services/consoleAccess.js b/console/api/src/services/consoleAccess.js
+new file mode 100644
+index 0000000..5e20064
+--- /dev/null
++++ b/console/api/src/services/consoleAccess.js
+@@ -0,0 +1,52 @@
++import { createHash } from "node:crypto";
++import { existsSync, readFileSync } from "node:fs";
++import { isIP } from "node:net";
++import { join } from "node:path";
++import { parseAllowedIps } from "../config.js";
++import { writeJsonAtomic } from "../jsonStore.js";
++
++export const ACCESS_RECOVERY = "Using SSH, edit ADMIN_ALLOWED_IPS in the project's .env file to correct the addresses or clear the value, then run runtime/scripts/dune console reload. This affects the Console only, not the Battlegroup.";
++
++export function createConsoleAccess({ repoRoot, configured = "", legacy = "" }) {
++  const file = join(repoRoot, "runtime/generated/console-access-review.json");
++  const requested = parseAllowedIps(configured);
++  const existing = parseAllowedIps(legacy);
++  const fingerprint = createHash("sha256").update(JSON.stringify(requested)).digest("hex");
++  let reviewed = null;
++  if (requested.length && !existing.length && existsSync(file)) {
++    // Corrupt security state must not silently remove an active restriction.
++    reviewed = JSON.parse(readFileSync(file, "utf8"));
++    if (!Array.isArray(reviewed.allowedIps) || !reviewed.allowedIps.every((ip) => typeof ip === "string" && isIP(ip))) {
++      throw new Error("Console access review state is invalid. Restore the file using SSH.");
++    }
++  }
++  function activeIps() {
++    // Direct/override deployments that already enforced ADMIN_ALLOWED_IPS keep
++    // that exact policy. Clearing the existing .env setting is the SSH recovery.
++    if (existing.length) return existing;
++    if (!requested.length) return [];
++    return reviewed?.allowedIps || [];
++  }
++  function status(clientIp) {
++    const pending = !existing.length && requested.length > 0 && reviewed?.fingerprint !== fingerprint;
++    return {
++      pending, configuredCount: requested.length, activeCount: activeIps().length,
++      canConfirm: pending && requested.every((ip) => isIP(ip)) && requested.includes(clientIp),
++      fingerprint: pending ? fingerprint : "", recovery: ACCESS_RECOVERY
++    };
++  }
++  function confirm({ confirmed, fingerprint: expected }, clientIp) {
++    const current = status(clientIp);
++    if (confirmed !== true || expected !== fingerprint || !current.pending) {
++      throw new Error("The IP restrictions need a fresh review. Refresh Settings and try again.");
++    }
++    if (!current.canConfirm) {
++      throw new Error(`These restrictions would block your current connection or contain an invalid address. ${ACCESS_RECOVERY}`);
++    }
++    const next = { fingerprint, allowedIps: requested };
++    writeJsonAtomic(file, next);
++    reviewed = next;
++    return status(clientIp);
++  }
++  return { activeIps, status, confirm };
++}
 diff --git a/console/api/src/services/encryptedApi.js b/console/api/src/services/encryptedApi.js
 new file mode 100644
 index 0000000..06b3674
@@ -315,6 +440,135 @@ index 0000000..cb39e0b
 +    return timingSafeEqual(expected, Buffer.from(signature, "hex")) ? ip : null;
 +  } catch { return null; }
 +}
+diff --git a/console/api/test/consoleAccess.integration.test.js b/console/api/test/consoleAccess.integration.test.js
+new file mode 100644
+index 0000000..7b17b6c
+--- /dev/null
++++ b/console/api/test/consoleAccess.integration.test.js
+@@ -0,0 +1,61 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { spawn } from "node:child_process";
++import { once } from "node:events";
++import { get } from "node:http";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join, resolve } from "node:path";
++
++test("real Console upgrade preserves login and activates restrictions only after a safe authenticated review", { timeout: 30000 }, async () => {
++  const root = await mkdtemp(join(tmpdir(), "dune-console-access-"));
++  const port = 32000 + process.pid % 10000;
++  const base = `http://127.0.0.1:${port}`;
++  const child = spawn(process.execPath, ["src/server.js"], {
++    cwd: resolve(import.meta.dirname, ".."), stdio: ["ignore", "pipe", "pipe"],
++    env: { ...process.env, NODE_ENV: "test", DUNE_DOCKER_DIR: root,
++      ADMIN_MOCK_MODE: "1", ADMIN_PASSWORD: "Dummy-Console-Password-123",
++      ADMIN_AUTH_DISABLED: "0", ADMIN_ALLOWED_IPS: "", DUNE_CONFIGURED_ADMIN_ALLOWED_IPS: "127.0.0.1",
++      ADMIN_BIND_HOST: "127.0.0.1", ADMIN_BIND_PORT: String(port), ADMIN_SECURE_COOKIES: "0" }
++  });
++  child.stdout.resume(); child.stderr.resume();
++  const exited = once(child, "exit");
++  async function otherClientStatus() {
++    return await new Promise((resolveStatus, reject) => {
++      get(`${base}/api/health`, { localAddress: "127.0.0.2" }, (res) => {
++        res.resume(); res.on("end", () => resolveStatus(res.statusCode));
++      }).on("error", reject);
++    });
++  }
++  try {
++    let ready = false;
++    for (let i = 0; i < 100; i++) {
++      try { ready = (await fetch(`${base}/api/health`)).ok; } catch {}
++      if (ready || child.exitCode !== null) break;
++      await new Promise((r) => setTimeout(r, 100));
++    }
++    assert.equal(ready, true);
++    assert.equal(await otherClientStatus(), 200); // old effective access preserved
++    assert.equal((await fetch(`${base}/api/auth/state`).then((r) => r.json())).config.consoleAccessReviewRequired, true);
++    const login = await fetch(`${base}/api/auth/login`, {
++      method: "POST", headers: { "content-type": "application/json" },
++      body: JSON.stringify({ password: "Dummy-Console-Password-123" })
++    });
++    assert.equal(login.status, 200);
++    const cookie = login.headers.get("set-cookie").split(";", 1)[0];
++    const state = await fetch(`${base}/api/auth/state`, { headers: { cookie } }).then((r) => r.json());
++    const settings = await fetch(`${base}/api/settings`, { headers: { cookie } }).then((r) => r.json());
++    assert.equal(settings.consoleAccess.canConfirm, true);
++    const endpoint = `${base}/api/settings/console-access/confirm`;
++    const body = { confirmed: true, fingerprint: settings.consoleAccess.fingerprint };
++    assert.equal((await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).status, 401);
++    const confirmed = await fetch(endpoint, { method: "POST",
++      headers: { cookie, "content-type": "application/json", "x-csrf-token": state.csrfToken }, body: JSON.stringify(body) });
++    assert.equal(confirmed.status, 200);
++    assert.equal((await confirmed.json()).pending, false);
++    assert.equal((await fetch(`${base}/api/health`)).status, 200);
++    assert.equal(await otherClientStatus(), 403);
++  } finally {
++    child.kill("SIGTERM"); await exited; await rm(root, { recursive: true, force: true });
++  }
++});
+diff --git a/console/api/test/consoleAccess.test.js b/console/api/test/consoleAccess.test.js
+new file mode 100644
+index 0000000..2f62507
+--- /dev/null
++++ b/console/api/test/consoleAccess.test.js
+@@ -0,0 +1,56 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { createConsoleAccess } from "../src/services/consoleAccess.js";
++
++function fixture(t, options = {}) {
++  const repoRoot = mkdtempSync(join(tmpdir(), "console-access-test-"));
++  t.after(() => rmSync(repoRoot, { recursive: true, force: true }));
++  return { repoRoot, access: createConsoleAccess({ repoRoot, ...options }) };
++}
++test("empty and previously active allowlists preserve their behavior", (t) => {
++  const { access } = fixture(t);
++  assert.deepEqual(access.activeIps(), []);
++  assert.equal(access.status().pending, false);
++  const active = fixture(t, { legacy: "203.0.113.9", configured: "203.0.113.8" }).access;
++  assert.deepEqual(active.activeIps(), ["203.0.113.9"]);
++  assert.equal(active.status().pending, false);
++});
++test("first upgrade never activates a previously ignored setting", (t) => {
++  const { access } = fixture(t, { configured: "203.0.113.9" });
++  assert.deepEqual(access.activeIps(), []);
++  assert.equal(access.status("203.0.113.8").pending, true);
++  assert.equal(access.status("203.0.113.8").canConfirm, false);
++  assert.throws(() => access.confirm({ confirmed: true, fingerprint: access.status().fingerprint }, "203.0.113.8"), /block your current connection/);
++  assert.deepEqual(access.activeIps(), []);
++});
++test("safe confirmation persists privately and survives upgrades", (t) => {
++  const { repoRoot, access } = fixture(t, { configured: "203.0.113.9,::ffff:203.0.113.10" });
++  const fingerprint = access.status().fingerprint;
++  assert.throws(() => access.confirm({ fingerprint }, "203.0.113.9"), /fresh review/);
++  assert.throws(() => access.confirm({ confirmed: true, fingerprint: "stale" }, "203.0.113.9"), /fresh review/);
++  assert.equal(access.confirm({ confirmed: true, fingerprint }, "203.0.113.9").pending, false);
++  assert.equal(statSync(join(repoRoot, "runtime/generated/console-access-review.json")).mode & 0o777, 0o600);
++  assert.deepEqual(createConsoleAccess({ repoRoot, configured: "203.0.113.9,::ffff:203.0.113.10" }).activeIps(), ["203.0.113.9", "203.0.113.10"]);
++  // An edited setting must not silently replace the last active policy.
++  const changed = createConsoleAccess({ repoRoot, configured: "203.0.113.8" });
++  assert.deepEqual(changed.activeIps(), ["203.0.113.9", "203.0.113.10"]);
++  assert.equal(changed.status().pending, true);
++  assert.deepEqual(createConsoleAccess({ repoRoot, configured: "" }).activeIps(), []);
++});
++test("invalid addresses cannot be confirmed even if the current address is included", (t) => {
++  const { access } = fixture(t, { configured: "203.0.113.9,invalid" });
++  assert.equal(access.status("203.0.113.9").canConfirm, false);
++  assert.throws(() => access.confirm({ confirmed: true, fingerprint: access.status().fingerprint }, "203.0.113.9"), /invalid address/);
++});
++
++test("corrupt active security state fails closed but explicit SSH clearing still recovers access", (t) => {
++  const { repoRoot } = fixture(t);
++  mkdirSync(join(repoRoot, "runtime/generated"), { recursive: true });
++  writeFileSync(join(repoRoot, "runtime/generated/console-access-review.json"), "invalid", { mode: 0o600 });
++  assert.throws(() => createConsoleAccess({ repoRoot, configured: "203.0.113.9" }));
++  assert.deepEqual(createConsoleAccess({ repoRoot, configured: "" }).activeIps(), []);
++  assert.deepEqual(createConsoleAccess({ repoRoot, legacy: "203.0.113.9" }).activeIps(), ["203.0.113.9"]);
++});
 diff --git a/console/api/test/encryptedApi.test.js b/console/api/test/encryptedApi.test.js
 new file mode 100644
 index 0000000..47aab02
@@ -477,10 +731,10 @@ index 0000000..9af0789
 +-----END CERTIFICATE-----
 diff --git a/console/api/test/tlsClientAddress.test.js b/console/api/test/tlsClientAddress.test.js
 new file mode 100644
-index 0000000..268e952
+index 0000000..4a396b0
 --- /dev/null
 +++ b/console/api/test/tlsClientAddress.test.js
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,59 @@
 +import test from "node:test";
 +import assert from "node:assert/strict";
 +import { createHmac, randomBytes } from "node:crypto";
@@ -488,6 +742,19 @@ index 0000000..268e952
 +import { tmpdir } from "node:os";
 +import { join } from "node:path";
 +import { tlsClientAddress } from "../src/services/tlsClientAddress.js";
++
++test("the stock Console deployment transports its allowlist for explicit review", () => {
++  const compose = readFileSync(new URL("../../../docker-compose.web.yml", import.meta.url), "utf8");
++  assert.match(compose, /^\s+DUNE_CONFIGURED_ADMIN_ALLOWED_IPS: "\$\{ADMIN_ALLOWED_IPS:-\}"$/m);
++  assert.doesNotMatch(compose, /^\s+ADMIN_ALLOWED_IPS:/m);
++});
++
++test("the encrypted API image and Compose default to a non-root user", () => {
++  const dockerfile = readFileSync(new URL("../../../runtime/tls-front/Dockerfile", import.meta.url), "utf8");
++  const compose = readFileSync(new URL("../../../docker-compose.tls-front.yml", import.meta.url), "utf8");
++  assert.match(dockerfile, /^USER 1000:1000$/m);
++  assert.match(compose, /user: "\$\{DUNE_HOST_UID:-1000\}:\$\{DUNE_HOST_GID:-1000\}"/);
++});
 +
 +test("only signed local TLS forwarding identities can affect the IP allowlist", () => {
 +  const root = mkdtempSync(join(tmpdir(), "tls-client-address-"));
@@ -527,6 +794,19 @@ index 0000000..268e952
 +    assert.match(readFileSync(new URL(`../../../runtime/scripts/${script}`, import.meta.url), "utf8"), /tls-front\.sh reconcile/);
 +  }
 +});
+diff --git a/console/web/src/api/client.ts b/console/web/src/api/client.ts
+index 352c885..4d0374e 100644
+--- a/console/web/src/api/client.ts
++++ b/console/web/src/api/client.ts
+@@ -172,7 +172,7 @@ export async function fetchConsoleAuthState() {
+     headers: { accept: "application/json" }
+   });
+   if (!response.ok) throw new Error(`Console state check failed: ${response.status}`);
+-  return await response.json() as { config?: { version?: string; buildId?: string } };
++  return await response.json() as { config?: { version?: string; buildId?: string; consoleAccessReviewRequired?: boolean } };
+ }
+ 
+ async function refreshCsrfToken() {
 diff --git a/console/web/src/api/encryptedApi.ts b/console/web/src/api/encryptedApi.ts
 new file mode 100644
 index 0000000..f9ae2c4
@@ -551,6 +831,99 @@ index 0000000..f9ae2c4
 +  status: () => api<EncryptedApiStatus>("/api/settings/encrypted-api", { cache: "no-store" }),
 +  setEnabled: (enabled: boolean) => post<EncryptedApiStatus>("/api/settings/encrypted-api", { enabled })
 +};
+diff --git a/console/web/src/features/settings/ConsoleAccessNotice.test.tsx b/console/web/src/features/settings/ConsoleAccessNotice.test.tsx
+new file mode 100644
+index 0000000..8bf8752
+--- /dev/null
++++ b/console/web/src/features/settings/ConsoleAccessNotice.test.tsx
+@@ -0,0 +1,35 @@
++import { fireEvent, render, screen, waitFor } from "@testing-library/react";
++import { beforeEach, expect, test, vi } from "vitest";
++import { ConsoleAccessNotice, type ConsoleAccessStatus } from "./ConsoleAccessNotice";
++vi.mock("../../api/client", () => ({ post: vi.fn() }));
++import { post } from "../../api/client";
++const status: ConsoleAccessStatus = { pending: true, configuredCount: 1, activeCount: 0, canConfirm: true, fingerprint: "review", recovery: "Edit .env using SSH, then reload the Console." };
++beforeEach(() => vi.clearAllMocks());
++test("empty or active settings add no warning", () => {
++  render(<ConsoleAccessNotice status={{ ...status, pending: false }} confirmAction={vi.fn()} onConfirmed={vi.fn()} />);
++  expect(screen.queryByRole("region")).toBeNull();
++});
++test("unsafe activation is disabled and explains SSH recovery", () => {
++  render(<ConsoleAccessNotice status={{ ...status, canConfirm: false }} confirmAction={vi.fn()} onConfirmed={vi.fn()} />);
++  expect(screen.getByRole("button", { name: "Review And Activate" })).toBeDisabled();
++  expect(screen.getByText(/Activation is blocked/)).toBeVisible();
++  fireEvent.click(screen.getByText("SSH Recovery"));
++  expect(screen.getByText(status.recovery)).toBeVisible();
++});
++test("requires confirmation before applying and refreshes after success", async () => {
++  const confirmAction = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
++  const refresh = vi.fn().mockResolvedValue(undefined);
++  render(<ConsoleAccessNotice status={status} confirmAction={confirmAction} onConfirmed={refresh} />);
++  fireEvent.click(screen.getByRole("button", { name: "Review And Activate" }));
++  await waitFor(() => expect(confirmAction).toHaveBeenCalledTimes(1));
++  expect(post).not.toHaveBeenCalled();
++  fireEvent.click(screen.getByRole("button", { name: "Review And Activate" }));
++  await waitFor(() => expect(post).toHaveBeenCalledWith("/api/settings/console-access/confirm", { confirmed: true, fingerprint: "review" }));
++  await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
++});
++test("failed confirmation stays visible and never pretends activation succeeded", async () => {
++  vi.mocked(post).mockRejectedValueOnce(new Error("Restrictions changed. Refresh Settings."));
++  render(<ConsoleAccessNotice status={status} confirmAction={vi.fn().mockResolvedValue(true)} onConfirmed={vi.fn()} />);
++  fireEvent.click(screen.getByRole("button", { name: "Review And Activate" }));
++  expect(await screen.findByText("Restrictions changed. Refresh Settings.")).toBeVisible();
++});
+diff --git a/console/web/src/features/settings/ConsoleAccessNotice.tsx b/console/web/src/features/settings/ConsoleAccessNotice.tsx
+new file mode 100644
+index 0000000..4cd564a
+--- /dev/null
++++ b/console/web/src/features/settings/ConsoleAccessNotice.tsx
+@@ -0,0 +1,46 @@
++import { useState } from "react";
++import { InlineActionResult, type InlineActionResultState } from "../../components/common/InlineActionResult";
++import { post } from "../../api/client";
++
++export type ConsoleAccessStatus = {
++  pending: boolean; configuredCount: number; activeCount: number;
++  canConfirm: boolean; fingerprint: string; recovery: string;
++};
++type Props = {
++  status?: ConsoleAccessStatus;
++  confirmAction: (message: string, options?: { title?: string; confirmLabel?: string; danger?: boolean }) => Promise<boolean>;
++  onConfirmed: () => Promise<void>;
++};
++export function ConsoleAccessNotice({ status, confirmAction, onConfirmed }: Props) {
++  const [busy, setBusy] = useState(false);
++  const [result, setResult] = useState<InlineActionResultState | null>(null);
++  if (!status?.pending) return null;
++  async function confirm() {
++    if (!status || !(await confirmAction(
++      "Activate the IP restrictions configured in .env? Only listed addresses will be able to open the Console. Make sure every administrator's address is included and that you have SSH access for recovery.",
++      { title: "Confirm Console Access", confirmLabel: "Activate Restrictions", danger: true }
++    ))) return;
++    setBusy(true);
++    setResult(null);
++    try {
++      await post("/api/settings/console-access/confirm", { confirmed: true, fingerprint: status.fingerprint });
++      await onConfirmed();
++    } catch (error) {
++      setResult({ key: "access", tone: "danger", text: error instanceof Error ? error.message : String(error) });
++    } finally { setBusy(false); }
++  }
++  return <div className="playerAdmin_toggle open" role="region" aria-label="Console Access Review">
++    <div className="playerAdmin_toggleBody">
++      <strong>Review Console IP Restrictions</strong>
++      <p className="attention-text">{status.activeCount
++        ? "Updated IP restrictions await confirmation. Your current restrictions remain active."
++        : "Your existing IP setting was not active before this update. Console access has been preserved until you confirm it."}</p>
++      {!status.canConfirm && <p className="muted">Activation is blocked because these restrictions would exclude your current connection or contain an invalid address. Correct the setting using SSH first.</p>}
++      <div className="action-row">
++        <button disabled={busy || !status.canConfirm} onClick={() => { void confirm(); }}>{busy ? "Activating..." : "Review And Activate"}</button>
++        <InlineActionResult result={result} resultKey="access" />
++      </div>
++      <details><summary>SSH Recovery</summary><p className="muted">{status.recovery}</p></details>
++    </div>
++  </div>;
++}
 diff --git a/console/web/src/features/settings/EncryptedApiSection.test.tsx b/console/web/src/features/settings/EncryptedApiSection.test.tsx
 new file mode 100644
 index 0000000..e9eb92c
@@ -742,18 +1115,19 @@ index 0000000..2725771
 +  </div>;
 +}
 diff --git a/console/web/src/features/settings/SettingsPanel.tsx b/console/web/src/features/settings/SettingsPanel.tsx
-index 8708703..67aae30 100644
+index 8708703..5d205c4 100644
 --- a/console/web/src/features/settings/SettingsPanel.tsx
 +++ b/console/web/src/features/settings/SettingsPanel.tsx
-@@ -5,6 +5,7 @@ import { SecretInput } from "../../components/SecretInput";
- import { InfoTooltip, KeyValueGrid, StatusPill } from "../../components/common/DisplayPrimitives";
+@@ -6,6 +6,8 @@ import { InfoTooltip, KeyValueGrid, StatusPill } from "../../components/common/D
  import { firstDefined, formatUiSentence, friendlyColumnName } from "../../lib/display";
  import { ApiKeysSection } from "./ApiKeysSection";
-+import { EncryptedApiSection } from "./EncryptedApiSection";
  import { ExperimentalFeatures } from "./ExperimentalFeatures";
++import { EncryptedApiSection } from "./EncryptedApiSection";
++import { ConsoleAccessNotice, type ConsoleAccessStatus } from "./ConsoleAccessNotice";
  
  type SettingsTaskResult = { status: "running" | "succeeded" | "failed" | "stopped"; title: string; message?: string; details?: string };
-@@ -58,6 +59,7 @@ export function SettingsPanel({ onPasswordChanged, publicListingUrl, confirmActi
+ type PublicDirectorySettings = {
+@@ -58,6 +60,7 @@ export function SettingsPanel({ onPasswordChanged, publicListingUrl, confirmActi
    const [webPortRedirectUrl, setWebPortRedirectUrl] = useState("");
    const [webPortRedirectCountdown, setWebPortRedirectCountdown] = useState<number | null>(null);
    const [apiKeysOpen, setApiKeysOpen] = useState(false);
@@ -761,7 +1135,15 @@ index 8708703..67aae30 100644
    const [serverStartupOpen, setServerStartupOpen] = useState(false);
    const [serverStartupSaving, setServerStartupSaving] = useState(false);
    const [serverStartupResult, setServerStartupResult] = useState<SettingsTaskResult | null>(null);
-@@ -366,6 +368,10 @@ export function SettingsPanel({ onPasswordChanged, publicListingUrl, confirmActi
+@@ -323,6 +326,7 @@ export function SettingsPanel({ onPasswordChanged, publicListingUrl, confirmActi
+         </div>}
+       </div>
+       <RuntimeSettingsSummary settings={settings} />
++      <ConsoleAccessNotice status={settings?.consoleAccess as ConsoleAccessStatus | undefined} confirmAction={confirmAction} onConfirmed={refresh} />
+       <ExperimentalFeatures confirmAction={confirmAction} />
+       <div className={`playerAdmin_toggle settings-web-port-toggle ${webPortOpen ? "open" : ""}`}>
+         <button className="playerAdmin_toggleHeader" aria-label={webPortOpen ? "Collapse Web Console Port" : "Expand Web Console Port"} onClick={() => setWebPortOpen(!webPortOpen)}>{webPortOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}<span>Web Console Port</span></button>
+@@ -366,6 +370,10 @@ export function SettingsPanel({ onPasswordChanged, publicListingUrl, confirmActi
            </div>
          </div>}
        </div>
@@ -772,11 +1154,106 @@ index 8708703..67aae30 100644
        <div className={`playerAdmin_toggle settings-api-keys-toggle ${apiKeysOpen ? "open" : ""}`}>
          <button className="playerAdmin_toggleHeader" aria-label={apiKeysOpen ? "Collapse API Keys" : "Expand API Keys"} onClick={() => setApiKeysOpen(!apiKeysOpen)}>{apiKeysOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}<span>API Keys</span></button>
          {apiKeysOpen && <div className="playerAdmin_toggleBody"><ApiKeysSection confirmAction={confirmAction} /></div>}
+diff --git a/console/web/src/features/updates/UpdatesPanel.consoleAccess.test.tsx b/console/web/src/features/updates/UpdatesPanel.consoleAccess.test.tsx
+new file mode 100644
+index 0000000..839e23a
+--- /dev/null
++++ b/console/web/src/features/updates/UpdatesPanel.consoleAccess.test.tsx
+@@ -0,0 +1,44 @@
++import { fireEvent, render, screen, waitFor } from "@testing-library/react";
++import { beforeEach, expect, test, vi } from "vitest";
++import { UpdatesPanel } from "./UpdatesPanel";
++import { fetchConsoleAuthState } from "../../api/client";
++import { updatesApi } from "../../api/updates";
++vi.mock("../../api/client", () => ({ fetchConsoleAuthState: vi.fn() }));
++vi.mock("../../api/updates", () => ({ updatesApi: {
++  status: vi.fn(), checkStack: vi.fn(), applyStack: vi.fn(), autoGameStatus: vi.fn(), autoStackStatus: vi.fn(), qaStatus: vi.fn()
++} }));
++vi.stubGlobal("EventSource", class { close() {} });
++beforeEach(() => {
++  vi.clearAllMocks(); window.localStorage.clear(); window.sessionStorage.clear();
++  vi.mocked(updatesApi.checkStack).mockResolvedValue({ task: {
++    status: "succeeded", logLines: ["Current stack version: v1.4.47", "Latest release:        v1.4.48", "Update available."].map((line) => ({ line }))
++  } } as never);
++});
++function mount(confirmAction: (m: string) => Promise<boolean>) {
++  render(<UpdatesPanel confirmAction={confirmAction} waitForTask={async (task) => task}
++    parseKeyValueText={() => ({})} formatTimerStatus={(s) => s}
++    commandStatusSummary={() => ({ status: "", reason: "" })} taskTechnicalDetails={() => ""}
++    formatResultTitle={(s) => String(s)} formatResultMessage={(s) => String(s)} />);
++}
++test("pending IP review adds an explicit warning to the update confirmation", async () => {
++  vi.mocked(fetchConsoleAuthState).mockResolvedValue({ config: { consoleAccessReviewRequired: true } });
++  const confirm = vi.fn().mockResolvedValue(false);
++  mount(confirm);
++  fireEvent.click(await screen.findByRole("button", { name: "Apply Console Update" }));
++  await waitFor(() => expect(confirm).toHaveBeenCalledWith(expect.stringContaining("IP restrictions await confirmation")));
++  expect(updatesApi.applyStack).not.toHaveBeenCalled();
++});
++test("empty or active lists keep the existing update wording", async () => {
++  vi.mocked(fetchConsoleAuthState).mockResolvedValue({ config: { consoleAccessReviewRequired: false } });
++  const confirm = vi.fn().mockResolvedValue(false);
++  mount(confirm);
++  fireEvent.click(await screen.findByRole("button", { name: "Apply Console Update" }));
++  await waitFor(() => expect(confirm).toHaveBeenCalledWith("Apply the latest console update now?"));
++});
++test("a failed access preflight prevents starting an update", async () => {
++  vi.mocked(fetchConsoleAuthState).mockRejectedValue(new Error("Console state check failed: 403"));
++  const confirm = vi.fn(); mount(confirm);
++  fireEvent.click(await screen.findByRole("button", { name: "Apply Console Update" }));
++  expect(await screen.findByText("Console state check failed: 403")).toBeVisible();
++  expect(confirm).not.toHaveBeenCalled(); expect(updatesApi.applyStack).not.toHaveBeenCalled();
++});
+diff --git a/console/web/src/features/updates/UpdatesPanel.tsx b/console/web/src/features/updates/UpdatesPanel.tsx
+index e8ac13f..b764fde 100644
+--- a/console/web/src/features/updates/UpdatesPanel.tsx
++++ b/console/web/src/features/updates/UpdatesPanel.tsx
+@@ -149,8 +149,21 @@ export function UpdatesPanel({
+     await waitForTaskWithUpdates(response.task, setGameSteamcmdFixTask);
+   }
+ 
++  async function confirmConsoleUpdate(message: string) {
++    try {
++      const state = await fetchConsoleAuthState();
++      const warning = state?.config?.consoleAccessReviewRequired
++        ? "\n\nConsole IP restrictions await confirmation. This update preserves current access; review the restrictions in Settings before activating them. Keep SSH access available for recovery."
++        : "";
++      return await confirmAction(message + warning);
++    } catch (error) {
++      setStackStatus((current) => ({ ...current, status: "Check Failed", reason: error instanceof Error ? error.message : String(error) }));
++      return false;
++    }
++  }
++
+   async function applyStackUpdate() {
+-    if (!(await confirmAction("Apply the latest console update now?"))) return;
++    if (!(await confirmConsoleUpdate("Apply the latest console update now?"))) return;
+     const expectedVersion = String(stackStatus.latest || "").trim();
+     saveStackUpdateExpectedVersion(expectedVersion);
+     setStackUpdateExpectedVersion(expectedVersion);
+@@ -207,7 +220,7 @@ export function UpdatesPanel({
+   }
+ 
+   async function applyQaUpdate() {
+-    if (!(await confirmAction(`Apply QA pre-release ${qaBuild?.shortSha || "build"} and rebuild the Console?`))) return;
++    if (!(await confirmConsoleUpdate(`Apply QA pre-release ${qaBuild?.shortSha || "build"} and rebuild the Console?`))) return;
+     saveStackUpdateExpectedVersion(String(stackStatus.current || ""));
+     setStackUpdateExpectedVersion(String(stackStatus.current || ""));
+     setStackUpdateReadyAt(null);
+@@ -219,7 +232,7 @@ export function UpdatesPanel({
+   }
+ 
+   async function reinstallPublicRelease() {
+-    if (!(await confirmAction("Replace the QA pre-release with the latest published Console release? Your server configuration and data will be preserved."))) return;
++    if (!(await confirmConsoleUpdate("Replace the QA pre-release with the latest published Console release? Your server configuration and data will be preserved."))) return;
+     const expectedVersion = String(stackStatus.latest || "").trim();
+     saveStackUpdateExpectedVersion(expectedVersion);
+     setStackUpdateExpectedVersion(expectedVersion);
 diff --git a/console/web/src/styles.css b/console/web/src/styles.css
-index 4495238..1a81f55 100644
+index 47f7d18..6cb7987 100644
 --- a/console/web/src/styles.css
 +++ b/console/web/src/styles.css
-@@ -7835,3 +7835,8 @@ td :where(.service-actions, .action-row, .map-action-buttons) { max-width: 100%;
+@@ -7843,3 +7843,8 @@ td :where(.service-actions, .action-row, .map-action-buttons) { max-width: 100%;
  .deleted-character-unattributed > .playerAdmin_toggleHeader { border-radius: 0; background: var(--panel-muted); }
  .deleted-character-unattributed > .playerAdmin_toggleBody { display: flex; flex-direction: column; gap: 12px; }
  .deleted-character-unattributed-count { margin-left: auto; color: var(--text-faint); font-weight: 500 !important; }
@@ -787,7 +1264,7 @@ index 4495238..1a81f55 100644
 +.encrypted-api-fingerprint input { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 diff --git a/docker-compose.tls-front.yml b/docker-compose.tls-front.yml
 new file mode 100644
-index 0000000..78429fa
+index 0000000..defa7c4
 --- /dev/null
 +++ b/docker-compose.tls-front.yml
 @@ -0,0 +1,38 @@
@@ -806,7 +1283,7 @@ index 0000000..78429fa
 +    # Host networking: reaches the Console on the host's loopback and listens on
 +    # DUNE_TLS_FRONT_BIND:DUNE_TLS_FRONT_PORT.
 +    network_mode: host
-+    user: "${DUNE_HOST_UID:-0}:${DUNE_HOST_GID:-0}"
++    user: "${DUNE_HOST_UID:-1000}:${DUNE_HOST_GID:-1000}"
 +    environment:
 +      MV_TLS_ADDR: "${DUNE_TLS_FRONT_BIND:-0.0.0.0}:${DUNE_TLS_FRONT_PORT:-8797}"
 +      MV_TLS_UPSTREAM: "${DUNE_TLS_FRONT_UPSTREAM:-http://127.0.0.1:8088}"
@@ -829,6 +1306,20 @@ index 0000000..78429fa
 +      options:
 +        max-size: "${DUNE_DOCKER_LOG_MAX_SIZE:-20m}"
 +        max-file: "${DUNE_DOCKER_LOG_MAX_FILES:-3}"
+diff --git a/docker-compose.web.yml b/docker-compose.web.yml
+index 6ddf651..fe46e8c 100644
+--- a/docker-compose.web.yml
++++ b/docker-compose.web.yml
+@@ -35,6 +35,9 @@ services:
+       DUNE_COMPOSE_PROJECT_NAME: "${DUNE_COMPOSE_PROJECT_NAME:-dune-awakening-selfhost-docker}"
+       ADMIN_BIND_HOST: "${ADMIN_BIND_HOST:-0.0.0.0}"
+       ADMIN_BIND_PORT: "${ADMIN_WEB_PORT:-${ADMIN_BIND_PORT:-8088}}"
++      # Transport the existing setting without silently activating a previously
++      # ignored allowlist on upgrade. Settings requires a safe, explicit review.
++      DUNE_CONFIGURED_ADMIN_ALLOWED_IPS: "${ADMIN_ALLOWED_IPS:-}"
+       ADMIN_AUTH_DISABLED: "${ADMIN_AUTH_DISABLED:-0}"
+       ADMIN_SECURE_COOKIES: "${ADMIN_SECURE_COOKIES:-0}"
+       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
 diff --git a/docs/README.md b/docs/README.md
 index c6ab8a0..1ae045e 100644
 --- a/docs/README.md
@@ -843,13 +1334,35 @@ index c6ab8a0..1ae045e 100644
  ## Runtime (`runtime/`)
 diff --git a/docs/console/encrypted-api.md b/docs/console/encrypted-api.md
 new file mode 100644
-index 0000000..3aa054f
+index 0000000..fb5aced
 --- /dev/null
 +++ b/docs/console/encrypted-api.md
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,117 @@
 +# Encrypted API access
 +
 +**Status:** Optional | **Last Updated:** October 2026
++
++## Safe Upgrade and Console Access
++
++An empty `ADMIN_ALLOWED_IPS` keeps existing Console access unchanged. Older stock
++Docker installations did not pass this setting into the Console. Updates do not
++silently activate a previously ignored setting: Settings shows **Review Console
++IP Restrictions** until an administrator confirms it. Activation is refused if
++the list contains invalid addresses or excludes the current connection. No
++browser or proxy address is added automatically.
++
++Restrictions already enforced through a direct environment or Compose override
++remain active. Confirmed restrictions survive updates; changing a non-empty
++list requires another review while retaining the last confirmed restrictions.
++Console update confirmations warn when a review is pending.
++
++For recovery, use SSH to correct or clear `ADMIN_ALLOWED_IPS` in the project's
++`.env`, then run `runtime/scripts/dune console reload`. Clearing it restores
++normal authenticated Console access. This reload does not restart the
++Battlegroup. If a Compose override sets `ADMIN_ALLOWED_IPS` directly, correct
++that override too.
++
++## Overview
 +
 +The Console listens on plain HTTP (`http://<host>:8088`). That is fine on a trusted network, but over the internet the
 +admin password, API keys and every answer cross the network in clear text. **Encrypted API access** is a small container
@@ -1015,7 +1528,7 @@ index b391c46..2aefe95 100755
 +start_tls_front
  show_finish
 diff --git a/runtime/scripts/console.sh b/runtime/scripts/console.sh
-index 6a6642a..6f4d416 100755
+index 2576ff8..334c4f3 100755
 --- a/runtime/scripts/console.sh
 +++ b/runtime/scripts/console.sh
 @@ -119,6 +119,7 @@ restart_console() {
@@ -1026,7 +1539,7 @@ index 6a6642a..6f4d416 100755
    current_image_id="$(docker image inspect --format '{{.Id}}' redblink-dune-docker-console:dev 2>/dev/null || true)"
    if [ -n "$previous_image_id" ] && [ "$previous_image_id" != "$current_image_id" ]; then
      docker image rm "$previous_image_id" >/dev/null 2>&1 || true
-@@ -140,6 +141,7 @@ reload_console() {
+@@ -141,6 +142,7 @@ reload_console() {
    echo "Recreating the Dune Docker Console container..."
    docker rm -f "$WEB_SERVICE" >/dev/null 2>&1 || true
    COMPOSE_PROJECT_NAME="$PROJECT_NAME" DUNE_COMPOSE_PROJECT_NAME="$MAIN_PROJECT_NAME" DUNE_HOST_REPO_ROOT="$HOST_ROOT" docker compose -f "$WEB_COMPOSE" up -d "$WEB_SERVICE"
@@ -1035,10 +1548,10 @@ index 6a6642a..6f4d416 100755
    print_url
  }
 diff --git a/runtime/scripts/dune b/runtime/scripts/dune
-index 6b2c880..dd7752b 100755
+index 28cd007..2aa18a1 100755
 --- a/runtime/scripts/dune
 +++ b/runtime/scripts/dune
-@@ -427,6 +427,11 @@ EOF
+@@ -433,6 +433,11 @@ EOF
      runtime/scripts/ip-change-restart.sh "$@"
      ;;
  
@@ -1050,7 +1563,7 @@ index 6b2c880..dd7752b 100755
    shutdown-protection)
      shift || true
      runtime/scripts/shutdown-protection.sh "$@"
-@@ -528,6 +533,7 @@ Usage:
+@@ -534,6 +539,7 @@ Usage:
    dune self-update [check|list|install [latest|<tag>]]
    dune restart-schedule [enable <HH:MM> [notify-minutes]|disable|status]
    dune ip-change-restart [enable [interval-minutes] [notify-minutes]|disable|status|check-now]
@@ -1059,10 +1572,10 @@ index 6b2c880..dd7752b 100755
    dune network [status|fix]
    dune db backup [output-dir]
 diff --git a/runtime/scripts/self-update.sh b/runtime/scripts/self-update.sh
-index 1f865a4..452b0e6 100755
+index 3e3b65b..4802580 100755
 --- a/runtime/scripts/self-update.sh
 +++ b/runtime/scripts/self-update.sh
-@@ -1351,6 +1351,7 @@ rebuild_web_console_now() {
+@@ -1377,6 +1377,7 @@ rebuild_web_console_now() {
    self_update_running restarting 94 "Restarting the updated web console."
    docker rm -f "$service" >/dev/null 2>&1 || true
    COMPOSE_PROJECT_NAME="$web_compose_project" DUNE_COMPOSE_PROJECT_NAME="$DUNE_COMPOSE_PROJECT_NAME" DUNE_HOST_REPO_ROOT="$HOST_ROOT_DIR" docker compose -f docker-compose.web.yml up -d --force-recreate "$service"
@@ -1346,10 +1859,10 @@ index 0000000..430a51c
 +esac
 diff --git a/runtime/tls-front/Dockerfile b/runtime/tls-front/Dockerfile
 new file mode 100644
-index 0000000..2726d65
+index 0000000..5015a0d
 --- /dev/null
 +++ b/runtime/tls-front/Dockerfile
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,19 @@
 +# Encrypted front door for the Console API (HTTPS in front of the Console).
 +FROM golang:1.25-alpine AS build
 +
@@ -1364,6 +1877,8 @@ index 0000000..2726d65
 +
 +# Runs as the host user chosen in docker-compose.tls-front.yml (DUNE_HOST_UID/GID).
 +COPY --from=build /out/dune-tls-front /usr/local/bin/dune-tls-front
++RUN mkdir -p /data && chown 1000:1000 /data
++USER 1000:1000
 +
 +HEALTHCHECK --interval=30s --timeout=8s --start-period=10s --retries=3 CMD ["/usr/local/bin/dune-tls-front", "-healthcheck"]
 +ENTRYPOINT ["/usr/local/bin/dune-tls-front"]
@@ -1378,10 +1893,10 @@ index 0000000..b4d14b0
 +go 1.24
 diff --git a/runtime/tls-front/main.go b/runtime/tls-front/main.go
 new file mode 100644
-index 0000000..bd62e11
+index 0000000..ca85927
 --- /dev/null
 +++ b/runtime/tls-front/main.go
-@@ -0,0 +1,587 @@
+@@ -0,0 +1,595 @@
 +// mvtls is the encrypted front door for the Dune Docker Console API.
 +//
 +// A viewer on someone's PC talks HTTPS to mvtls; mvtls forwards to the
@@ -1934,7 +2449,7 @@ index 0000000..bd62e11
 +// ---------------------------------------------------------------- health check
 +
 +func healthcheck(cfg config) int {
-+	_, port, err := net.SplitHostPort(cfg.Addr)
++	host, port, err := net.SplitHostPort(cfg.Addr)
 +	if err != nil {
 +		fmt.Fprintln(os.Stderr, err)
 +		return 1
@@ -1943,7 +2458,15 @@ index 0000000..bd62e11
 +		// the certificate is not for 127.0.0.1; this only asks the front door itself
 +		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 +	}}
-+	resp, err := c.Get("https://127.0.0.1:" + port + "/mvtls")
++	// Probe the configured listener, not an unrelated IPv4 loopback socket.
++	// Wildcard listeners have no connectable address of their own.
++	switch host {
++	case "", "0.0.0.0":
++		host = "127.0.0.1"
++	case "::":
++		host = "::1"
++	}
++	resp, err := c.Get("https://" + net.JoinHostPort(host, port) + "/mvtls")
 +	if err != nil {
 +		fmt.Fprintln(os.Stderr, err)
 +		return 1
@@ -1971,10 +2494,10 @@ index 0000000..bd62e11
 +}
 diff --git a/runtime/tls-front/main_test.go b/runtime/tls-front/main_test.go
 new file mode 100644
-index 0000000..d983c1d
+index 0000000..a8b83b3
 --- /dev/null
 +++ b/runtime/tls-front/main_test.go
-@@ -0,0 +1,369 @@
+@@ -0,0 +1,391 @@
 +package main
 +
 +import (
@@ -2042,6 +2565,28 @@ index 0000000..d983c1d
 +	backend.Close()
 +	if healthcheck(cfg) == 0 {
 +		t.Fatal("unreachable Console was reported healthy")
++	}
++}
++
++func TestHealthCheckUsesConfiguredFrontAddress(t *testing.T) {
++	front := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		w.WriteHeader(http.StatusOK)
++	}))
++	front.Listener.Close()
++	listener, err := net.Listen("tcp", "127.0.0.2:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	front.Listener = listener
++	front.StartTLS()
++	defer front.Close()
++	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		w.WriteHeader(http.StatusOK)
++	}))
++	defer backend.Close()
++	upstream, _ := url.Parse(backend.URL)
++	if healthcheck(config{Addr: listener.Addr().String(), Upstream: upstream}) != 0 {
++		t.Fatal("healthy front bound to a specific address was reported unhealthy")
 +	}
 +}
 +
