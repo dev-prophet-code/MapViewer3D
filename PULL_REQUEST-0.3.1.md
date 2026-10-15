@@ -1,5 +1,3 @@
-<!-- Text for the update of the catalog pull request (Red-Blink/dune-docker-addons #41): 0.3.0 -> 0.3.1.
-     Placeholders {{...}} are filled after the release exists (SHA-256 of the PUBLISHED asset). -->
 
 ## MapViewer3D 0.3.1 (answers the review of 0.3.0)
 
@@ -9,7 +7,7 @@ intentional close, so a watchdog timeout stopped reconnection for good while a l
 
 - **Release:** https://github.com/dev-prophet-code/MapViewer3D/releases/tag/addon-v0.3.1
 - **Pinned package:** `https://github.com/dev-prophet-code/MapViewer3D/releases/download/addon-v0.3.1/mapviewer3d-0.3.1.zip`
-- **SHA-256 (verified by downloading the published asset):** `{{SHA256}}`
+- **SHA-256 (verified by downloading the published asset):** `0d169eca6080d544acd62f9a895738f7ec0f4f7e6a497bfd38a01925dffde716`
 - **Catalog change:** `addons/mapviewer3d.json` and `index.json`: `version`, `downloadUrl`, `sha256`. `v0.3.0` is left as it is (new immutable release, as requested). No change in permissions.
 
 ### What changed
