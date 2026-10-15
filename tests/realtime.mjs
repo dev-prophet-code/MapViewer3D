@@ -153,6 +153,84 @@ await test('a revoked key ends the stream for good and the feature switches off'
   h.close();
 });
 
+// The 65 s watchdog is captured instead of waited for: the test fires it by hand, exactly as the
+// timer would, and every other timer (the 1 s reconnect backoff, settle) runs for real.
+function captureWatchdog() {
+  const real = globalThis.setTimeout;
+  const armed = [];
+  globalThis.setTimeout = (fn, ms, ...args) => {
+    if (ms !== 65 * 1000) return real(fn, ms, ...args);
+    const slot = { fn, live: true };
+    armed.push(slot);
+    return { slot, id: real(() => {}, 0) }; // clearTimeout below disarms the slot
+  };
+  const realClear = globalThis.clearTimeout;
+  globalThis.clearTimeout = (h) => { if (h?.slot) h.slot.live = false; else realClear(h); };
+  return {
+    fire() { const slot = armed.filter((s) => s.live).at(-1); assert.ok(slot, 'the watchdog is armed while a stream is open'); slot.live = false; slot.fn(); },
+    restore() { globalThis.setTimeout = real; globalThis.clearTimeout = realClear; },
+  };
+}
+const streams = (c) => c.requests.filter((r) => r.url === '/api/realtime/stream').length;
+
+await test('a watchdog timeout reconnects while a layer is attached', async () => {
+  const c = mockConsole();
+  const dog = captureWatchdog();
+  try {
+    const { cons, rt } = await modules();
+    await cons.saveToken(KEY);
+    let snaps = 0; let errors = 0;
+    const h = rt.attach('Survival_1', null, { snap: () => snaps++, pos() {}, error: () => errors++ });
+    await settle();
+    assert.equal(streams(c), 1);
+    assert.equal(snaps, 1);
+    dog.fire(); // 65 s without data
+    await settle(1500); // backoff 1 s, real time
+    assert.equal(errors, 1, 'the layer was told once');
+    assert.equal(streams(c), 2, 'a second stream was opened by itself');
+    assert.ok(snaps >= 2, 'and delivered a new snapshot');
+    assert.equal(await rt.isAvailable(), true, 'a timeout is not a refused key');
+    h.close();
+  } finally { dog.restore(); }
+});
+
+await test('closing the last layer cancels a pending reconnect', async () => {
+  const c = mockConsole();
+  const dog = captureWatchdog();
+  try {
+    const { cons, rt } = await modules();
+    await cons.saveToken(KEY);
+    const h = rt.attach('Survival_1', null, { snap() {}, pos() {}, error() {} });
+    await settle();
+    dog.fire();
+    await settle(100); // retry is scheduled (1 s), not yet fired
+    h.close();
+    await settle(1500);
+    assert.equal(streams(c), 1, 'no stream after the last layer went away');
+    assert.equal(c.open, 0);
+  } finally { dog.restore(); }
+});
+
+await test('a key that is refused at the reconnect is not retried', async () => {
+  const c = mockConsole();
+  const dog = captureWatchdog();
+  try {
+    const { cons, rt } = await modules();
+    await cons.saveToken(KEY);
+    const h = rt.attach('Survival_1', null, { snap() {}, pos() {}, error() {} });
+    await settle();
+    c.mode = 'revoked'; // revoked while the stream was open
+    dog.fire();
+    await settle(1500);
+    const after = streams(c);
+    assert.equal(after, 2, 'exactly one attempt, which the console refused');
+    await settle(2500);
+    assert.equal(streams(c), after, 'no further attempt');
+    assert.equal(await rt.isAvailable(), false);
+    h.close();
+  } finally { dog.restore(); }
+});
+
 await test('plain HTTP away from this machine is reported, HTTPS and localhost are not', async () => {
   mockConsole();
   const { rt } = await modules();

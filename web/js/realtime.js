@@ -16,6 +16,9 @@ const SHOWN = new Set(['worm', 'vehicle', 'npc', 'civilian', 'storm', 'coriolis'
 const RECHECK_MS = 10 * 60 * 1000;
 const WATCHDOG_MS = 65 * 1000;
 const MAX_BACKOFF = 30 * 1000;
+// Watchdog aborts are retryable; close() and a refused key are not. The abort signal alone cannot
+// tell them apart (the watchdog sets it too), so the watchdog marks its own controller.
+const timedOut = new WeakSet();
 const MAX_BUFFER = 32 * 1024 * 1024;
 
 let availableAt = 0;
@@ -132,10 +135,12 @@ class Feed {
     const ctrl = new AbortController();
     this.abort = ctrl;
     this.read(ctrl).catch(() => {}).finally(() => {
-      if (this.abort === ctrl) this.abort = null;
+      const current = this.abort === ctrl; // false: close() (or a newer connection) took over
+      if (current) this.abort = null;
       this.connected = false;
       for (const sub of this.subs) sub.handlers.error?.();
-      if (this.subs.size && !ctrl.signal.aborted && !this.denied) {
+      const intentional = ctrl.signal.aborted && !timedOut.has(ctrl);
+      if (current && this.subs.size && !intentional && !this.denied) {
         this.retry = setTimeout(() => { this.retry = null; this.open(); }, this.backoff);
         this.backoff = Math.min(this.backoff * 2, MAX_BACKOFF);
       }
@@ -153,7 +158,7 @@ class Feed {
       throw e;
     });
     this.backoff = 1000;
-    const dog = () => { clearTimeout(this.dog); this.dog = setTimeout(() => ctrl.abort(), WATCHDOG_MS); };
+    const dog = () => { clearTimeout(this.dog); this.dog = setTimeout(() => { timedOut.add(ctrl); ctrl.abort(); }, WATCHDOG_MS); };
     dog();
     const reader = res.body.getReader();
     const text = new TextDecoder();
