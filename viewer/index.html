@@ -31,6 +31,7 @@
 
   <section id="jump">
     <h2><span data-i18n="jump.title">Jump to</span> <span class="muted">(<span id="playerCount">0</span> online)</span></h2>
+    <input id="searchInput" type="search" data-i18n-ph="jump.search" placeholder="Search player, base or place …" spellcheck="false" autocomplete="off">
     <div id="playerList" class="plist"></div>
   </section>
 
@@ -46,6 +47,11 @@
     <div id="liveCats" class="toggles"></div>
   </section>
   <div id="nolive" class="muted small" hidden data-i18n="live.none">The server provides no live data for this map.</div>
+
+  <section id="terrainSec">
+    <h2 data-i18n="terrain.title">Terrain display</h2>
+    <div id="terrainToggles" class="toggles"></div>
+  </section>
 
   <section id="conn">
     <h2 data-i18n="conn.title">Connection</h2>
@@ -153,7 +159,10 @@
 <aside id="liveinfo" hidden>
   <div class="li-head"><span class="li-icon"></span><strong class="li-title"></strong><button class="li-close" data-i18n-title="close">×</button></div>
   <dl class="li-lines"></dl>
-  <button class="li-jump" data-i18n="info.jump">Fly there</button>
+  <div class="btnrow">
+    <button class="li-jump primary" data-i18n="info.jump">Fly there</button>
+    <button class="li-copy" data-i18n="info.copy" data-i18n-title="info.copy.tip">Copy link</button>
+  </div>
 </aside>
 
 <script type="module" src="js/main.js"></script>

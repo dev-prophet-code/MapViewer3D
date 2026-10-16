@@ -44,7 +44,7 @@ function jumpTo(x, z, dist) {
 const theme = initTheme({ scene, renderer, sky, hemi, sun, terrain, horizon: SKY });
 const compass = initCompass($('compass'), camera, controls);
 bindHud();
-const fillMaps = bindUi({ live, jumpTo, onMap: loadMap });
+const fillMaps = bindUi({ live, terrain, jumpTo, onMap: loadMap });
 let entries = [];
 
 // ---------- Mauszeiger → Spielkoordinaten ----------
@@ -71,7 +71,7 @@ let currentVersion = 0; // Stand der Geländedaten
 
 // Eintrag = Karte + Serverinstanz; das Gelände wird nur bei Kartenwechsel neu geladen.
 // keepView: Aktualisierung derselben Karte (neues Coriolis-Layout) – Kamera bleibt stehen.
-function loadMap(entry, keepView = false) {
+function loadMap(entry, keepView = false, startCoord = null) {
   const m = entry.map;
   if (current !== m.name || m.version !== currentVersion) {
     const switched = current !== m.name && !keepView;
@@ -85,8 +85,14 @@ function loadMap(entry, keepView = false) {
       camera.position.set(ox + ext * 0.35, ext * 0.45, oz + ext * 1.05);
     }
   }
+  if (startCoord) {
+    jumpTo(startCoord.x / 100, startCoord.y / 100, startCoord.d ?? 150);
+  }
   showMapInfo(m, entry.view);
-  if (!EMBED) history.replaceState(null, '', `#${entry.id}`);
+  if (!EMBED) {
+    const coordSuffix = startCoord ? `/${Math.round(startCoord.x)},${Math.round(startCoord.y)}` : '';
+    history.replaceState(null, '', `#${entry.id}${coordSuffix}`);
+  }
   live.setMap(m, entry.view ? entry.view.partition : null);
 }
 
@@ -119,15 +125,26 @@ async function showVersion() {
   try { $('version').textContent = (await api.version()).version; } catch { /* ältere Server */ }
 }
 
+function parseHash() {
+  const raw = decodeURIComponent(location.hash.slice(1));
+  const [want, coordStr] = raw.split('/');
+  let coord = null;
+  if (coordStr) {
+    const [x, y, d] = coordStr.split(',').map(Number);
+    if (Number.isFinite(x) && Number.isFinite(y)) coord = { x, y, d: Number.isFinite(d) ? d : 150 };
+  }
+  return { want, coord };
+}
+
 async function loadMaps() {
   const maps = await api.maps();
   if (!maps.length) { $('mapinfo').textContent = t('maps.none'); return; }
-  const want = decodeURIComponent(location.hash.slice(1));
+  const { want, coord } = parseHash();
   entries = fillMaps(maps, want);
   const start = entries.find((e) => e.id === want) ?? (START_MAP && byLive(entries, START_MAP)) ?? entries[0];
   $('map').value = start.id;
   current = null;
-  loadMap(start);
+  loadMap(start, false, coord);
 }
 
 // Nach einem Coriolis-Sturm wechselt die Deep Desert das Layout: Der Server baut das

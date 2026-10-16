@@ -334,6 +334,7 @@ func (s *Server) clearServerCaches() {
 	os.RemoveAll(s.mapImageDir())
 	s.labelCache = sync.Map{}
 	s.iconMisses = sync.Map{}
+	s.stripped = sync.Map{}
 	os.RemoveAll(s.iconsDir()) // Symbole kommen vom neuen Server
 }
 

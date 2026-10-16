@@ -225,7 +225,12 @@ func main() {
 	if *open {
 		go openBrowser(url)
 	}
-	err = http.Serve(ln, srv)
+	httpSrv := &http.Server{
+		Handler:           srv,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	err = httpSrv.Serve(ln)
 	if restarting.Load() {
 		select {} // das Update startet das Programm gleich neu (startUpdater)
 	}

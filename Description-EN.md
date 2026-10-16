@@ -31,13 +31,14 @@ browser.
 
 - From afar the map shows the icons of the 2D live map, up close 3D models. The
   toggles in the panel carry the same icons.
-- Every area can be toggled on and off. By default only *online players*, *bases*,
+- Every area – as well as the terrain's 1 km grid, contour lines and wireframe – can be toggled on and off. By default only *online players*, *bases*,
   *bases in 3D* and *names* are on.
-- Clicking an object shows details and offers *Fly there*.
+- A live search field finds online players, bases (by name or owner), vehicles and locations as you type and flies straight to any result.
+- Clicking an object shows details and offers *Fly there* and *Copy link* (direct URL hash `#<map>@<partition>/<x>,<y>`).
 - Players refresh every 5 seconds, bases and vehicles every 20 seconds, locations
   and resources every few minutes.
 
-**Controls:** mouse (pan, rotate, zoom), plus W/A/S/D/Q/E to fly, with Shift for
+**Controls:** mouse (pan, rotate, zoom), plus W/A/S/D/Q/E or arrow keys / PageUp / PageDown to fly, with Shift for
 more speed.
 
 **Language:** The UI is in English by default. The selector at the top right of the

@@ -32,9 +32,10 @@ Explore Hagga Basin and Deep Desert with players, bases, vehicles, hazards and r
 - 🐛 **Live sandworms, enemies and vehicles** *(optional, since Beta.9)* – a small read-only agent on the game host reads their positions from the game processes (~10 Hz); worms glide across the map. See [docs/Agent-EN.md](docs/Agent-EN.md).
 - 📶 **Realtime Data through the Dune Docker Console** *(Beta.16)* – the same live data on a viewer on your own PC, with your API key's **Realtime Data** permission, HTTPS only; hidden automatically when the server does not offer it.
 - 🔀 **Switch server** *(Beta.16)* – keep several servers and switch between them without restarting.
+- 🔍 **Live search & coordinate deep-links** *(Beta.17)* – search players, bases, vehicles and locations as you type and share direct coordinate links (`#map@partition/x,y`).
 - 🏗️ **Bases as real 3D buildings**, assembled from the actual building pieces.
-- 🧭 **Free camera** – mouse wheel rotates, Shift tilts, Ctrl/⌘ zooms; W/A/S/D/Q/E flight, compass, "fly to" on any object.
-- 🎯 **Same icons as the 2D live map**; 3D models take over up close. Every layer can be toggled.
+- 🧭 **Free camera** – mouse wheel rotates, Shift tilts, Ctrl/⌘ zooms; W/A/S/D/Q/E, arrow keys and PageUp/PageDown flight, compass, "fly to" and "copy link" on any object.
+- 🎯 **Same icons as the 2D live map**; 3D models take over up close. Every layer – plus the 1 km terrain grid, contour lines and wireframe – can be toggled.
 - 🌗 **Light / dark mode**, fullscreen, hideable panel, built-in guide, English & German UI.
 - 🔒 **Credentials stay safe** – double-encrypted, bound to your machine, never sent to the browser.
 - 🖥️ **No install needed** – pre-built for Windows, macOS and Linux (x64 & ARM, incl. Raspberry Pi). Go is only needed to build from source.

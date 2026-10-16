@@ -1,6 +1,6 @@
 # Security Policy
 
-Applies to the current release, Dune MapViewer3D Beta.16.
+Applies to the current release, Dune MapViewer3D Beta.17.
 
 ## Reporting a vulnerability
 
@@ -24,9 +24,11 @@ live player only when it can match it to an online player the console already sh
 (same partition, nearest distance), so no new names or players appear; in public mode only PvE partitions leave the server. Run it only on
 servers you operate. Details: [docs/Agent-EN.md](docs/Agent-EN.md).
 
-## Realtime Data and server list (Beta.16)
+## Realtime Data and server list (Beta.16 / Beta.17)
 
-- Realtime Data (live worms, NPCs, vehicles, storms) comes only through the Dune Docker Console's `/api/realtime/*`, authorized by the API key's *Realtime Data* scope (players additionally need *Players: Read*). The viewer sends the key there only over **HTTPS** or to a Console on the same machine; redirects are not followed for the check.
+- Realtime Data (live worms, NPCs, vehicles, storms) comes only through the Dune Docker Console's `/api/realtime/*`, authorized by the API key's *Realtime Data* scope (players additionally need *Players: Read*). The viewer sends the key there only over **HTTPS** or to a Console on the same machine; redirects are not followed for any Console request.
+- All outgoing Console HTTP connections validate resolved IP addresses at dial time against link-local and cloud-metadata ranges (`169.254.0.0/16`, `fe80::/10`, multicast, unspecified) to prevent SSRF and DNS-rebinding attacks.
+- When `-password` is active on a network listener, repeated failed HTTP Basic Auth attempts from the same IP address are rate-limited (locked out for 1 minute after 10 failed attempts).
 - Console certificates are verified by the system trust store, or – for self-signed / internal certificates – by a **pinned fingerprint** (SHA-256 of the public key; per server, or `-api-pin` for all). Without a pin an untrusted certificate is refused and its fingerprint shown for comparison; a mismatch is reported as a possible attack. This applies to every Console connection, not only Realtime Data.
 - **Encrypted front door detection.** For a Console on plain HTTP (not on this machine) the viewer asks port 8797 of the same host for an `mvtls` (TLS handshake only to read the public key, and `GET /mvtls`) – **no token or secret is sent**. A positive answer is only an *offer*: the viewer shows the key's fingerprint and switches after the human has compared it with `mvtls -pin` on the server; that comparison is what excludes a man in the middle, so it is never automatic (except when the fingerprint is already known from `-api-pin`). After the switch the token is sent only through the pinned connection. A viewer with a fixed configuration never switches by itself. Where the fingerprint to compare is shown: Dune Docker with the `ddp` patch – *Settings → Encrypted API Access*, the end of the installer, `dune encrypted-api fingerprint`; the standalone stack – `mvtls -pin`.
 - A 401/403 on the open stream (key disabled, expired, revoked or scope removed) ends it.

@@ -14,6 +14,43 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 
 ---
 
+## Beta.17 – 16.10.2026
+
+### Neu
+
+- **Volltextsuche in Echtzeit (`#searchInput`).** Neues Suchfeld im Bereich *Live-Daten*: Durchsucht während der Eingabe gleichzeitig Online-Spieler, Basen (Name und Besitzer), Fahrzeuge (Typ und Besitzer) sowie Orte/POIs der gewählten Karteninstanz. Bis zu 25 Treffer werden übersichtlich mit Kategorie und Koordinaten aufgelistet – ein Klick fliegt die Kamera direkt zum Ziel.
+- **Gelände-Darstellungsoptionen.** Neuer Abschnitt *Gelände* im Bedienfeld mit drei Schaltern:
+  - **1-km-Gitter** (`terrain.setGrid`) – blendet das Kilometer-Koordinatennetz auf der Geländeoberfläche ein oder aus.
+  - **Höhenlinien** (`terrain.setContours`) – schaltet die topografischen Höhenlinien (25 m / 100 m) unabhängig vom Gitter um.
+  - **Drahtgitter (Wireframe)** – zeigt das geladene LOD-Dreiecksnetz des Geländes zur Diagnose und Detailansicht.
+- **Direktlinks auf Kartenpositionen (Deep-Linking).** Die URL-Hash-Adresse unterstützt jetzt `#<Karte>@<Partition>/<x>,<y>` (in Metern, z. B. `#HaggaBasin@1/-520,1340`). Beim Öffnen eines solchen Links wechselt der Viewer automatisch auf die angegebene Karte bzw. Instanz und fliegt zur Zielposition. Im Detailfenster eines angeklickten Objekts gibt es neben *Hinfliegen* den neuen Knopf **Link kopieren**, der den direkten Positionslink in die Zwischenablage legt.
+- **Erweiterte Tastatursteuerung & Dialogbedienung.** Neben `W`/`A`/`S`/`D` und `Q`/`E` unterstützen der Kameraflug jetzt auch die **Pfeiltasten** sowie **Bild↑** / **Bild↓** (`PageUp` / `PageDown`). Alle Modaldialoge (Einrichtung, Serverwechsel, Instanznamen, Hilfe) lassen sich bequem per `Escape`-Taste oder Klick auf den abgedunkelten Hintergrund schließen.
+
+### Verbessert
+
+- **Deutlich schnelleres Gelände-Raycasting per Höhenfeld-Raymarching.** Klicks und Hover-Abfragen auf der Karte durchsuchen nicht mehr alle Dreiecke der geladenen Three.js-Terrain-Meshes (`raycast`), sondern nutzen ein analytisches Raymarching direkt auf dem im Arbeitsspeicher gehaltenen Höhenfeld (`heightAt`) mit anschließender binärer Verfeinerung. Das verhindert spürbare Frame-Drops beim Bewegen der Maus über große Karten wie die Deep Desert.
+- **Schnellerer Terrain-Fragment-Shader.** Die aufwendige triplanare FBM-Felsstruktur (`triFbm` mit mehreren Oktaven 3D-Simplex-Noise) wird im GLSL-Shader nur noch berechnet, wenn der Felsanteil an einem Pixel sichtbar ist (`rocky > 0.005`). Auf reinen Sandflächen entfällt die Mehrfach-Noise-Auswertung komplett.
+- **Echter LRU-Cache für CDN-Kacheln & sortierte Höhenabfragen.**
+  - Der In-Memory-Cache für entpackte Level-0-Geländekacheln (`backend/cdn`) nutzt jetzt eine echte **LRU-Strategie** (Least Recently Used) statt FIFO und wurde von 96 auf **512 Kacheln** (~64 MB) vergrößert.
+  - Der Endpunkt `POST /api/map/<Name>/sample` gruppiert angefragte Punkte vor dem Auslesen nach ihrer Level-0-Kachel `(x/PatchQuads, y/PatchQuads)` und prüft zwischen den Punkten, ob der Request vom Browser abgebrochen wurde (`r.Context().Err()`). Dadurch wird jede Kachel pro Abfrage nur noch einmal geladen statt bei ungeordneten Punktlisten ständig aus dem Cache verdrängt zu werden.
+- **Weniger Garbage-Collection im Kameraflug.** `fly.js` verwendet wiederverwendbare `THREE.Vector3`-Instanzen statt in jedem Animations-Frame neue Vektoren zu erzeugen.
+- **CI-Pipeline erweitert.** `.github/workflows/ci.yml` prüft mit `go vet` und `go test -race` jetzt sämtliche Backend-Pakete (`cdn`, `updater`, `layout`, `mapdata`, `maps`, `mesh`, `raster`, `landscape`, `ue`, `blocks`, `buildables`, `iostore`, `mapbuild`, `cmd/cdnsync`).
+
+### Sicherheit
+
+- **Brute-Force-Schutz für den Passwortschutz (`-password`).** Schlagen von derselben IP-Adresse innerhalb kurzer Zeit 10 HTTP-Basic-Auth-Anmeldeversuche fehl, wird diese IP-Adresse für 1 Minute gesperrt (`429 Too Many Requests`).
+- **Durchgehender SSRF- und DNS-Rebinding-Schutz für alle Console-Verbindungen.** Die Prüfung der aufgelösten Ziel-IP gegen Link-Local-, Cloud-Metadata- (`169.254.0.0/16`, `fe80::/10`), Multicast- und Unspecified-Adressen (`blockSpecialTargets`) sowie das Verbot automatischer HTTP-Weiterleitungen greifen jetzt nicht mehr nur beim Einrichtungs-Check, sondern bei **jeder** laufenden Verbindung zur Console (`newConsoleClient` / `newConsoleTransport`).
+- **Tolerante Gerätenamens-Bindung bei DHCP-Wechseln.** Ändert das Betriebssystem (insbesondere macOS zwischen `scutil --get LocalHostName`, `.local` und Router-Suffixen wie `.fritz.box` oder `.lan`) den lokalen Hostnamen durch DHCP, probiert `secure.Store.Load()` beim Entschlüsseln von `credentials.enc` und `servers/*.enc` automatisch die kanonischen Varianten desselben Gerätenamens durch. Ein gespeicherter Zugang geht dadurch bei einem Netzwechsel auf demselben Rechner nicht mehr verloren.
+- **HTTP-Server-Timeouts & gecachte Content-Security-Policy.** Der eingebaute HTTP-Server setzt feste Timeouts (`ReadHeaderTimeout: 10s`, `IdleTimeout: 120s`) gegen Slowloris-Verbindungen und berechnet den SHA-256-Hash der `index.html` für den `Content-Security-Policy`-Header nur noch, wenn sich der Zeitstempel der Datei ändert.
+
+### Behoben
+
+- **Atomares Speichern des Kartenbild-Caches.** `mapimage.png` wird im Cache zunächst in eine temporäre Datei geschrieben und anschließend atomar umbenannt (`os.Rename`), sodass parallele Anfragen oder ein Abbruch keine halb geschriebenen PNG-Dateien hinterlassen.
+- **Speicherbereinigung im Live-Proxy und beim Serverwechsel.** Abgelaufene Einträge in `liveProxy.cache` und `liveProxy.busy` werden ab 512 Einträgen automatisch bereinigt; beim Wechsel des Servers oder der Zugangsdaten (`clearServerCaches`) wird auch der Zwischenspeicher der für Besucher gefilterten Antworten (`s.stripped`) geleert.
+- **Veraltete Geländehöhen nach Kartenwechsel.** Beim Wechsel zwischen Hagga Basin und Deep Desert wird der im Browser gespeicherte Höhen-Cache (`live.heights`) für Basen, Fahrzeuge und Orte zuverlässig geleert, sodass Objekte auf der neuen Karte nicht kurzzeitig auf alten Höhen schweben.
+
+---
+
 ## Beta.16 – 07.10.2026
 
 ### Neu
@@ -56,7 +93,7 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 ### Neu
 
 - **Kartendaten kommen per Streaming von GitHub.** Gelände-Kacheln und Bauteil-Modelle liegen nicht mehr im Paket; der Viewer streamt sie aus dem Branch `cdn` des Repositorys (Kachel für Kachel, gegen die SHA-256-Summen aus `catalog.json` geprüft, im Benutzerordner zwischengespeichert, Spiegel über jsDelivr). Das Release-Paket schrumpft von ca. 250 MB auf ca. 30 MB, und „Download ZIP“ von `main` funktioniert: `start.sh` / `start.bat` laden das Programm vom neuesten Release. Ein lokaler Ordner `data/` dient weiter als Rückfall, `-cdn off` nutzt nur ihn, `-cdn <Adresse>` zeigt auf einen eigenen Spiegel (`cdn` in `-config`). Der Bau der Deep-Desert-Layouts überspringt Layouts, die der Branch schon kennt.
-- **Der Branch `cdn` aktualisiert sich selbst.** `deploy/cdn-sync/` (Skript, systemd-Timer, `cmd/cdnsync`) schneidet die extrahierten Karten in Kacheln (der Go-Port ist byte-identisch zum `tilepack.mjs` des Addons) und überträgt nur Neues; ändert sich der Spielbuild, werden Karten, **alle Coriolis-Layouts** und Bauteil-Modelle neu extrahiert. Läuft auf dem Live-Server (cca-server). Siehe [docs/CDN-Sync-DE.md](docs/CDN-Sync-DE.md).
+- **Der Branch `cdn` aktualisiert sich selbst.** `deploy/cdn-sync/` (Skript, systemd-Timer, `cmd/cdnsync`) schneidet die extrahierten Karten in Kacheln (der Go-Port ist byte-identisch zum `tilepack.mjs` des Addons) und überträgt nur Neues; ändert sich der Spielbuild, werden Karten, **alle Coriolis-Layouts** und Bauteil-Modelle neu extrahiert. Läuft auf dem Live-Server. Siehe [docs/CDN-Sync-DE.md](docs/CDN-Sync-DE.md).
 - **Beispiel-Webseite** in `examples/website/`: eine kleine Seite mit eingebautem Viewer (`<iframe>`, Karten-Knöpfe per `postMessage`), `config.example.json` für Server-Adresse und API-Token, nginx- und systemd-Beispiele, alles kommentiert.
 - **`-agent auto`** (`"agentUrl": "auto"`): Der Viewer erkennt, dass er auf dem Spiel-Host läuft (Dune-Serverprozesse im `/proc` sichtbar), und startet als root den Positions-Agenten in sich selbst; `-agent-players` nimmt Spieler dazu. Sonst meldet er im Log, warum es keine Echtzeit-Daten gibt.
 - **Support-Link:** Ein kleines ☕-Symbol im Viewer und der Sponsor-Knopf des Repositorys führen zu <https://buymeacoffee.com/lafamiliagaming>.

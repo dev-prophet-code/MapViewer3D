@@ -20,13 +20,19 @@ export function askForSetup({ cancellable = false } = {}) {
     err.hidden = true;
     modal.hidden = false;
     $('setupServer').focus();
+    const onKey = (e) => { if (cancellable && e.key === 'Escape') close(null); };
+    const onBg = (e) => { if (cancellable && e.target === modal) close(null); };
     const close = (result) => {
       modal.hidden = true;
       $('setupToken').value = '';
       form.onsubmit = null;
       $('setupCancel').onclick = null;
+      removeEventListener('keydown', onKey);
+      modal.removeEventListener('pointerdown', onBg);
       resolve(result);
     };
+    addEventListener('keydown', onKey);
+    modal.addEventListener('pointerdown', onBg);
     $('setupCancel').onclick = () => close(null);
     form.onsubmit = async (e) => {
       e.preventDefault();
@@ -69,7 +75,17 @@ export async function editNames() {
     const err = $('namesError');
     err.hidden = true;
     modal.hidden = false;
-    const close = (changed) => { modal.hidden = true; $('namesForm').onsubmit = null; resolve(changed); };
+    const onKey = (e) => { if (e.key === 'Escape') close(false); };
+    const onBg = (e) => { if (e.target === modal) close(false); };
+    const close = (changed) => {
+      modal.hidden = true;
+      $('namesForm').onsubmit = null;
+      removeEventListener('keydown', onKey);
+      modal.removeEventListener('pointerdown', onBg);
+      resolve(changed);
+    };
+    addEventListener('keydown', onKey);
+    modal.addEventListener('pointerdown', onBg);
     $('namesCancel').onclick = () => close(false);
     $('namesForm').onsubmit = async (e) => {
       e.preventDefault();
@@ -93,12 +109,18 @@ export function switchServer() {
     const modal = $('servers');
     const list = $('serversList');
     const err = $('serversError');
+    const onKey = (e) => { if (!modal.hidden && e.key === 'Escape') close(false); };
+    const onBg = (e) => { if (e.target === modal) close(false); };
     const close = (changed) => {
       modal.hidden = true;
       $('serversClose').onclick = null;
       $('serversAdd').onclick = null;
+      removeEventListener('keydown', onKey);
+      modal.removeEventListener('pointerdown', onBg);
       resolve(changed);
     };
+    addEventListener('keydown', onKey);
+    modal.addEventListener('pointerdown', onBg);
     const fail = (ex) => { err.textContent = errorText(ex); err.hidden = false; };
     const render = (rows) => {
       list.replaceChildren(...rows.map((r) => {

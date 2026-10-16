@@ -159,6 +159,7 @@ export class LiveLayer {
     for (const b of this.bases.values()) this.removeBase(b);
     this.bases.clear();
     this.exports.clear();
+    this.heights.clear();
     for (const l of Object.values(this.layers)) this.removeLayer(l);
     this.layers = {};
     this.data = { players: [], overlays: [], poi: [], spice: [] };
@@ -251,6 +252,73 @@ export class LiveLayer {
   }
 
   playerPosition(id) { return this.players.get(id)?.obj.position ?? null; }
+
+  // Suche über Spieler, Basen, Fahrzeuge und Orte
+  search(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const results = [];
+    for (const p of this.players.values()) {
+      const text = `${p.row.name ?? ''}`.toLowerCase();
+      if (text.includes(q)) {
+        results.push({
+          kind: p.online ? 'players' : 'offline',
+          label: p.row.name,
+          sub: p.online ? 'Online' : 'Offline',
+          pos: p.obj.position,
+          dist: 60,
+          item: { kind: 'player', row: p.row, obj: p.obj },
+        });
+      }
+    }
+    for (const b of this.bases.values()) {
+      const name = b.row.name || t('toggle.bases');
+      const owner = b.row.owner_name || '';
+      if (`${name} ${owner}`.toLowerCase().includes(q)) {
+        results.push({
+          kind: 'bases',
+          label: name,
+          sub: owner,
+          pos: b.obj.position,
+          dist: 140,
+          item: { kind: 'base', row: b.row, obj: b.obj, base: b },
+        });
+      }
+    }
+    for (const v of this.vehicles.values()) {
+      const vName = subtypeName(v.subtype);
+      const owner = v.row.owner_name || '';
+      if (`${vName} ${owner}`.toLowerCase().includes(q)) {
+        results.push({
+          kind: 'vehicles',
+          label: vName,
+          sub: owner,
+          pos: v.obj.position,
+          dist: 80,
+          item: { kind: 'vehicle', row: v.row, obj: v.obj },
+        });
+      }
+    }
+    for (const cat of CATEGORIES) {
+      const l = this.layers[cat.key];
+      if (!l) continue;
+      const catLabel = t(`cat.${cat.key}`);
+      l.rows.forEach((r, i) => {
+        const title = r.subtypeLabel ?? r.name ?? catLabel;
+        if (`${title} ${catLabel} ${r.subtype ?? ''}`.toLowerCase().includes(q)) {
+          results.push({
+            kind: cat.key,
+            label: title,
+            sub: title !== catLabel ? catLabel : '',
+            pos: l.positions[i],
+            dist: 120,
+            item: { kind: cat.key, row: r, local: l.positions[i] },
+          });
+        }
+      });
+    }
+    return results.slice(0, 40);
+  }
 
   // ---------- Fahrzeuge ----------
   syncVehicles() {

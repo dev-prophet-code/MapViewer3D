@@ -90,8 +90,9 @@ h3 { font-size: 12px; margin: 10px 0 4px; color: var(--muted); font-weight: 600;
 }
 
 /* Verbindung und Dialoge */
-select, input[type=text], input[type=number], input[type=password] { width: 100%; background: var(--field); color: var(--text);
+select, input[type=text], input[type=search], input[type=number], input[type=password] { width: 100%; background: var(--field); color: var(--text);
   border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; margin-top: 3px; }
+#searchInput { margin: 0 0 6px; padding: 5px 8px; font-size: 12px; }
 .btnrow { display: flex; gap: 6px; margin-top: 6px; }
 .btnrow button { flex: 1; }
 #connDelete { margin-top: 6px; }

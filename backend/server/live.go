@@ -140,6 +140,14 @@ func (p *liveProxy) get(path string, ttl time.Duration) *cached {
 	}
 	n := &cached{at: time.Now(), status: resp.StatusCode, body: body}
 	p.mu.Lock()
+	if len(p.cache) > 512 {
+		for k, old := range p.cache {
+			if time.Since(old.at) > 30*time.Minute {
+				delete(p.cache, k)
+				delete(p.busy, k)
+			}
+		}
+	}
 	p.cache[path] = n
 	p.mu.Unlock()
 	return n

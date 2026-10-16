@@ -101,7 +101,10 @@ func (s *Server) mapImage(w http.ResponseWriter, r *http.Request, t *terrain) {
 			http.Error(w, "Kartenbild nicht abrufbar", http.StatusBadGateway)
 			return
 		}
-		os.WriteFile(file, c.body, 0o644)
+		tmp := file + ".tmp"
+		if os.WriteFile(tmp, c.body, 0o644) == nil {
+			os.Rename(tmp, file)
+		}
 	}
 	w.Header().Set("X-Map-Bounds", fmt.Sprintf("%g,%g,%g,%g,%t", info.MinX, info.MaxX, info.MinY, info.MaxY, info.FlipY))
 	w.Header().Set("Cache-Control", "max-age=3600")

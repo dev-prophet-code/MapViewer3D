@@ -6,9 +6,18 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 )
 
-var inlineScript = regexp.MustCompile(`(?s)<script(?:\s[^>]*)?>(.*?)</script>`)
+var (
+	inlineScript = regexp.MustCompile(`(?s)<script(?:\s[^>]*)?>(.*?)</script>`)
+	cspMu        sync.Mutex
+	cspCached    map[string]struct {
+		mod time.Time
+		val string
+	}
+)
 
 // contentSecurityPolicy liefert die CSP für index.html. Alles kommt vom eigenen
 // Server (three.js liegt in viewer/vendor/); nur die eingebettete Import-Map darf
@@ -16,6 +25,17 @@ var inlineScript = regexp.MustCompile(`(?s)<script(?:\s[^>]*)?>(.*?)</script>`)
 // (kein frame-ancestors), z. B. im Dune-Docker-Console-Addon.
 // Gibt "" zurück, wenn die Datei nicht lesbar ist.
 func contentSecurityPolicy(indexFile string) string {
+	st, err := os.Stat(indexFile)
+	if err != nil {
+		return ""
+	}
+	cspMu.Lock()
+	if c, ok := cspCached[indexFile]; ok && c.mod.Equal(st.ModTime()) {
+		cspMu.Unlock()
+		return c.val
+	}
+	cspMu.Unlock()
+
 	b, err := os.ReadFile(indexFile)
 	if err != nil {
 		return ""
@@ -28,7 +48,7 @@ func contentSecurityPolicy(indexFile string) string {
 		sum := sha256.Sum256([]byte(m[1]))
 		scripts = append(scripts, "'sha256-"+base64.StdEncoding.EncodeToString(sum[:])+"'")
 	}
-	return strings.Join([]string{
+	val := strings.Join([]string{
 		"default-src 'self'",
 		"script-src " + strings.Join(scripts, " "),
 		"style-src 'self' 'unsafe-inline'",
@@ -40,4 +60,18 @@ func contentSecurityPolicy(indexFile string) string {
 		"base-uri 'none'",
 		"form-action 'self'",
 	}, "; ")
+
+	cspMu.Lock()
+	if cspCached == nil {
+		cspCached = make(map[string]struct {
+			mod time.Time
+			val string
+		})
+	}
+	cspCached[indexFile] = struct {
+		mod time.Time
+		val string
+	}{mod: st.ModTime(), val: val}
+	cspMu.Unlock()
+	return val
 }

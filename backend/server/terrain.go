@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 
 	"mapviewer3d/mapdata"
 )
@@ -47,7 +48,30 @@ func (s *Server) sample(w http.ResponseWriter, r *http.Request, t *terrain) {
 		return
 	}
 	out := make([]*float64, len(pts))
-	for i, p := range pts {
+	order := make([]int, len(pts))
+	for i := range order {
+		order[i] = i
+	}
+	if t.remote != nil && len(pts) > 1 && t.info.Spacing > 0 {
+		m := t.info.Meta
+		span := float64(PatchQuads) * m.Spacing
+		cell := func(idx int) (int, int) {
+			return int((pts[idx][0] - m.OriginX) / span), int((pts[idx][1] - m.OriginY) / span)
+		}
+		sort.Slice(order, func(a, b int) bool {
+			ax, ay := cell(order[a])
+			bx, by := cell(order[b])
+			if ay != by {
+				return ay < by
+			}
+			return ax < bx
+		})
+	}
+	for _, i := range order {
+		if r.Context().Err() != nil {
+			return
+		}
+		p := pts[i]
 		if z, ok := t.heightAt(p[0], p[1]); ok {
 			z = math.Round(z)
 			out[i] = &z

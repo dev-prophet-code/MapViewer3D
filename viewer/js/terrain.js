@@ -85,15 +85,17 @@ const FRAGMENT = /* glsl */`
     sand *= 1.0 + 0.05 * ripple * near * flat_;
     sand *= 0.96 + 0.08 * vnoise(w * 3.0) * near;
 
-    // Fels: Gesteinsschichten und Struktur, dunklere Rinnen
-    float rn = triFbm(vWorld * vec3(1.0, 1.0, 1.0), n, 0.08);
-    float strata = sin(vH * 0.55 + rn * 6.0 + fbm(w * 0.01) * 8.0);
-    vec3 stone = mix(vec3(0.43, 0.33, 0.27), vec3(0.70, 0.58, 0.47), clamp(0.35 + 0.5 * t + 0.35 * big, 0.0, 1.0));
-    stone *= 0.72 + 0.45 * rn;
-    stone *= 0.93 + 0.07 * strata;
-    stone = mix(stone, stone * vec3(0.9, 0.82, 0.76), smoothstep(0.6, 0.95, slope));
-
-    vec3 col = mix(sand, stone, rocky);
+    // Fels: Gesteinsschichten und Struktur, dunklere Rinnen (nur auf Felsflächen berechnen)
+    vec3 col = sand;
+    if (rocky > 0.005) {
+      float rn = triFbm(vWorld * vec3(1.0, 1.0, 1.0), n, 0.08);
+      float strata = sin(vH * 0.55 + rn * 6.0 + fbm(w * 0.01) * 8.0);
+      vec3 stone = mix(vec3(0.43, 0.33, 0.27), vec3(0.70, 0.58, 0.47), clamp(0.35 + 0.5 * t + 0.35 * big, 0.0, 1.0));
+      stone *= 0.72 + 0.45 * rn;
+      stone *= 0.93 + 0.07 * strata;
+      stone = mix(stone, stone * vec3(0.9, 0.82, 0.76), smoothstep(0.6, 0.95, slope));
+      col = mix(sand, stone, rocky);
+    }
 
     // Kartenbild der Console als Farbgrundlage; aus der Nähe prägen die
     // prozeduralen Details (Riffel, Körnung, Gestein) die Helligkeit mit.
@@ -181,6 +183,8 @@ export class Terrain {
   // ---- Einstellungen ----
   set exaggeration(e) { this.uniforms.uExag.value = e; }
   get exaggeration() { return this.uniforms.uExag.value; }
+  setGrid(on) { this.uniforms.uGrid.value = on ? 1 : 0; }
+  setContours(on) { this.uniforms.uContours.value = on ? 1 : 0; }
   setWireframe(on) { this.wireframe = on; for (const m of this.materials) if (m) m.wireframe = on; }
   setLodColors(on) {
     this.lodColors = on;
@@ -448,8 +452,55 @@ export class Terrain {
   }
 
   // Schnittpunkt eines Strahls mit dem sichtbaren Gelände (Weltkoordinaten) oder null.
+  // Nutzt schnelles Raymarching + Bisektion auf dem geladenen Höhenfeld statt
+  // hunderttausende Dreiecke auf dem Main-Thread zu testen.
   raycast(raycaster) {
-    const hits = raycaster.intersectObjects(this.drawn.map((n) => n.mesh), false);
-    return hits.length ? hits[0].point : null;
+    if (!this.meta || !this.drawn.length) return null;
+    const { origin, direction } = raycaster.ray;
+    const e = this.exaggeration;
+    const [ox, oz] = this.origin;
+    const ext = this.extent;
+    const minY = (this.meta.minZ / 100) * e - 50;
+    const maxY = (this.meta.maxZ / 100) * e + 50;
+    this._box.min.set(ox, minY, oz);
+    this._box.max.set(ox + ext, maxY, oz + ext);
+    const hit = raycaster.ray.intersectBox(this._box, this._hitPt ??= new THREE.Vector3());
+    let t0 = 0;
+    if (!this._box.containsPoint(origin)) {
+      if (!hit) return null;
+      t0 = origin.distanceTo(hit);
+    }
+    const maxDist = Math.min(80000, t0 + ext * 1.6);
+    const steps = 96;
+    let prevT = t0;
+    let prevDiff = null;
+    for (let i = 0; i <= steps; i++) {
+      const u = i / steps;
+      const t = t0 + (maxDist - t0) * (u * u); // dichtere Schritte nah an der Kamera
+      const x = origin.x + direction.x * t;
+      const y = origin.y + direction.y * t;
+      const z = origin.z + direction.z * t;
+      if (y < minY && direction.y < 0) break;
+      const h = this.heightAt(x, z);
+      if (h === null) { prevDiff = null; prevT = t; continue; }
+      const diff = y - h * e;
+      if (diff <= 0) {
+        let lo = prevDiff !== null ? prevT : Math.max(0, t - 50), hi = t;
+        for (let k = 0; k < 8; k++) {
+          const mid = (lo + hi) * 0.5;
+          const mh = this.heightAt(origin.x + direction.x * mid, origin.z + direction.z * mid);
+          if (mh !== null && origin.y + direction.y * mid <= mh * e) hi = mid;
+          else lo = mid;
+        }
+        const ft = (lo + hi) * 0.5;
+        const fx = origin.x + direction.x * ft;
+        const fz = origin.z + direction.z * ft;
+        const fh = this.heightAt(fx, fz);
+        return fh !== null ? this._hitPt.set(fx, fh * e, fz) : null;
+      }
+      prevDiff = diff;
+      prevT = t;
+    }
+    return null;
   }
 }

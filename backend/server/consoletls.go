@@ -91,11 +91,17 @@ func consoleTLS(host, pin string) *tls.Config {
 
 // newConsoleClient ist ein HTTP-Client für die Console mit dieser Prüfung.
 func newConsoleClient(timeout time.Duration) *http.Client {
-	return &http.Client{Timeout: timeout, Transport: newConsoleTransport()}
+	return &http.Client{
+		Timeout:       timeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport:     newConsoleTransport(),
+	}
 }
 
 func newConsoleTransport() *http.Transport {
-	return newConsoleTransportWith(&net.Dialer{Timeout: 10 * time.Second}, currentConsolePin)
+	tr := newConsoleTransportWith(&net.Dialer{Timeout: 10 * time.Second, Control: blockSpecialTargets}, currentConsolePin)
+	tr.Proxy = nil
+	return tr
 }
 
 // newConsoleTransportWith nimmt d für alle Verbindungen (mit und ohne TLS) und

@@ -9,19 +9,34 @@ const $ = (id) => document.getElementById(id);
 // Schalter und Liste zeigen dieselben Symbole wie die Karte
 const icon = legendIcon;
 
-export function bindUi({ live, jumpTo, onMap }) {
+export function bindUi({ live, terrain, jumpTo, onMap }) {
   // Schalter mit Symbolen
-  const toggle = (parent, key, text, on) => {
+  const toggle = (parent, key, text, on, onChange) => {
     const l = document.createElement('label');
     l.className = 'toggle';
     l.dataset.key = key;
     const input = Object.assign(document.createElement('input'), { type: 'checkbox', checked: on });
-    input.addEventListener('change', () => live.setShow(key, input.checked));
+    input.addEventListener('change', () => onChange(input.checked));
     l.append(input, icon(key), document.createTextNode(text));
     parent.append(l);
   };
-  for (const tg of TOGGLES) toggle($('liveToggles'), tg.key, t(`toggle.${tg.key}`), tg.on);
-  for (const c of CATEGORIES) toggle($('liveCats'), c.key, t(`cat.${c.key}`), false);
+  for (const tg of TOGGLES) toggle($('liveToggles'), tg.key, t(`toggle.${tg.key}`), tg.on, (on) => live.setShow(tg.key, on));
+  for (const c of CATEGORIES) toggle($('liveCats'), c.key, t(`cat.${c.key}`), false, (on) => live.setShow(c.key, on));
+
+  // Geländedarstellung (Gitter, Höhenlinien, Drahtgitter)
+  if (terrain && $('terrainToggles')) {
+    const tToggle = (key, text, fn) => {
+      const l = document.createElement('label');
+      l.className = 'toggle';
+      const input = Object.assign(document.createElement('input'), { type: 'checkbox', checked: false });
+      input.addEventListener('change', () => fn(input.checked));
+      l.append(input, document.createTextNode(text));
+      $('terrainToggles').append(l);
+    };
+    tToggle('grid', t('terrain.grid'), (on) => terrain.setGrid(on));
+    tToggle('contours', t('terrain.contours'), (on) => terrain.setContours(on));
+    tToggle('wireframe', t('terrain.wireframe'), (on) => terrain.setWireframe(on));
+  }
 
   // Alle Ebenen ein-/ausblenden
   const setAll = (on) => {
@@ -32,15 +47,35 @@ export function bindUi({ live, jumpTo, onMap }) {
   $('layersAll').addEventListener('click', () => setAll(true));
   $('layersNone').addEventListener('click', () => setAll(false));
 
-  // Spielerliste
-  live.onPlayers = (rows) => {
-    $('playerCount').textContent = rows.length;
+  // Spielerliste & Suche
+  let currentOnline = [];
+  const searchInput = $('searchInput');
+  const renderJumpList = () => {
     const list = $('playerList');
-    if (!rows.length) {
+    const q = searchInput?.value.trim() ?? '';
+    if (q) {
+      const hits = live.search(q);
+      if (!hits.length) {
+        list.replaceChildren(Object.assign(document.createElement('div'), { className: 'empty', textContent: t('jump.empty') }));
+        return;
+      }
+      list.replaceChildren(...hits.map((h) => {
+        const b = document.createElement('button');
+        const sub = h.sub ? Object.assign(document.createElement('span'), { className: 'count', textContent: h.sub }) : '';
+        b.append(icon(h.kind), document.createTextNode(h.label), ...(sub ? [sub] : []));
+        b.addEventListener('click', () => {
+          if (h.pos) jumpTo(h.pos.x, h.pos.z, h.dist ?? 100);
+          live.select(h.item);
+        });
+        return b;
+      }));
+      return;
+    }
+    if (!currentOnline.length) {
       list.replaceChildren(Object.assign(document.createElement('div'), { className: 'empty', textContent: t('jump.nobody') }));
       return;
     }
-    list.replaceChildren(...rows.map((r) => {
+    list.replaceChildren(...currentOnline.map((r) => {
       const b = document.createElement('button');
       b.append(icon('players'), document.createTextNode(r.name));
       b.addEventListener('click', () => {
@@ -50,6 +85,13 @@ export function bindUi({ live, jumpTo, onMap }) {
       });
       return b;
     }));
+  };
+  searchInput?.addEventListener('input', renderJumpList);
+
+  live.onPlayers = (rows) => {
+    currentOnline = rows;
+    $('playerCount').textContent = rows.length;
+    renderJumpList();
   };
   live.onStatus = (s) => { $('liveStatus').textContent = s; };
 
@@ -62,6 +104,25 @@ export function bindUi({ live, jumpTo, onMap }) {
     const p = s.local ?? s.obj.position;
     jumpTo(p.x, p.z, 120);
   });
+  const copyBtn = info.querySelector('.li-copy');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const s = live.selected;
+      if (!s) return;
+      const p = s.local ?? s.obj.position;
+      const baseId = $('map').value;
+      const hash = `#${baseId}/${Math.round(p.x * 100)},${Math.round(p.z * 100)}`;
+      const url = `${location.origin}${location.pathname}${location.search}${hash}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        const orig = t('info.copy');
+        copyBtn.textContent = t('info.copied');
+        setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+      } catch {
+        location.hash = hash;
+      }
+    });
+  }
   live.onSelect = (item, d) => {
     info.hidden = !item;
     if (!item) return;

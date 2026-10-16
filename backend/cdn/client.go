@@ -275,6 +275,13 @@ func (m *Map) Patch(ctx context.Context, l, px, py int) ([]byte, error) {
 	id := m.Idx.IDs[ci]
 	m.lru.Lock()
 	if p, ok := m.hot[id]; ok {
+		for i, k := range m.ord {
+			if k == id {
+				m.ord = append(m.ord[:i], m.ord[i+1:]...)
+				break
+			}
+		}
+		m.ord = append(m.ord, id)
 		m.lru.Unlock()
 		return p, nil
 	}
@@ -299,7 +306,7 @@ func (m *Map) Patch(ctx context.Context, l, px, py int) ([]byte, error) {
 		return nil, errors.New("Kachel nicht lesbar")
 	}
 	m.lru.Lock()
-	if len(m.ord) >= 96 {
+	if len(m.ord) >= 512 {
 		delete(m.hot, m.ord[0])
 		m.ord = m.ord[1:]
 	}

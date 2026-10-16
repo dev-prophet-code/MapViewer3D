@@ -32,8 +32,11 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -110,6 +113,10 @@ func (s *Store) master(create bool) ([]byte, error) {
 // binding koppelt die Schlüssel an Rechner und Benutzerkonto.
 func binding() []byte {
 	host, _ := os.Hostname()
+	return bindingForHost(host)
+}
+
+func bindingForHost(host string) []byte {
 	uid := ""
 	if u, err := user.Current(); err == nil {
 		uid = u.Uid + "/" + u.Username
@@ -117,8 +124,58 @@ func binding() []byte {
 	return []byte("MapViewer3D|" + host + "|" + uid)
 }
 
+// candidateBindings liefert die aktuelle Rechnerbindung sowie (falls der Router/DHCP
+// den Hostnamen z. B. unter macOS zwischen "Name.local", "Name.fritz.box" und "Mac.fritz.box"
+// umbenennt) naheliegende Varianten desselben Rechners, damit gespeicherte Zugangsdaten
+// nach einem WLAN-Wechsel weiter lesbar bleiben.
+func candidateBindings() [][]byte {
+	host, _ := os.Hostname()
+	seen := map[string]bool{}
+	var hosts []string
+	add := func(h string) {
+		h = strings.TrimSpace(h)
+		if h != "" && !seen[h] {
+			seen[h] = true
+			hosts = append(hosts, h)
+		}
+	}
+	add(host)
+	var bases []string
+	if short, _, ok := strings.Cut(host, "."); ok && short != "" {
+		bases = append(bases, short)
+	}
+	if runtime.GOOS == "darwin" {
+		if out, err := exec.Command("scutil", "--get", "LocalHostName").Output(); err == nil {
+			if lh := strings.TrimSpace(string(out)); lh != "" {
+				bases = append(bases, lh)
+			}
+		}
+	}
+	bases = append(bases, "Mac")
+	_, curDomain, hasDom := strings.Cut(host, ".")
+	for _, b := range bases {
+		add(b)
+		add(b + ".local")
+		if hasDom {
+			add(b + "." + curDomain)
+		}
+		add(b + ".fritz.box")
+		add(b + ".lan")
+		add(b + ".home")
+	}
+	out := make([][]byte, 0, len(hosts))
+	for _, h := range hosts {
+		out = append(out, bindingForHost(h))
+	}
+	return out
+}
+
 func derive(master, salt []byte, purpose string, n int) ([]byte, error) {
-	info := append([]byte("mv3d/"+purpose+"|"), binding()...)
+	return deriveWith(master, salt, purpose, binding(), n)
+}
+
+func deriveWith(master, salt []byte, purpose string, bind []byte, n int) ([]byte, error) {
+	info := append([]byte("mv3d/"+purpose+"|"), bind...)
 	return hkdf.Key(sha512.New, master, salt, string(info), n)
 }
 
@@ -225,10 +282,18 @@ func (s *Store) Load() (*Credentials, error) {
 	if err := errors.Join(err1, err2, err3, err4, err5, err6); err != nil {
 		return nil, errors.New("Zugangsdaten beschädigt")
 	}
-	k1, _ := derive(master, salt, "aes-gcm", 32)
-	k2, _ := derive(master, salt, "xchacha20", 32)
-	kMac, _ := derive(master, salt, "hmac", 64)
-	if !hmac.Equal(tag, mac(kMac, env)) {
+	var k1, k2 []byte
+	matched := false
+	for _, bind := range candidateBindings() {
+		kMac, _ := deriveWith(master, salt, "hmac", bind, 64)
+		if hmac.Equal(tag, mac(kMac, env)) {
+			k1, _ = deriveWith(master, salt, "aes-gcm", bind, 32)
+			k2, _ = deriveWith(master, salt, "xchacha20", bind, 32)
+			matched = true
+			break
+		}
+	}
+	if !matched {
 		return nil, errors.New("Zugangsdaten verändert oder von einem anderen Rechner")
 	}
 	xc, err := chacha20poly1305.NewX(k2)

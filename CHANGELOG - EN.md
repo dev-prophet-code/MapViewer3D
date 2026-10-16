@@ -10,6 +10,43 @@ Every change to the viewer is listed here, with the newest version at the top.
 
 ---
 
+## Beta.17 – 10/16/2026
+
+### New
+
+- **Real-time full-text search (`#searchInput`).** New search field in the *Live data* section: searches online players, bases (name and owner), vehicles (type and owner) and locations/POIs of the active map instance as you type. Up to 25 matches are listed with category and coordinates – click any result to fly the camera straight to it.
+- **Terrain display toggles.** New *Terrain* section in the control panel with three switches:
+  - **1 km grid** (`terrain.setGrid`) – shows or hides the 1 km coordinate grid on the terrain surface.
+  - **Contour lines** (`terrain.setContours`) – toggles the topographic contour lines (25 m / 100 m) independently of the grid.
+  - **Wireframe** – displays the loaded LOD triangle mesh of the terrain for inspection and diagnostics.
+- **Direct links to map coordinates (deep linking).** The URL hash now supports `#<map>@<partition>/<x>,<y>` (in metres, e.g. `#HaggaBasin@1/-520,1340`). Opening such a link automatically selects the map/instance and flies the camera to the target coordinates. The detail popup of any clicked object now includes a **Copy link** button next to *Fly there*.
+- **Extended keyboard flight & modal shortcuts.** In addition to `W`/`A`/`S`/`D` and `Q`/`E`, camera flight now supports the **arrow keys** as well as **PageUp** / **PageDown**. All modal dialogs (setup, switch server, instance names, guide) can be closed with the `Escape` key or by clicking the dimmed backdrop.
+
+### Improved
+
+- **Much faster terrain raycasting via heightfield raymarching.** Clicking and hovering over the map no longer intersects every triangle of the loaded Three.js terrain meshes (`raycast`); instead it marches rays directly against the in-memory heightfield (`heightAt`) with binary-search refinement. This eliminates frame drops when moving the mouse across large maps like the Deep Desert.
+- **Faster terrain fragment shader.** The expensive triplanar FBM rock detail (`triFbm` with multi-octave 3D simplex noise) is now skipped in the GLSL fragment shader whenever a pixel has negligible rock weight (`rocky <= 0.005`), avoiding unnecessary noise evaluations across open sand dunes.
+- **True LRU cache for CDN tiles & sorted height sampling.**
+  - The in-memory cache for uncompressed Level-0 terrain tiles (`backend/cdn`) now uses a true **LRU** (Least Recently Used) eviction policy instead of FIFO, and its capacity has been increased from 96 to **512 tiles** (~64 MB).
+  - `POST /api/map/<name>/sample` now groups requested points by their Level-0 tile coordinates `(x/PatchQuads, y/PatchQuads)` before reading and checks for client request cancellation (`r.Context().Err()`), preventing cache thrashing on large unsorted point batches.
+- **Reduced garbage collection during camera flight.** `fly.js` reuses `THREE.Vector3` instances instead of allocating new vectors on every animation frame.
+- **Expanded CI pipeline.** `.github/workflows/ci.yml` now runs `go vet` and `go test -race` across all backend packages (`cdn`, `updater`, `layout`, `mapdata`, `maps`, `mesh`, `raster`, `landscape`, `ue`, `blocks`, `buildables`, `iostore`, `mapbuild`, `cmd/cdnsync`).
+
+### Security
+
+- **Brute-force protection for HTTP password auth (`-password`).** After 10 failed HTTP Basic Auth attempts from the same IP address within a short window, further attempts from that IP are blocked for 1 minute (`429 Too Many Requests`).
+- **Continuous SSRF and DNS-rebinding protection on all Console connections.** Validation of resolved target IPs against link-local, cloud-metadata (`169.254.0.0/16`, `fe80::/10`), multicast and unspecified ranges (`blockSpecialTargets`) and disabling automatic HTTP redirects now apply to **every** outgoing Console HTTP client (`newConsoleClient` / `newConsoleTransport`), not only the initial setup check.
+- **Resilient machine binding across DHCP hostname suffixes.** When an operating system (especially macOS switching between `LocalHostName`, `.local` and router suffixes like `.fritz.box` or `.lan`) alters the hostname via DHCP, `secure.Store.Load()` automatically tries the canonical variants of the local machine name when decrypting `credentials.enc` and `servers/*.enc`, preventing unnecessary credential resets on the same machine.
+- **HTTP server timeouts & cached Content-Security-Policy.** The built-in HTTP server now configures explicit timeouts (`ReadHeaderTimeout: 10s`, `IdleTimeout: 120s`) against Slowloris connections and caches the `Content-Security-Policy` header (including the SHA-256 hash of the inline import map in `index.html`) by file modification time.
+
+### Fixed
+
+- **Atomic map image cache writes.** Cached `mapimage.png` files are now written to a temporary file first and atomically renamed (`os.Rename`), preventing truncated PNG files on concurrent requests or interrupted writes.
+- **Cache cleanup in the live proxy and on server switch.** Expired entries in `liveProxy.cache` and `liveProxy.busy` are pruned once the map exceeds 512 entries, and switching servers or credentials (`clearServerCaches`) now also clears the public stripped-response cache (`s.stripped`).
+- **Stale terrain heights after switching maps.** Switching between Hagga Basin and Deep Desert now clears the browser's cached object elevations (`live.heights`) so bases, vehicles and POIs do not briefly render at elevations from the previous map.
+
+---
+
 ## Beta.16 – 10/07/2026
 
 ### New
@@ -52,7 +89,7 @@ Every change to the viewer is listed here, with the newest version at the top.
 ### New
 
 - **Map data streams from GitHub.** Terrain tiles and building models are no longer shipped in the package; the viewer streams them from the `cdn` branch of the repository (tile by tile, verified against the SHA-256 sums in `catalog.json`, cached in the user folder, mirror via jsDelivr). The release package shrinks from ~250 MB to ~30 MB, and "Download ZIP" of `main` works: `start.sh` / `start.bat` fetch the program from the latest release. A local `data/` folder still works as a fallback, `-cdn off` uses only it, `-cdn <address>` points to your own mirror (`cdn` in `-config`). The Deep Desert layout builder skips layouts the branch already knows.
-- **The `cdn` branch updates itself.** `deploy/cdn-sync/` (script, systemd timer, `cmd/cdnsync`) cuts the extracted maps into tiles (the Go port is byte-identical to the addon's `tilepack.mjs`) and pushes only what is new; when the game build changes it extracts maps, **all Coriolis layouts** and building models again. Runs on the live server (cca-server). See [docs/CDN-Sync-EN.md](docs/CDN-Sync-EN.md).
+- **The `cdn` branch updates itself.** `deploy/cdn-sync/` (script, systemd timer, `cmd/cdnsync`) cuts the extracted maps into tiles (the Go port is byte-identical to the addon's `tilepack.mjs`) and pushes only what is new; when the game build changes it extracts maps, **all Coriolis layouts** and building models again. Runs on the live server. See [docs/CDN-Sync-EN.md](docs/CDN-Sync-EN.md).
 - **Example website** in `examples/website/`: a small page with the viewer built in (`<iframe>`, map buttons via `postMessage`), `config.example.json` for server address and API token, nginx and systemd examples, all commented.
 - **`-agent auto`** (`"agentUrl": "auto"`): the viewer detects that it runs on the game host (Dune server processes visible in `/proc`) and, as root, starts the position agent inside itself; `-agent-players` adds players. Otherwise it logs why there is no real-time data.
 - **Support link:** a small ☕ icon in the viewer and the repository's Sponsor button point to <https://buymeacoffee.com/lafamiliagaming>.

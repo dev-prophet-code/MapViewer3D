@@ -172,6 +172,19 @@ func TestViewerPassword(t *testing.T) {
 	if got := get("irgendwer", "geheim", true); got != 200 {
 		t.Fatalf("richtiges Passwort: %d, erwartet 200", got)
 	}
+	// Nach 10 Fehlversuchen derselben IP wird für 1 Minute gesperrt
+	for range 10 {
+		if got := get("x", "falsch", true); got != 401 {
+			t.Fatalf("Fehlversuch: %d, erwartet 401", got)
+		}
+	}
+	if got := get("irgendwer", "geheim", true); got != 401 {
+		t.Fatalf("trotz Sperre zugelassen: %d, erwartet 401", got)
+	}
+	s.SetPassword("geheim") // setzt Sperren zurück
+	if got := get("irgendwer", "geheim", true); got != 200 {
+		t.Fatalf("nach Reset: %d, erwartet 200", got)
+	}
 	r := httptest.NewRequest("GET", "http://x/", nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, r)

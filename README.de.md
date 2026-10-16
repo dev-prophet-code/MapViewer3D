@@ -3,7 +3,9 @@
 3D-Kartenviewer für einen selbst gehosteten Dune-Awakening-Server mit dem
 Docker-Stack von Red-Blink (*dune-awakening-selfhost-docker*). Er zeigt Hagga Basin
 und Deep Desert je Serverinstanz (z. B. PvE, PvP, Creative) mit Spielern, Basen in 3D,
-Fahrzeugen, Orten, Gefahren und Ressourcen.
+Fahrzeugen, Orten, Gefahren und Ressourcen – inklusive Echtzeit-Suche nach Spielern,
+Basen, Fahrzeugen und Orten, teilbaren Koordinaten-Direktlinks (`#Karte@Partition/x,y`)
+sowie einblendbarem 1-km-Gitter, Höhenlinien und Drahtgitter (seit Beta.17).
 
 > **Voraussetzung:** Der MapViewer3D funktioniert **nur mit dem Docker-Stack von
 > [Red-Blink](https://github.com/Red-Blink)** (*dune-awakening-selfhost-docker*).
