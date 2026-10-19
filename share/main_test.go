@@ -17,7 +17,12 @@ import (
 	"time"
 )
 
-const svcKey = "dak_servicekey_0123456789"
+const (
+	svcKey     = "dak_servicekey_0123456789"
+	otherKey   = "dak_otheradmin_0123456789"
+	limitedKey = "dak_limited_0123456789"
+	noMapsKey  = "dak_nomaps_0123456789"
+)
 
 type fixture struct {
 	t       *testing.T
@@ -38,7 +43,18 @@ func newFixture(t *testing.T) *fixture {
 		case f.headers <- r.Header.Clone():
 		default:
 		}
-		if r.Header.Get("Authorization") != "Bearer "+svcKey {
+		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		switch got {
+		case svcKey, otherKey:
+		case limitedKey:
+			if r.URL.Path == "/api/map/players" || strings.HasPrefix(r.URL.Path, "/api/realtime/") {
+				http.Error(w, `{"error":"forbidden"}`, 403)
+				return
+			}
+		case noMapsKey:
+			http.Error(w, `{"error":"forbidden"}`, 403)
+			return
+		default:
 			http.Error(w, `{"error":"secret console detail"}`, 401)
 			return
 		}
@@ -233,7 +249,7 @@ func TestExpiryAndRevocation(t *testing.T) {
 
 func TestAdminAuthAndCORS(t *testing.T) {
 	f := newFixture(t)
-	for _, h := range []map[string]string{nil, {"Authorization": "Bearer wrong"}, {"Authorization": "Bearer " + svcKey}, {"Authorization": f.secret}} {
+	for _, h := range []map[string]string{nil, {"Authorization": "Bearer wrong"}, {"Authorization": "Bearer dak_notaknownkey_0123456789"}, {"Authorization": f.secret}} {
 		if code, _, _ := f.do("GET", "/share-admin/links", nil, h); code != 401 {
 			t.Fatalf("admin with %v: %d", h, code)
 		}
@@ -390,10 +406,11 @@ func TestBadServiceKeyIsNotTheVisitorsProblem(t *testing.T) {
 func TestCacheShieldsTheConsole(t *testing.T) {
 	f := newFixture(t)
 	tok, _ := f.newLink(createReq{Never: true})
+	before := f.hits.Load()
 	for i := 0; i < 40; i++ {
 		f.do("GET", "/s/"+tok+"/api/map/status", nil, nil)
 	}
-	if n := f.hits.Load(); n > 2 {
+	if n := f.hits.Load() - before; n > 2 {
 		t.Fatalf("console asked %d times for 40 visitors", n)
 	}
 }
@@ -572,5 +589,80 @@ func TestCSPAllowsOnlyTheImportMapInline(t *testing.T) {
 	}
 	if strings.Contains(csp, "unsafe-eval") || strings.Contains(csp, "script-src 'unsafe-inline'") || !strings.Contains(csp, "frame-ancestors 'none'") {
 		t.Fatalf("csp too loose: %s", csp)
+	}
+}
+
+func (f *fixture) adminAs(key, method, path string, body any) (int, string) {
+	code, b, _ := f.do(method, "/share-admin/"+path, body, map[string]string{"Authorization": "Bearer " + key})
+	return code, b
+}
+
+func TestAdminWithTheConsoleKey(t *testing.T) {
+	f := newFixture(t)
+	if code, _ := f.adminAs(otherKey, "GET", "links", nil); code != 200 {
+		t.Fatalf("valid console key: %d", code)
+	}
+	if code, _ := f.adminAs("dak_notaknownkey_0123456789", "GET", "links", nil); code != 401 {
+		t.Fatalf("invalid key: %d", code)
+	}
+	if code, _ := f.adminAs(noMapsKey, "GET", "links", nil); code != 403 {
+		t.Fatalf("key without maps: %d", code)
+	}
+	// a key can only offer what it can read itself
+	if code, b := f.adminAs(limitedKey, "POST", "links", createReq{Never: true, Players: true}); code != 400 {
+		t.Fatalf("players offered by a key without them: %d %s", code, b)
+	}
+	if code, b := f.adminAs(limitedKey, "POST", "links", createReq{Never: true, Realtime: true}); code != 400 {
+		t.Fatalf("realtime offered by a key without it: %d %s", code, b)
+	}
+	if code, b := f.adminAs(limitedKey, "POST", "links", createReq{Never: true, Bases: true}); code != 201 {
+		t.Fatalf("what the key can read: %d %s", code, b)
+	}
+	code, b := f.adminAs(limitedKey, "GET", "status", nil)
+	if code != 200 || !strings.Contains(b, `"players":false`) || !strings.Contains(b, `"realtime":false`) || !strings.Contains(b, `"bases":true`) || !strings.Contains(b, "Realtime Data scope") {
+		t.Fatalf("status for a limited key: %d %s", code, b)
+	}
+	// brute force on keys is counted like everything else
+	var last int
+	for i := 0; i < 30; i++ {
+		last, _ = f.adminAs(fmt.Sprintf("dak_guess%020d", i), "GET", "links", nil)
+	}
+	if last != 429 {
+		t.Fatalf("no block after repeated wrong keys: %d", last)
+	}
+}
+
+func TestServiceKeyIsAdoptedOnlyWhenNeeded(t *testing.T) {
+	f := newFixture(t)
+	keyFile := f.gw.cfg.KeyFile
+	read := func() string { b, _ := os.ReadFile(keyFile); return strings.TrimSpace(string(b)) }
+	// a working service key is never replaced by a presented one
+	f.adminAs(otherKey, "GET", "status", nil)
+	if read() != svcKey {
+		t.Fatalf("working key replaced: %q", read())
+	}
+	// no key stored yet: the first valid admin key is taken over
+	os.Remove(keyFile)
+	f.gw.keyStamp = time.Time{}
+	f.gw.keyVal = ""
+	code, b := f.adminAs(otherKey, "GET", "status", nil)
+	if code != 200 || read() != otherKey || !strings.Contains(b, `"adopted":true`) {
+		t.Fatalf("no adoption: %d %s %q", code, b, read())
+	}
+	if st, _ := os.Stat(keyFile); st.Mode().Perm() != 0o600 {
+		t.Fatal("key file permissions")
+	}
+	// the stored key is rejected later (rotated): the next valid admin key replaces it
+	os.WriteFile(keyFile, []byte("dak_revokedone_0123456789\n"), 0o600)
+	f.gw.keyStamp = time.Time{}
+	f.gw.keyVal = ""
+	f.adminAs(svcKey, "GET", "status", nil)
+	if read() != svcKey {
+		t.Fatalf("rotated key not replaced: %q", read())
+	}
+	// links work with the adopted key
+	tok, _ := f.newLink(createReq{Never: true})
+	if code, _, _ := f.do("GET", "/s/"+tok+"/api/map/status", nil, nil); code != 200 {
+		t.Fatalf("link after adoption: %d", code)
 	}
 }

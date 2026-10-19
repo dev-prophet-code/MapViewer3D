@@ -104,6 +104,8 @@ services:
       - mvshare-data:/data
       # the viewer files (addon web/), see share/fetch-web.sh
       - ${MV_SHARE_WEB:-./share-web}:/web:ro
+      # certificate and key for MV_SHARE_CERT / MV_SHARE_CERT_KEY (optional)
+      - ${MV_SHARE_CERTS:-./certs}:/certs:ro
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     read_only: true

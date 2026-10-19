@@ -7,7 +7,7 @@ The MapViewer3D addon of the Dune Docker Console can create **links to the 3D ma
 ```
  player's browser ── https://share.example.org/s/<token>/ ──►  HTTPS reverse proxy (or mvshare with a certificate)
                                                                        │
- admin, in the Console ──► addon "Share link …" ──────────────────────►│ /share-admin/…  (admin secret)
+ admin, in the Console ──► addon "Share link …" ──────────────────────►│ /share-admin/…  (the admin's API key)
                                                                        ▼
                                                      mvshare  127.0.0.1:8798
                                                         │  holds ONE read-only API key (a file on the host)
@@ -30,26 +30,22 @@ The MapViewer3D addon of the Dune Docker Console can create **links to the 3D ma
 | A visitor reaches other Console routes | The gateway has an **allow list of 13 read-only `GET` routes** with validated query values (map name, partition id, one of two setting scopes). Everything else under a link is 404; the Console's auth, settings, setup, write and admin routes and its web UI are not forwarded at all. Only `GET` and `HEAD` are accepted. |
 | The Console's answers contain private data | Every answer is **rebuilt from an allow list of fields**: no account, FLS or Funcom ids, no storage contents, no server settings files (the settings route returns two lines), no process ids. Player rows and owner names appear only if the link allows players. A field added to the Console later stays private by default. |
 | Guessing tokens / the admin secret | 256-bit tokens; failed tokens and secrets are counted per client address (15 per minute → blocked for 10 minutes) and requests are rate limited. Unknown, expired and revoked links all answer the same `404`. |
-| Taking over link management | The admin API needs a separate **admin secret** (`mva_…`, 256 bits, compared in constant time) that is good for nothing else, and answers browsers only for the origins in `MV_SHARE_ADMIN_ORIGINS`. A link token is not an admin secret. |
+| Taking over link management | The admin API accepts only a **Console API key that the Console itself accepts** (checked live; wrong keys are counted and blocked per address) or the gateway's own admin secret (`mva_…`, for scripts), and answers browsers only for the origins in `MV_SHARE_ADMIN_ORIGINS`. A key can only create links that offer what it can read itself. A link token is never an admin credential. |
 | Load on the server | Answers are cached for a few seconds and shared between visitors, and all visitors of Realtime Data share **one** upstream stream (the Console allows few per key). Hard limits on concurrent requests and viewers. |
 | Page injection | The viewer page is served with a strict Content Security Policy (scripts only from the gateway, the single inline import map by hash, connections only to the gateway and the two terrain-data hosts), `Referrer-Policy: no-referrer`, no framing. |
 | A compromised gateway | It can read what its key can read, nothing more: give that key **only** `maps: Read`, `bases: Read`, `Realtime Data: Read` (and `players: Read` only if you ever want to offer players). Never a write scope. Revoke the key in the Console to cut the gateway off. |
 
 ## Set up
 
-1. **Create an API key** in the Console (*Settings → API Keys*) just for the gateway: `maps: Read`, `bases: Read`, `Realtime Data: Read`; everything else **None**. Add `players: Read` only if you want links that can show players.
-2. **Start the gateway** (on the Dune Docker host):
+1. **Start the gateway** (on the Dune Docker host):
 
    ```bash
    cp .env.example .env              # set MV_SHARE_ADMIN_ORIGINS=https://console.example.org
    share/fetch-web.sh                # viewer files of the addon release, SHA-256 verified
    docker compose -f docker-compose.mapviewer-live.yml --profile share up -d --build mvshare
-   echo "dak_…" | docker compose -f docker-compose.mapviewer-live.yml run --rm -T mvshare -set-key
-   docker compose -f docker-compose.mapviewer-live.yml run --rm mvshare -admin-key   # prints mva_…
    ```
 
-   `-set-key` reads the key from stdin (it never goes through the command line). `-admin-key` prints the admin secret; keep it like a password.
-3. **Put HTTPS in front.** The gateway listens on `127.0.0.1:8798` and **refuses to start on a public address without a certificate**. Either forward `/s/` and `/share-admin/` from your reverse proxy, e.g. Caddy:
+2. **Put HTTPS in front.** The gateway listens on `127.0.0.1:8798` and **refuses to start on a public address without a certificate**. Either forward `/s/` and `/share-admin/` from your reverse proxy, e.g. Caddy:
 
    ```
    share.example.org {
@@ -58,8 +54,10 @@ The MapViewer3D addon of the Dune Docker Console can create **links to the 3D ma
    }
    ```
 
-   (set `MV_SHARE_TRUST_PROXY=true` so the per-address limits see the real visitor), or give the gateway its own certificate with `MV_SHARE_CERT` / `MV_SHARE_CERT_KEY` and a public `MV_SHARE_ADDR`. Browsers need a certificate they trust, so a self-signed one is only good for your own tests.
-4. **In the Console:** open the MapViewer3D addon (0.4.0 or newer), enter its API key as usual, press **Share link …**, enter the gateway address (`https://share.example.org`; empty = the Console's own address if the proxy serves both) and the admin secret, choose the options and **Create link**. Copy the link. The admin secret is kept in the page's memory only.
+   (set `MV_SHARE_TRUST_PROXY=true` so the per-address limits see the real visitor), or give the gateway its own certificate (`MV_SHARE_CERT` / `MV_SHARE_CERT_KEY`, files in `./certs`) and a public `MV_SHARE_ADDR`. Browsers need a certificate they trust, so a self-signed one is only good for your own tests.
+3. **In the Console:** open the MapViewer3D addon (0.4.0 or newer), enter your API key as usual and press **Share link …**. The addon looks for the gateway at the Console's own address (if your proxy serves both) or at the address you enter once (remembered). Then only choose how long the link is valid (or **Create link without expiry**) and what it shows, and copy the link. **There is nothing else to set up:** the gateway checks your API key against the Console and, if it has no key of its own yet (or its key was rotated or revoked), **takes over your key as its read-only key**. A working key is never replaced.
+
+The key you use should be read-only anyway (`maps: Read`, `bases: Read`, `Realtime Data: Read`, everything else **None**; `players: Read` only if you want links that can show players). The gateway stores it as a file (mode 0600) in its volume; revoke the key in the Console to cut the gateway off.
 
 The addon's status panel shows what the gateway's key can serve (maps, bases, players, Realtime Data); an option the key cannot serve is switched off in the dialog.
 
@@ -77,7 +75,7 @@ The addon's status panel shows what the gateway's key can serve (maps, bases, pl
 | `MV_SHARE_ALLOW_PLAIN` | `false` | allow plain HTTP on a non-loopback address (you know why) |
 | `MV_SHARE_WEB` | `./share-web` | host folder with the viewer files (`share/fetch-web.sh`) |
 
-Back up the volume `mvshare-data` (links as hashes, admin secret, service key). Losing the admin secret: delete `admin-key` in the volume and restart; a new one is created.
+Back up the volume `mvshare-data` (links as hashes, the gateway's key, admin secret for scripts: `mvshare -admin-key`).
 
 ## Limits
 
@@ -93,6 +91,6 @@ Das MapViewer3D-Addon der Dune-Docker-Console kann **Links zur 3D-Karte** erzeug
 
 **Der Link:** ein zufälliges 256-Bit-Token (`mvs_…`), nicht erratbar und nicht fälschbar; das Gateway speichert nur den **SHA-256** jedes Tokens, das Token selbst wird **einmal** beim Erstellen angezeigt. Der Admin wählt eine **Gültigkeit** (1 Stunde, 6 Stunden, 1 Tag, 7 Tage, 30 Tage, eigene Dauer) oder erstellt per Knopfdruck einen Link **ohne Ablauf**; Ablauf und Widerruf wirken sofort, auch auf geöffnete Streams (innerhalb von 5 Sekunden). Pro Link wählbar: Echtzeitdaten, Basen als 3D-Gebäude, Spielerpositionen und -namen (standardmäßig aus).
 
-**Warum man darüber nicht in Dune Docker kommt:** Besucher bekommen nie einen API-Schlüssel; das Gateway hält **einen** nur lesenden Schlüssel als Datei auf dem Host und nutzt ihn selbst für eine **Positivliste von 13 GET-Routen** (alles andere: 404; Login, Einstellungen, Setup, Schreib- und Admin-Routen und die Web-Oberfläche der Console werden nicht weitergereicht). Jede Antwort wird aus einer **Positivliste von Feldern neu aufgebaut** (keine Konto-/Funcom-IDs, keine Lagerinhalte, keine Server-Einstellungsdateien). Falsche Tokens und Admin-Geheimnisse werden je Adresse gezählt und gesperrt; die Verwaltung braucht ein eigenes **Admin-Geheimnis** (`mva_…`), das für nichts anderes taugt.
+**Warum man darüber nicht in Dune Docker kommt:** Besucher bekommen nie einen API-Schlüssel; das Gateway hält **einen** nur lesenden Schlüssel als Datei auf dem Host und nutzt ihn selbst für eine **Positivliste von 13 GET-Routen** (alles andere: 404; Login, Einstellungen, Setup, Schreib- und Admin-Routen und die Web-Oberfläche der Console werden nicht weitergereicht). Jede Antwort wird aus einer **Positivliste von Feldern neu aufgebaut** (keine Konto-/Funcom-IDs, keine Lagerinhalte, keine Server-Einstellungsdateien). Falsche Tokens und Admin-Geheimnisse werden je Adresse gezählt und gesperrt; die Verwaltung erlaubt nur einen **API-Schlüssel, den die Console selbst akzeptiert** (und ein Schlüssel kann nur anbieten, was er selbst lesen darf).
 
-**Einrichten:** (1) API-Schlüssel nur für das Gateway anlegen: `maps: Read`, `bases: Read`, `Realtime Data: Read`, alles andere **None** (`players: Read` nur, wenn Links Spieler zeigen sollen). (2) `share/fetch-web.sh`, dann `docker compose -f docker-compose.mapviewer-live.yml --profile share up -d --build mvshare`; Schlüssel mit `-set-key` (stdin) hinterlegen, Admin-Geheimnis mit `-admin-key` anzeigen. (3) HTTPS davorsetzen (Reverse-Proxy auf `/s/` und `/share-admin/`, oder eigenes Zertifikat); das Gateway startet auf einer öffentlichen Adresse ohne Zertifikat nicht. (4) Im Addon **Link teilen …** öffnen, Gateway-Adresse und Admin-Geheimnis eingeben, Optionen wählen, Link erstellen und kopieren.
+**Einrichten:** (1) `share/fetch-web.sh`, dann `docker compose -f docker-compose.mapviewer-live.yml --profile share up -d --build mvshare`. (2) HTTPS davorsetzen (Reverse-Proxy auf `/s/` und `/share-admin/`, oder eigenes Zertifikat); das Gateway startet auf einer öffentlichen Adresse ohne Zertifikat nicht. (3) Im Addon **Link teilen …** klicken, Gebiet auswählen (die Gateway-Adresse wird nur beim ersten Mal abgefragt), Dauer und Inhalt wählen, Link kopieren. Mehr ist nicht einzurichten: Das Gateway prüft deinen API-Schlüssel bei der Console und übernimmt ihn beim ersten Mal selbst als seinen Lese-Schlüssel (ein funktionierender Schlüssel wird nie ersetzt).

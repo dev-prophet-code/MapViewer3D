@@ -30,7 +30,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -268,9 +267,7 @@ type gateway struct {
 	cacheMu sync.Mutex
 	cache   map[string]*centry
 
-	statMu sync.Mutex
-	statAt time.Time
-	statV  []byte
+	auth authState
 }
 
 func newGateway(cfg config, adminSecret string) (*gateway, error) {
@@ -287,6 +284,7 @@ func newGateway(cfg config, adminSecret string) (*gateway, error) {
 		sem:          make(chan struct{}, 48),
 		cache:        map[string]*centry{},
 	}
+	g.auth.keys = map[string]capEntry{}
 	g.hub = newHub(g)
 	return g, nil
 }
@@ -311,7 +309,10 @@ func (g *gateway) serviceKey() string {
 }
 
 func (g *gateway) upstreamRequest(ctx context.Context, p, rawQuery string) (*http.Request, error) {
-	key := g.serviceKey()
+	return g.upstreamRequestKey(ctx, g.serviceKey(), p, rawQuery)
+}
+
+func (g *gateway) upstreamRequestKey(ctx context.Context, key, p, rawQuery string) (*http.Request, error) {
 	if key == "" {
 		return nil, errors.New("no service key")
 	}
@@ -823,15 +824,6 @@ func (g *gateway) corsAdmin(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
-func (g *gateway) adminAuthed(r *http.Request) bool {
-	a := r.Header.Get("Authorization")
-	if len(a) < 8 || !strings.EqualFold(a[:7], "bearer ") {
-		return false
-	}
-	d := sha256.Sum256([]byte(strings.TrimSpace(a[7:])))
-	return subtle.ConstantTimeCompare(d[:], g.adminDigest[:]) == 1
-}
-
 type createReq struct {
 	Label    string `json:"label"`
 	Never    bool   `json:"never"`
@@ -871,16 +863,23 @@ func (g *gateway) admin(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusTooManyRequests, "too many attempts")
 		return
 	}
-	if !g.adminAuthed(r) {
-		g.fails.fail(ip)
-		jsonError(w, http.StatusUnauthorized, "admin secret required")
+	p, code := g.authenticate(r.Context(), r)
+	if code != 0 {
+		if code == http.StatusUnauthorized || code == http.StatusForbidden {
+			g.fails.fail(ip)
+		}
+		jsonError(w, code, map[int]string{401: "an API key or the admin secret is required", 403: "the key needs maps: Read", 503: "console unreachable"}[code])
 		return
+	}
+	adopted := false
+	if !p.secret {
+		adopted = g.maybeAdopt(r.Context(), p.key)
 	}
 	sub := strings.TrimPrefix(r.URL.Path, "/share-admin/")
 	w.Header().Set("Content-Type", "application/json")
 	switch {
 	case sub == "status" && r.Method == http.MethodGet:
-		w.Write(g.status(r.Context()))
+		w.Write(g.statusDoc(r.Context(), p, adopted))
 	case sub == "links" && r.Method == http.MethodGet:
 		json.NewEncoder(w).Encode(obj{"links": g.st.list()})
 	case sub == "links" && r.Method == http.MethodPost:
@@ -890,6 +889,11 @@ func (g *gateway) admin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		o := linkOptions{Label: cleanLabel(in.Label), Players: in.Players, Bases: in.Bases, Realtime: in.Realtime}
+		eff := g.effective(r.Context(), p)
+		if !eff.Maps || (in.Players && !eff.Players) || (in.Bases && !eff.Bases) || (in.Realtime && !eff.Realtime) {
+			jsonError(w, http.StatusBadRequest, "the key (or the gateway's key) cannot offer one of the chosen options")
+			return
+		}
 		if !in.Never {
 			o.TTL = time.Duration(in.Seconds) * time.Second
 			if o.TTL == 0 {
@@ -929,49 +933,7 @@ func expiryText(e int64) string {
 	return time.Unix(e, 0).UTC().Format(time.RFC3339)
 }
 
-// status tells the addon what the gateway's service key can do, so it can show what a link will offer.
-func (g *gateway) status(ctx context.Context) []byte {
-	g.statMu.Lock()
-	defer g.statMu.Unlock()
-	if g.statV != nil && time.Since(g.statAt) < 15*time.Second {
-		return g.statV
-	}
-	probe := func(p, q string) int {
-		req, err := g.upstreamRequest(ctx, p, q)
-		if err != nil {
-			return 0
-		}
-		resp, err := g.client.Do(req)
-		if err != nil {
-			return -1
-		}
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-		resp.Body.Close()
-		return resp.StatusCode
-	}
-	st := obj{"version": version, "keyConfigured": g.serviceKey() != ""}
-	maps := probe("/api/map/partitions", "")
-	st["console"] = maps > 0
-	st["maps"] = maps == 200
-	st["keyAccepted"] = maps != 401 && maps > 0
-	st["bases"] = probe("/api/bases/0/export", "") != 403 && maps == 200
-	st["players"] = probe("/api/map/players", "map=Survival_1") == 200
-	rt := probe("/api/realtime/healthz", "")
-	st["realtime"] = rt == 200
-	reason := ""
-	switch rt {
-	case 200:
-	case 403:
-		reason = "key lacks the Realtime Data scope"
-	case 404:
-		reason = "console has no Realtime Data"
-	case 503:
-		reason = "position agent not running"
-	default:
-		reason = "unavailable"
-	}
-	st["realtimeReason"] = reason
-	b, _ := json.Marshal(st)
-	g.statV, g.statAt = b, time.Now()
+func mustJSON(v any) []byte {
+	b, _ := json.Marshal(v)
 	return b
 }
