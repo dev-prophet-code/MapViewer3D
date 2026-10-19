@@ -39,6 +39,8 @@ Dune Docker's Live Map reads Postgres. Players and vehicles are in the database,
 - MapViewer3D **Beta.16 or newer**, connected to the Console with an API key.
 - Game build `2134304` is verified; after a game update the agent re-detects its offsets by itself.
 
+> **Share links:** the optional `mvshare` gateway lets the MapViewer3D addon hand out revocable, token-based links to the 3D map for players without a Console account. See [SHARE.md](SHARE.md).
+
 ## 1. Install the agent (on the Dune Docker host)
 
 ```bash

@@ -12,6 +12,10 @@
 #   cp .env.example .env
 #   docker compose -f docker-compose.mapviewer-live.yml up -d --build
 #
+#   mvshare  optional share gateway: tokenized, revocable links to the 3D map for
+#            people without a Console account (MapViewer3D addon creates them).
+#            Start it with:  --profile share      See SHARE.md.
+#
 # See README.md and SECURITY.md.
 
 name: mapviewer-live
@@ -78,6 +82,38 @@ services:
       driver: json-file
       options: {max-size: 10m, max-file: "3"}
 
+  # Share gateway (optional, profile "share"). Host networking: it reaches the Console on the host's
+  # loopback and listens on MV_SHARE_ADDR (loopback by default: put an HTTPS reverse proxy in front,
+  # or set MV_SHARE_CERT / MV_SHARE_CERT_KEY). It refuses to start on a public address without TLS.
+  mvshare:
+    profiles: [share]
+    build:
+      context: .
+      target: share
+    image: mapviewer-live/mvshare:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      MV_SHARE_ADDR: ${MV_SHARE_ADDR:-127.0.0.1:8798}
+      MV_SHARE_UPSTREAM: ${MV_SHARE_UPSTREAM:-http://127.0.0.1:8088}
+      MV_SHARE_ADMIN_ORIGINS: ${MV_SHARE_ADMIN_ORIGINS:-}
+      MV_SHARE_TRUST_PROXY: ${MV_SHARE_TRUST_PROXY:-false}
+      MV_SHARE_CERT: ${MV_SHARE_CERT:-}
+      MV_SHARE_CERT_KEY: ${MV_SHARE_CERT_KEY:-}
+    volumes:
+      - mvshare-data:/data
+      # the viewer files (addon web/), see share/fetch-web.sh
+      - ${MV_SHARE_WEB:-./share-web}:/web:ro
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+
 volumes:
+  # links (as hashes), admin secret and the gateway's read-only API key: back it up, never share it
+  mvshare-data: {}
   # key and certificate of the encrypted front door: back it up, never share it
   mvtls-data: {}

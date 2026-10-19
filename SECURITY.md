@@ -87,3 +87,7 @@ The API key and the positions travel inside the Console connection, so the viewe
 ## Reporting
 
 Security issues: open a private advisory at https://github.com/dev-prophet-code/MapViewer3D/security/advisories (do not open a public issue).
+
+## Share gateway (`mvshare`)
+
+The share gateway is described, with its threat model, in [SHARE.md](SHARE.md): 256-bit random link tokens (only hashes stored), a separate admin secret, one read-only service key that never leaves the host, an allow list of 13 `GET` routes, answers rebuilt from allowed fields, per-address failure counting and rate limits, immediate effect of expiry and revocation on open streams. Report problems the same way as for the rest of this repository.

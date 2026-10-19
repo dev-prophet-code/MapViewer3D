@@ -1,3 +1,4 @@
 .env
 certs/
 .DS_Store
+share-web/

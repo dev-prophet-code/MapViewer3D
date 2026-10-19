@@ -4,6 +4,8 @@
 #                   verified against MV_COMMIT
 #   target "tls":   mvtls, the encrypted front door for the Console API (this
 #                   repository, stdlib only, tests run in the build)
+#   target "share": mvshare, the share gateway for tokenized map links (this
+#                   repository, stdlib only, tests run in the build)
 #
 # Static Go binaries on distroless bases without a shell. Base images are pinned
 # by digest.
@@ -46,3 +48,18 @@ COPY --from=build-tls --chown=65532:65532 --chmod=700 /out/data /data
 VOLUME /data
 HEALTHCHECK --interval=30s --timeout=8s --start-period=10s CMD ["/usr/local/bin/mvtls", "-healthcheck"]
 ENTRYPOINT ["/usr/local/bin/mvtls"]
+
+FROM ${GO_IMAGE} AS build-share
+WORKDIR /src
+COPY share/ ./
+RUN CGO_ENABLED=0 go vet ./... && CGO_ENABLED=0 go test ./... \
+ && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/mvshare . \
+ && mkdir -p /out/data
+
+FROM ${RUN_IMAGE_NONROOT} AS share
+COPY --from=build-share /out/mvshare /usr/local/bin/mvshare
+# links (hashes only), admin secret and service key live here (named volume)
+COPY --from=build-share --chown=65532:65532 --chmod=700 /out/data /data
+VOLUME /data
+HEALTHCHECK --interval=30s --timeout=8s --start-period=10s CMD ["/usr/local/bin/mvshare", "-healthcheck"]
+ENTRYPOINT ["/usr/local/bin/mvshare"]
