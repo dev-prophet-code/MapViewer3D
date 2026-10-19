@@ -100,6 +100,7 @@ services:
       MV_SHARE_TRUST_PROXY: ${MV_SHARE_TRUST_PROXY:-false}
       MV_SHARE_CERT: ${MV_SHARE_CERT:-}
       MV_SHARE_CERT_KEY: ${MV_SHARE_CERT_KEY:-}
+      MV_SHARE_ALLOW_PLAIN: ${MV_SHARE_ALLOW_PLAIN:-false}
     volumes:
       - mvshare-data:/data
       # the viewer files (addon web/), see share/fetch-web.sh
