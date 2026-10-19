@@ -57,6 +57,15 @@ if sed 's://.*$::' "$T/x/web/js/console.js" | grep -Eq "store\.put\([^)]*(KEY|to
 fi
 echo "ok:   API key is memory-only (no browser storage API in console.js / store.js)"
 
+# The share gateway's admin secret is memory-only too; only its (public) address may be stored.
+if sed 's://.*$::' "$T/x/web/js/share.js" | grep -Eq 'getItem\(|setItem\(|sessionStorage|indexedDB|caches\.open|document\.cookie'; then
+  fail "web/js/share.js uses a browser storage API; the admin secret must stay in memory only"
+fi
+if sed 's://.*$::' "$T/x/web/js/share.js" | grep -E 'store\.put\(' | grep -Eiq 'secret|token'; then
+  fail "share.js writes the admin secret or a link token to the addon storage"
+fi
+echo "ok:   share dialog keeps the admin secret and link tokens in memory only"
+
 grep -Eq "DATA_TAG = 'data-v[0-9]+'" "$T/x/web/js/config.js" || fail "config.js does not pin a data tag"
 grep -Eq "CATALOG_SHA256 = '[0-9a-f]{64}'" "$T/x/web/js/config.js" || fail "config.js does not pin the catalog checksum"
 grep -q "CATALOG_SHA256 = '0\{64\}'" "$T/x/web/js/config.js" && fail "catalog checksum is still the placeholder"

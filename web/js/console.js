@@ -10,6 +10,7 @@
 //    user of the console), localStorage, sessionStorage, IndexedDB or the Cache API. It has to
 //    be entered again each time the addon page is opened (a password manager can fill it).
 import { store } from './store.js';
+import { apiUrl, SHARE_BASE } from './config.js';
 
 const LEGACY_KEY = 'console.key'; // versions up to 0.2.0 stored the key here; removed on start
 const LABEL_STORE = 'instance.names';
@@ -39,8 +40,11 @@ export async function loadToken() {
   return token;
 }
 
-export const hasToken = () => token !== null;
+export const hasToken = () => SHARE_BASE !== null || token !== null;
 export const keyId = () => (token ? token.split('_')[1] : '');
+
+// Headers of a console call: the admin's key, or nothing at all for a visitor of a share link.
+const authHeaders = (accept) => ({ Accept: accept, ...(SHARE_BASE ? {} : { Authorization: `Bearer ${token}` }) });
 
 export async function dropToken() {
   token = null;
@@ -82,7 +86,7 @@ const cache = new Map(); // path -> { at, status, body, pending }
 // A failed call keeps serving older data (better than none); unknown things (404) are
 // remembered for 15 minutes so a broken entry does not hit the console again and again.
 export async function consoleGet(path, ttl) {
-  if (!token) throw fail('token_rejected');
+  if (!SHARE_BASE && !token) throw fail('token_rejected');
   const c = cache.get(path);
   if (c?.pending) return c.pending;
   if (c && (Date.now() - c.at < ttl || (c.status === 404 && Date.now() - c.at < 15 * 60 * 1000))) {
@@ -92,7 +96,7 @@ export async function consoleGet(path, ttl) {
   const pending = (async () => {
     let r;
     try {
-      r = await fetch(path, { credentials: 'omit', cache: 'no-store', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+      r = await fetch(apiUrl(path), { credentials: 'omit', cache: 'no-store', headers: authHeaders('application/json') });
     } catch (e) {
       if (c?.body) return c.body;
       throw fail('unreachable', e.message);
@@ -121,10 +125,10 @@ export async function consoleGet(path, ttl) {
 // as every other call: the key as Authorization: Bearer, credentials: 'omit', GET only. EventSource
 // cannot send a header, so the caller reads the response body itself. Throws like consoleGet.
 export async function consoleStream(path, signal) {
-  if (!token) throw fail('token_rejected');
+  if (!SHARE_BASE && !token) throw fail('token_rejected');
   let r;
   try {
-    r = await fetch(path, { method: 'GET', credentials: 'omit', cache: 'no-store', signal, headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream, application/json' } });
+    r = await fetch(apiUrl(path), { method: 'GET', credentials: 'omit', cache: 'no-store', signal, headers: authHeaders('text/event-stream, application/json') });
   } catch (e) {
     if (e?.name === 'AbortError') throw e;
     throw fail('unreachable', e.message);
@@ -142,7 +146,7 @@ export async function mapImage(liveName) {
   if (!info?.image) return null;
   // only paths of the console itself get the key; the image is fetched like the old server did
   if (!String(info.image).startsWith('/')) return null;
-  const r = await fetch(info.image, { credentials: 'omit', cache: 'force-cache', headers: { Authorization: `Bearer ${token}` } });
+  const r = await fetch(apiUrl(info.image), { credentials: 'omit', cache: 'force-cache', headers: SHARE_BASE ? {} : { Authorization: `Bearer ${token}` } });
   if (!r.ok) return null;
   return { blob: await r.blob(), bounds: [info.minX, info.maxX, info.minY, info.maxY, !!info.flipY] };
 }

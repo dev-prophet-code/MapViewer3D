@@ -54,7 +54,8 @@ let n = 0;
 async function page({ user, inFrame, withBridge, legacyLocal = false }) {
   const dir = path.join(tmp, `p${n++}`);
   fs.mkdirSync(dir, { recursive: true });
-  for (const f of ['console.js', 'store.js']) fs.copyFileSync(path.join(root, 'web', 'js', f), path.join(dir, f));
+  for (const f of ['console.js', 'store.js', 'config.js']) fs.copyFileSync(path.join(root, 'web', 'js', f), path.join(dir, f));
+  globalThis.location = { search: '', pathname: '/api/addons/installed/mapviewer3d/content/web/index.html' };
   const { rec, mk } = browserStorages();
   const local = mk('localStorage', legacyLocal ? { 'mapviewer3d.dev.console.key': JSON.stringify({ token: KEY }) } : {});
   const session = mk('sessionStorage');

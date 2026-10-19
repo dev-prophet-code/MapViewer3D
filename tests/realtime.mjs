@@ -70,7 +70,8 @@ let n = 0;
 async function modules() {
   const dir = path.join(tmp, `m${n++}`);
   fs.mkdirSync(dir, { recursive: true });
-  for (const f of ['console.js', 'store.js', 'realtime.js']) fs.copyFileSync(path.join(root, 'web', 'js', f), path.join(dir, f));
+  for (const f of ['console.js', 'store.js', 'config.js', 'realtime.js']) fs.copyFileSync(path.join(root, 'web', 'js', f), path.join(dir, f));
+  globalThis.location ??= { search: '', pathname: '/api/addons/installed/mapviewer3d/content/web/index.html' };
   const url = (f) => pathToFileURL(path.join(dir, f)).href;
   return { cons: await import(url('console.js')), rt: await import(url('realtime.js')) };
 }
@@ -81,6 +82,7 @@ await test('available only when the console answers Realtime Data for this key',
   const { cons, rt } = await modules();
   await cons.saveToken(KEY);
   assert.equal(await rt.isAvailable(true), true);
+  assert.equal(rt.unavailableReason(), '', 'available: nothing to explain');
   const probe = c.requests.find((r) => r.url === '/api/realtime/healthz');
   assert.deepEqual([probe.method, probe.credentials, probe.auth], ['GET', 'omit', `Bearer ${KEY}`]);
   for (const mode of ['none', 'scope', 'agent']) {
@@ -89,6 +91,7 @@ await test('available only when the console answers Realtime Data for this key',
     await m.cons.saveToken(KEY).catch(() => {});
     c.mode = 'ok'; await m.cons.saveToken(KEY); c.mode = mode;
     assert.equal(await m.rt.isAvailable(true), false, `mode ${mode}: switches must stay hidden, without an error`);
+    assert.equal(m.rt.unavailableReason(), { none: 'console', scope: 'scope', agent: 'agent' }[mode], `mode ${mode}: the status line says why`);
   }
 });
 

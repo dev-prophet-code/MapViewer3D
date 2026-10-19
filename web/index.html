@@ -49,10 +49,12 @@
   <section id="conn">
     <h2 data-i18n="conn.title">Connection</h2>
     <div id="connInfo" class="muted small pre">–</div>
+    <div id="rtInfo" class="muted small pre" hidden></div>
     <div class="btnrow">
       <button id="connNames" data-i18n="conn.names" data-i18n-title="conn.names.tip">Name instances</button>
       <button id="connChange" data-i18n="conn.change" data-i18n-title="conn.change.tip">Change</button>
     </div>
+    <button id="connShare" data-i18n="share.open" data-i18n-title="share.open.tip">Share link …</button>
     <button id="connDelete" class="danger" data-i18n="conn.delete" data-i18n-title="conn.delete.tip">Delete credentials</button>
   </section>
 
@@ -104,6 +106,66 @@
       <button type="submit" class="primary" data-i18n="save">Save</button>
     </div>
   </form>
+</div>
+
+<div id="share" class="modal" hidden>
+  <div class="dialog sharedlg" role="dialog" aria-labelledby="shareTitle">
+    <div class="li-head"><h1 id="shareTitle" data-i18n="share.title">Share this map</h1><button id="shareClose" class="li-close" type="button" data-i18n-title="close">×</button></div>
+    <p class="muted small" data-i18n="share.intro"></p>
+
+    <form id="shareConnect" autocomplete="off">
+      <label><span data-i18n="share.gateway">Share gateway address</span>
+        <input id="shareGateway" type="text" inputmode="url" placeholder="https://share.example.org" spellcheck="false" data-i18n-ph="share.gateway.ph">
+      </label>
+      <label><span data-i18n="share.secret">Admin secret</span>
+        <input id="shareSecret" name="mapviewer3d-share-secret" type="password" placeholder="mva_…" spellcheck="false" autocomplete="current-password">
+      </label>
+      <div class="btnrow"><button id="shareConnectBtn" type="submit" class="primary" data-i18n="share.connect">Connect</button></div>
+    </form>
+    <div id="shareError" class="error small" hidden></div>
+
+    <div id="shareMain" hidden>
+      <div id="shareCaps" class="muted small pre"></div>
+      <h2 data-i18n="share.new">New link</h2>
+      <form id="shareCreate">
+        <label><span data-i18n="share.label">Name (only for you)</span>
+          <input id="shareLabel" type="text" maxlength="60" data-i18n-ph="share.label.ph" placeholder="e.g. Guild event">
+        </label>
+        <label><span data-i18n="share.duration">Valid for</span>
+          <select id="shareDuration">
+            <option value="3600" data-i18n="share.d.1h">1 hour</option>
+            <option value="21600" data-i18n="share.d.6h">6 hours</option>
+            <option value="86400" selected data-i18n="share.d.1d">1 day</option>
+            <option value="604800" data-i18n="share.d.7d">7 days</option>
+            <option value="2592000" data-i18n="share.d.30d">30 days</option>
+            <option value="custom" data-i18n="share.d.custom">Custom …</option>
+          </select>
+        </label>
+        <div id="shareCustom" class="btnrow" hidden>
+          <input id="shareCustomN" type="number" min="1" max="1825" value="3" aria-label="Amount">
+          <select id="shareCustomUnit" aria-label="Unit">
+            <option value="3600" data-i18n="share.u.h">hours</option>
+            <option value="86400" selected data-i18n="share.u.d">days</option>
+          </select>
+        </div>
+        <div class="checks">
+          <label class="check"><input id="shareRealtime" type="checkbox" checked><span data-i18n="share.opt.realtime">Realtime Data (sandworms, enemies, vehicles, storms)</span></label>
+          <label class="check"><input id="shareBases" type="checkbox" checked><span data-i18n="share.opt.bases">Bases as 3D buildings</span></label>
+          <label class="check"><input id="sharePlayers" type="checkbox"><span data-i18n="share.opt.players">Player positions and names</span></label>
+        </div>
+        <div class="btnrow">
+          <button id="shareMake" type="submit" class="primary" data-i18n="share.make">Create link</button>
+          <button id="shareForever" type="button" data-i18n="share.forever" data-i18n-title="share.forever.tip">Create link without expiry</button>
+        </div>
+      </form>
+      <div id="shareResult" hidden>
+        <p class="small" data-i18n="share.once">Copy the link now: it is shown only once and cannot be recovered later (revoke it and create a new one if you lose it).</p>
+        <div class="btnrow"><input id="shareLink" type="text" readonly aria-label="Link"><button id="shareCopy" type="button" data-i18n="share.copy">Copy</button></div>
+      </div>
+      <h2 data-i18n="share.active">Links</h2>
+      <div id="shareList" class="sharelist"></div>
+    </div>
+  </div>
 </div>
 
 <aside id="liveinfo" hidden>

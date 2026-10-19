@@ -23,6 +23,10 @@ const MAX_BUFFER = 32 * 1024 * 1024;
 
 let availableAt = 0;
 let available = false;
+let why = ''; // '' | 'scope' | 'console' | 'agent' | 'error': why Realtime Data is not offered
+
+// Why the last check said no, for the status line of the connection panel.
+export const unavailableReason = () => (available ? '' : why);
 
 // Whether the console offers Realtime Data for this key. Asked once, again after 10 minutes.
 export async function isAvailable(force = false) {
@@ -31,8 +35,11 @@ export async function isAvailable(force = false) {
   try {
     const doc = await consoleGet('/api/realtime/healthz', 0);
     available = Boolean(doc?.available);
-  } catch {
+    why = available ? '' : 'agent';
+  } catch (e) {
     available = false;
+    // 401/403: the key lacks the Realtime Data scope; 404: this console has none; 503: the agent does not run
+    why = e?.code === 'token_rejected' || e?.detail === '403' ? 'scope' : e?.detail === '404' ? 'console' : e?.detail === '503' ? 'agent' : 'error';
   }
   return available;
 }

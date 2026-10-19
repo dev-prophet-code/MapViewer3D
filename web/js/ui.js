@@ -113,7 +113,7 @@ export function showMapInfo(m, view) {
     + (view ? `\n${t('mapinfo.instance')}: ${view.label} (Partition ${view.partition}, ${view.internal})` : '')
     + coriolisInfo(m);
   $('live').hidden = !m.live;
-  $('jump').hidden = !m.live;
+  $('jump').hidden = !m.live || $('jump').dataset.shareOff === '1';
   $('nolive').hidden = !!m.live;
 }
 

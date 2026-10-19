@@ -99,6 +99,20 @@ button.danger:hover { border-color: #d9694a; color: #d9694a; }
 button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
 button:disabled { opacity: .6; cursor: wait; }
 .error { color: var(--error); margin: 6px 0; white-space: pre-line; }
+.sharedlg { width: min(560px, 100%); }
+.sharedlg h2 { font-size: 13px; margin: 14px 0 6px; }
+.sharedlg input[type=url], .sharedlg input[type=password], .sharedlg input[type=text], .sharedlg select { width: 100%; box-sizing: border-box; }
+.sharedlg label { display: block; margin-top: 8px; }
+.sharedlg .checks { margin: 8px 0; }
+.sharedlg label.check { display: flex; gap: 8px; align-items: flex-start; margin-top: 4px; }
+.sharedlg label.check input { margin-top: 3px; }
+.sharedlg label.check.off { opacity: .5; }
+.sharedlg #shareLink { flex: 3; font-family: ui-monospace, monospace; font-size: 12px; }
+.sharelist { display: flex; flex-direction: column; gap: 6px; }
+.sharerow { display: flex; gap: 8px; align-items: center; justify-content: space-between; border: 1px solid var(--border, #444); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+.sharerow.dead { opacity: .55; }
+.sharerow button { flex: none; width: auto; padding: 4px 10px; }
+.sharerow > div { flex: 1; min-width: 0; }
 .modal { position: fixed; inset: 0; background: var(--scrim); backdrop-filter: blur(3px);
   display: grid; place-items: center; z-index: 10; padding: 16px; }
 .dialog { width: min(440px, 100%); max-height: 100%; overflow: auto; background: var(--panel);

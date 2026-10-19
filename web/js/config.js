@@ -3,7 +3,14 @@
 //   addon (checksum pinned by the Red-Blink catalog)
 //     -> CATALOG_SHA256 -> catalog.json -> sha256 of every map index (m/<map>.json)
 //       -> content id of every terrain tile (p/..): the SHA-256 of the tile itself.
-export const ADDON_VERSION = '0.3.1';
+export const ADDON_VERSION = '0.4.0';
+
+// A visitor of a share link (https://<host>/s/<token>/) opens the viewer from the share gateway
+// (MapViewer3D stack, branch ddp). There is no API key in the page: every console call goes to the
+// gateway under the link's own path, which answers with the allowed, cleaned data only.
+const shareMatch = (location.pathname ?? '').match(/^(\/s\/mvs_[A-Za-z0-9_-]{43})\//);
+export const SHARE_BASE = shareMatch ? shareMatch[1] : null;
+export const apiUrl = (path) => (SHARE_BASE ? SHARE_BASE + path : path);
 
 export const DATA_REPO = 'dev-prophet-code/MapViewer3D';
 export const DATA_TAG = 'data-v1';

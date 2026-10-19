@@ -10,8 +10,10 @@ import { bindHud, bindUi, showMapInfo } from './ui.js';
 import { initCompass } from './compass.js';
 import { initTheme } from './theme.js';
 import { AGENT_TOGGLES } from './live/agent.js';
+import { unavailableReason } from './realtime.js';
 import { askForSetup, editNames, showConnection } from './setup.js';
-import { applyStatic, EMBED, START_MAP, t } from './i18n.js';
+import { forgetShare, initShare, openShare } from './share.js';
+import { applyStatic, EMBED, lang, START_MAP, t } from './i18n.js';
 
 applyStatic();
 if (EMBED) document.documentElement.classList.add('embed');
@@ -100,17 +102,39 @@ async function init() {
   }
   if (!status.configured) status = await askForSetup();
   showConnection(status);
+  // A share link shows only what the admin allowed: no player layers without player access
+  const link = await api.shareInfo();
+  if (link) {
+    if (!link.players) {
+      for (const k of ['players', 'offline']) document.querySelector(`#liveToggles [data-key="${k}"]`)?.remove();
+      $('jump').hidden = true;
+      $('jump').dataset.shareOff = '1';
+    }
+    if (link.expires) $('connInfo').textContent += `\n${t('share.visitor.until', { when: new Date(link.expires * 1000).toLocaleString(lang === 'de' ? 'de-DE' : undefined, { dateStyle: 'medium', timeStyle: 'short' }) })}`;
+  }
   // Öffentlich gibt es keine Offline-Spieler – der Schalter bliebe immer leer
   const st = await api.liveStatus().catch(() => ({}));
   if (st.public) document.querySelector('#liveToggles [data-key="offline"]')?.remove();
   // Realtime Data (sandworms, enemies, vehicles, storms) only if the console offers it for this key;
   // otherwise the switches are simply not shown
   live.agentEnabled = !!st.agent;
+  showRealtimeStatus(!!st.agent);
   if (!st.agent) for (const k of AGENT_TOGGLES) document.querySelector(`#liveToggles [data-key="${k.key}"]`)?.remove();
   await loadMaps();
   running = true;
   renderer.setAnimationLoop(tick);
 }
+
+// Tells the admin whether this API key gets Realtime Data (the check the addon already makes to decide
+// whether to show the live switches) and, if not, why.
+function showRealtimeStatus(on) {
+  const el = $('rtInfo');
+  if (!api.isAdminPage()) { el.hidden = true; return; }
+  el.hidden = false;
+  el.textContent = on ? t('rt.status.on') : t(`rt.status.${unavailableReason() || 'agent'}`);
+  el.dataset.on = on ? '1' : '0';
+}
+window.addEventListener('langchange', () => { if (!$('rtInfo').hidden) showRealtimeStatus($('rtInfo').dataset.on === '1'); });
 
 async function showVersion() {
   try { $('version').textContent = (await api.version()).version; } catch { /* ältere Server */ }
@@ -198,8 +222,11 @@ window.addEventListener('langchange', async () => {
 $('connNames').addEventListener('click', async () => {
   if (await editNames()) await loadMaps();
 });
+initShare();
+$('connShare').addEventListener('click', () => openShare());
 $('connDelete').addEventListener('click', async () => {
   if (!confirm(t('conn.delete.confirm'))) return;
+  forgetShare();
   await api.setupDelete();
   location.reload();
 });

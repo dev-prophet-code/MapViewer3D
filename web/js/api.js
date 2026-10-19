@@ -1,7 +1,7 @@
 // What the viewer calls "the API". It used to be the viewer server (backend/server); in the
 // addon everything runs in the browser: terrain comes from GitHub (data.js), live data from
 // the console with the admin's API key (console.js). The method names are unchanged.
-import { ADDON_VERSION } from './config.js';
+import { ADDON_VERSION, SHARE_BASE } from './config.js';
 import * as data from './data.js';
 import * as cons from './console.js';
 import * as rt from './realtime.js';
@@ -79,8 +79,14 @@ const liveName = (folder) => WORLD.get(folder)?.live;
 const TTL = { players: 3000, overlays: 20000, poi: 5 * 60 * 1000, spice: 2 * 60 * 1000 };
 
 export const api = {
+  // What a share link offers (players, bases, realtime, expiry); null on the admin's own page.
+  isAdminPage: () => !SHARE_BASE,
+  shareInfo: () => (SHARE_BASE ? cons.consoleGet('/api/link', 0).catch(() => null) : Promise.resolve(null)),
+
   // ---- connection (API key) ----
   setupStatus: async () => {
+    // visitor of a share link: nothing to enter, nothing to change
+    if (SHARE_BASE) return { configured: true, stored: false, admin: false, share: true, server: location.host, fingerprint: '' };
     await cons.loadToken();
     return {
       configured: cons.hasToken(), stored: cons.hasToken(), admin: true,

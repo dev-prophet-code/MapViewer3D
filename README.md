@@ -50,6 +50,32 @@ status. Open the console via HTTPS (reverse proxy, or the encrypted front door o
 to encrypt the key and the positions. The standalone viewer (a program on your PC) additionally detects that front door
 and offers to use it.
 
+## Share links for your players (optional, since 0.4.0)
+
+The addon can create **links to the 3D map** that you give to players who have no console account. They open the map in a
+browser; no API key, no login. Press **Share link …** in the side panel, choose how long the link is valid (1 hour to any
+own duration) **or create a link without expiry with one click**, and choose what it shows (Realtime Data, bases as 3D
+buildings, player positions and names; players are off by default). Links can be revoked at any time, which also cuts open
+sessions.
+
+A browser page inside the console cannot serve the public, so links come from the small **share gateway** of the
+[MapViewer3D stack](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp) (`SHARE.md` there) that runs next to your console:
+
+- a link is a **random 256-bit token**; the gateway keeps only its hash, so links can be neither guessed nor forged,
+- visitors never get an API key: the gateway uses **one read-only key of its own** for a short list of `GET` routes and
+  rebuilds every answer from allowed fields (no account ids, no storage contents, no settings files),
+- the Console's login, settings, write and admin routes are not reachable through a link, and managing links needs a
+  separate admin secret that is good for nothing else.
+
+In the addon the admin secret is held in the page's memory only (like the API key); only the gateway's public address is
+remembered (with the instance names). Without a gateway the addon works exactly as before; the button just finds nothing to connect to.
+
+## Realtime Data status
+
+The connection panel tells you whether **your API key gets Realtime Data** and, if not, why: the key lacks the scope
+*Realtime Data: Read*, the console has no Realtime Data, or the position agent does not answer. The live switches appear
+only when it is available (as in 0.3.x).
+
 ## How it works
 
 ```
@@ -91,7 +117,7 @@ Browser (addon page inside the console)
   (`web/vendor`, versions in `web/vendor/README.md`).
 - **Network use:** the addon page contacts this console, `raw.githubusercontent.com` and `cdn.jsdelivr.net`, and nothing else.
   Requests to GitHub carry no cookies and no referrer.
-- **No server component:** there is no listening port, no container, no stored password, no installer.
+- **No server component** for the viewer itself: there is no listening port, no container, no stored password, no installer. Only the optional share links need the share gateway of the MapViewer3D stack; the admin secret of the gateway is memory-only like the API key.
 
 Found a problem? See the viewer's [SECURITY.md](https://github.com/dev-prophet-code/MapViewer3D/blob/main/SECURITY.md).
 
@@ -116,6 +142,7 @@ Close TCP port `8795` again if you had opened it for other computers. Then creat
 | `tools/tilepack.mjs`, `tools/pin-data.mjs` | Cut extracted terrain into the streaming format; pin a data release into the addon. See `tools/README.md` |
 | `tests/unit.mjs` | Data-path tests (tile generator → loader, checksums, tamper checks) |
 | `tests/realtime.mjs` | Realtime Data: per-map filtering, no players, key on every call, revoked key ends the stream, hidden when not offered |
+| `tests/share.mjs`, `tests/share-visitor.mjs` | Share dialog helpers (gateway address, durations); a visitor's page sends no key and only calls its own link path |
 | `tests/harness.mjs` | Mock console for trying the addon in a browser without a server (`REALTIME=1` adds Realtime Data) |
 | `scripts/validate.js`, `scripts/package.sh`, `scripts/verify-package.sh` | Validation and release packaging |
 
