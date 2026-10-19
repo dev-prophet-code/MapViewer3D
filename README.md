@@ -32,10 +32,9 @@ addon's side panel to enter the new one.
 
 Sandworms, enemies, civilians/traders, vehicles and sandstorms are not in the console's database, only in the memory of the
 game servers. The MapViewer3D position agent ([branch `ddp`](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp)) reads
-them, and a console that includes the **Realtime Data** change passes them on at `/api/realtime/*`. To use it:
+them, and a console with the **Realtime Data** permission (built into Dune Docker since **v1.4.50**) passes them on at `/api/realtime/*`. To use it:
 
-- on the server, run the agent from branch `ddp`, and the console needs that change (it is a patch for Dune Docker, not yet
-  part of it),
+- on the server, run the agent from branch `ddp` (the console side needs Dune Docker v1.4.50 or newer),
 - give the key one more scope: **Realtime Data → Read** (**None** for everything else stays as it is).
 
 The addon checks this itself when it starts (and again every 10 minutes): if the console does not answer, or the key lacks the
