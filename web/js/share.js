@@ -74,7 +74,7 @@ function renderCaps(st) {
 async function refreshList() {
   const { links } = await gw('GET', 'links');
   const list = $('shareList');
-  const rows = links.filter((l) => l.active || Date.now() / 1000 - l.created < 7 * 86400);
+  const rows = links.filter((l) => l.active); // revoked links are gone; ended ones are not listed either
   if (!rows.length) { list.textContent = t('share.none'); return; }
   list.replaceChildren(...rows.map((l) => {
     const row = document.createElement('div');

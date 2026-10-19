@@ -6,7 +6,7 @@ import { Fly } from './fly.js';
 import { LiveLayer } from './live/live.js';
 import { createScene, SKY } from './scene.js';
 import { Terrain } from './terrain.js';
-import { bindHud, bindUi, showMapInfo } from './ui.js';
+import { bindHud, bindUi, removeLayers, showMapInfo } from './ui.js';
 import { initCompass } from './compass.js';
 import { initTheme } from './theme.js';
 import { AGENT_TOGGLES } from './live/agent.js';
@@ -106,20 +106,21 @@ async function init() {
   const link = await api.shareInfo();
   if (link) {
     if (!link.players) {
-      for (const k of ['players', 'offline']) document.querySelector(`#liveToggles [data-key="${k}"]`)?.remove();
+      removeLayers(['players', 'offline']);
       $('jump').hidden = true;
       $('jump').dataset.shareOff = '1';
     }
+    if (!link.bases) removeLayers(['bases3d']); // 3D buildings need the base data, which this link does not carry
     if (link.expires) $('connInfo').textContent += `\n${t('share.visitor.until', { when: new Date(link.expires * 1000).toLocaleString(lang === 'de' ? 'de-DE' : undefined, { dateStyle: 'medium', timeStyle: 'short' }) })}`;
   }
   // Öffentlich gibt es keine Offline-Spieler – der Schalter bliebe immer leer
   const st = await api.liveStatus().catch(() => ({}));
-  if (st.public) document.querySelector('#liveToggles [data-key="offline"]')?.remove();
+  if (st.public) removeLayers(['offline']);
   // Realtime Data (sandworms, enemies, vehicles, storms) only if the console offers it for this key;
   // otherwise the switches are simply not shown
   live.agentEnabled = !!st.agent;
   showRealtimeStatus(!!st.agent);
-  if (!st.agent) for (const k of AGENT_TOGGLES) document.querySelector(`#liveToggles [data-key="${k.key}"]`)?.remove();
+  if (!st.agent) removeLayers(AGENT_TOGGLES.map((k) => k.key));
   await loadMaps();
   running = true;
   renderer.setAnimationLoop(tick);

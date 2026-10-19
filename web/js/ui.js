@@ -1,6 +1,7 @@
 // Bedienfeld: Kartenauswahl, Spielerliste („Springen zu“), Schalter der
 // Live-Karte mit Symbolen und das Infofeld für ausgewählte Objekte.
 import { CATEGORIES, TOGGLES } from './live/live.js';
+import { AGENT_TOGGLES } from './live/agent.js';
 import { iconElement, legendIcon } from './live/icons.js';
 import { t } from './i18n.js';
 import { isTyping } from './fly.js';
@@ -9,32 +10,87 @@ const $ = (id) => document.getElementById(id);
 // Schalter und Liste zeigen dieselben Symbole wie die Karte
 const icon = legendIcon;
 
-export function bindUi({ live, jumpTo, onMap }) {
-  // Schalter mit Symbolen
-  const toggle = (parent, key, text, on) => {
-    const l = document.createElement('label');
-    l.className = 'toggle';
-    l.dataset.key = key;
-    const input = Object.assign(document.createElement('input'), { type: 'checkbox', checked: on });
-    input.addEventListener('change', () => live.setShow(key, input.checked));
-    l.append(input, icon(key), document.createTextNode(text));
-    parent.append(l);
-  };
-  for (const tg of TOGGLES) toggle($('liveToggles'), tg.key, t(`toggle.${tg.key}`), tg.on);
-  for (const c of CATEGORIES) toggle($('liveCats'), c.key, t(`cat.${c.key}`), false);
+const TOGGLE_KEYS = new Set(TOGGLES.map((x) => x.key));
+// Reihenfolge und Gruppen der Ebenenliste (Schlüssel: toggle.<key> bzw. cat.<key> in i18n.js)
+const LAYER_GROUPS = [
+  { keys: ['players', 'offline', 'vehicles', 'bases', 'bases3d', 'storage'] },
+  { title: 'layers.group.resources', keys: ['spice', 'flour', 'ore', 'scrap', 'flora'] },
+  { title: 'layers.group.world', keys: ['cave', 'ecolab', 'wreck', 'sietch', 'trading', 'npc', 'fortress', 'enemy', 'quicksand', 'drumsand', 'radiation'] },
+  { title: 'layers.group.live', keys: AGENT_TOGGLES.map((x) => x.key) },
+  { title: 'layers.group.display', keys: ['labels', 'beams'] },
+];
+// every category must be in a group (checked by tests/ui-layers.mjs)
+export const LAYER_KEYS = LAYER_GROUPS.flatMap((g) => g.keys);
+export const KNOWN_LAYER_KEYS = [...TOGGLES.map((x) => x.key), ...CATEGORIES.map((x) => x.key)];
 
-  // Sprachwechsel ohne Neuladen: Beschriftung der Schalter tauschen, Zustand behalten
-  window.addEventListener('langchange', () => {
-    for (const l of document.querySelectorAll('#liveToggles .toggle, #liveCats .toggle')) {
-      const key = l.dataset.key;
-      const text = l.parentElement.id === 'liveCats' ? t(`cat.${key}`) : t(`toggle.${key}`);
-      l.lastChild.textContent = text;
+// Entfernt Ebenen, die hier nicht funktionieren können (z. B. ohne Spielerzugriff), samt leerer Gruppen.
+export function removeLayers(keys) {
+  for (const k of keys) $('layers').querySelector(`.toggle[data-key="${k}"]`)?.remove();
+  for (const sec of $('layers').querySelectorAll('.lgroup')) if (!sec.querySelector('.toggle')) sec.remove();
+}
+
+export function bindUi({ live, jumpTo, onMap }) {
+  // Ebenen in Gruppen, wie die Layers-Liste der Live-Karte der Console: oben die Live-Akteure,
+  // dann Ressourcen und Welt, dann die Echtzeitdaten und die Anzeige. Eine Gruppe hat einen
+  // Schalter für alle ihre Ebenen (halb gesetzt, wenn nur einige an sind).
+  const wrap = $('layers');
+  const labelOf = (key) => (TOGGLE_KEYS.has(key) ? t(`toggle.${key}`) : t(`cat.${key}`));
+  const defaultOn = (key) => TOGGLES.find((x) => x.key === key)?.on ?? false;
+  const refreshGroup = (box) => {
+    const inputs = [...box.closest('.lgroup').querySelectorAll('.toggle input')];
+    const n = inputs.filter((i) => i.checked).length;
+    box.checked = n === inputs.length && n > 0;
+    box.indeterminate = n > 0 && n < inputs.length;
+  };
+  for (const g of LAYER_GROUPS) {
+    const sec = document.createElement('section');
+    sec.className = 'lgroup';
+    if (g.title) {
+      const head = document.createElement('label');
+      head.className = 'lhead';
+      const all = Object.assign(document.createElement('input'), { type: 'checkbox' });
+      const text = document.createElement('span');
+      text.dataset.i18nKey = g.title;
+      text.textContent = t(g.title);
+      head.append(all, text);
+      sec.append(head);
+      all.addEventListener('change', () => {
+        for (const i of sec.querySelectorAll('.toggle input')) {
+          if (i.checked !== all.checked) { i.checked = all.checked; i.dispatchEvent(new Event('change')); }
+        }
+        all.indeterminate = false;
+      });
     }
+    const list = document.createElement('div');
+    list.className = 'toggles';
+    for (const key of g.keys) {
+      const l = document.createElement('label');
+      l.className = 'toggle';
+      l.dataset.key = key;
+      const input = Object.assign(document.createElement('input'), { type: 'checkbox', checked: defaultOn(key) });
+      input.addEventListener('change', () => {
+        live.setShow(key, input.checked);
+        const head = sec.querySelector('.lhead input');
+        if (head) refreshGroup(head);
+      });
+      l.append(input, icon(key), document.createTextNode(labelOf(key)));
+      list.append(l);
+    }
+    sec.append(list);
+    wrap.append(sec);
+    const head = sec.querySelector('.lhead input');
+    if (head) refreshGroup(head);
+  }
+
+  // Sprachwechsel ohne Neuladen: Beschriftung tauschen, Zustand behalten
+  window.addEventListener('langchange', () => {
+    for (const l of wrap.querySelectorAll('.toggle')) l.lastChild.textContent = labelOf(l.dataset.key);
+    for (const h of wrap.querySelectorAll('[data-i18n-key]')) h.textContent = t(h.dataset.i18nKey);
   });
 
   // Alle Ebenen ein-/ausblenden
   const setAll = (on) => {
-    for (const box of document.querySelectorAll('#liveToggles input, #liveCats input')) {
+    for (const box of document.querySelectorAll('#layers .toggle input')) {
       if (box.checked !== on) { box.checked = on; box.dispatchEvent(new Event('change')); }
     }
   };
