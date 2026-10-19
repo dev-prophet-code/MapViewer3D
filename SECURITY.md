@@ -13,7 +13,7 @@ The agent that reads the game servers has no network exposure at all; the **Dune
 | `mvagent` | Dune Docker host, container, root, `pid: host`, caps `SYS_PTRACE` + `DAC_OVERRIDE` only, AppArmor `unconfined` (required: the Dune game containers are privileged and unconfined, and `docker-default` refuses to read an unconfined peer), `no-new-privileges`, read-only FS | `127.0.0.1:8796` of the host only (host networking, `-addr` refuses non-loopback addresses); no login, no published port |
 | Dune Docker Console | as shipped by Dune Docker, plus [dune-docker-integration/](dune-docker-integration/README.md) | `/api/realtime/*`, authenticated and authorized like every other API route |
 | `mvtls` (optional, profile `tls`) | Dune Docker host, container, non-root, `cap_drop: ALL`, read-only FS, host networking | the one published port (8797/TCP): HTTPS in front of the Console on `127.0.0.1:8088` |
-| MapViewer3D Beta.16+ | the user's PC | calls the Console with its API key as Bearer token |
+| MapViewer3D Beta.17+ | the user's PC | calls the Console with its API key as Bearer token |
 
 ## Authorization (Console)
 
