@@ -2,14 +2,17 @@
 
 // The address of the share gateway as an origin. Empty = the page's own origin (the gateway sits
 // behind the same reverse proxy as the console). Plain http is accepted only for this machine, because
-// the admin secret and every link would travel unencrypted.
+// the API key and every link would travel unencrypted.
 export function normalizeGateway(input, pageOrigin) {
+  const page = (() => { try { return new URL(pageOrigin); } catch { return null; } })();
   const raw = String(input ?? '').trim();
   if (!raw) return pageOrigin;
   let u;
   try { u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`); } catch { return null; }
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname);
-  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && local)) return null;
+  // plain http only for this machine, or for the console's own host when the console page itself is plain http
+  const sameHost = page?.protocol === 'http:' && u.hostname === page.hostname;
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && (local || sameHost))) return null;
   if (u.username || u.password) return null;
   return u.origin;
 }

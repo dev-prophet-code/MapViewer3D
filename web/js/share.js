@@ -115,7 +115,9 @@ async function connect(manual) {
     // default port on the console's host
     const saved = await store.get(GATEWAY_STORE).catch(() => null);
     const o = saved?.origin ? normalizeGateway(saved.origin, location.origin) : null;
-    for (const c of [o, location.origin, `https://${location.hostname}:8798`]) if (c && !tries.includes(c)) tries.push(c);
+    const defaults = [o, location.origin, `https://${location.hostname}:8798`];
+    if (location.protocol === 'http:') defaults.push(`http://${location.hostname}:8798`); // as plain as the console page itself
+    for (const c of defaults) if (c && !tries.includes(c)) tries.push(c);
   }
   $('shareConnectBtn').disabled = true;
   $('shareWait').hidden = false;
@@ -161,6 +163,7 @@ async function create(never) {
     if (!TOKEN_PATTERN.test(doc.token ?? '')) throw new GatewayError('not_gateway');
     $('shareLink').value = linkUrl(origin, doc.token);
     $('shareResult').hidden = false;
+    $('shareHttpWarn').hidden = !origin.startsWith('http:');
     $('shareLink').select();
     await refreshList();
   } catch (e) {

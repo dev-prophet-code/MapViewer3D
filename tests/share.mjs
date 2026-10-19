@@ -10,6 +10,9 @@ assert.equal(normalizeGateway('share.example.org:8798/anything?x=1', own), 'http
 assert.equal(normalizeGateway('http://127.0.0.1:8798', own), 'http://127.0.0.1:8798', 'plain http only for this machine');
 assert.equal(normalizeGateway('http://localhost:8798/', own), 'http://localhost:8798');
 assert.equal(normalizeGateway('http://share.example.org', own), null, 'plain http to another host is refused');
+assert.equal(normalizeGateway('http://console.example.org:8798', 'http://console.example.org:8089'), 'http://console.example.org:8798', 'plain http on the host of a plain-http console');
+assert.equal(normalizeGateway('http://console.example.org:8798', own), null, 'but never next to an https console');
+assert.equal(normalizeGateway('http://other.example.org:8798', 'http://console.example.org:8089'), null);
 assert.equal(normalizeGateway('ftp://share.example.org', own), null);
 assert.equal(normalizeGateway('javascript:alert(1)', own), null);
 assert.equal(normalizeGateway('https://user:pw@share.example.org', own), null, 'credentials in the address are refused');
