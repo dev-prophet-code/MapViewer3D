@@ -4,7 +4,7 @@
 
 Echtzeit-**Sandwürmer, Gegner, Zivilisten, Fahrzeuge, Sandstürme** (und auf Wunsch **Spieler**) von einem [Dune-Docker](https://github.com/Red-Blink/dune-awakening-selfhost-docker)-Server in einem **MapViewer3D, der auf deinem eigenen PC läuft**. Der Zugang ist ein normaler **API-Key** der Console mit dem Recht **Realtime Data**.
 
-> Branch `ddp` von MapViewer3D: in Arbeit, noch nicht Teil eines Releases.
+> Branch `ddp` von MapViewer3D. **Realtime Data** (API-Key-Recht) und **Encrypted API Access** sind seit **Dune Docker v1.4.50** Teil von Dune Docker (Pull Requests #242 und #243, gemergt); dieser Branch enthält, was Dune Docker nicht mitbringt: den Positions-Agenten `mvagent`, den eigenständigen Eingang `mvtls` und das Share-Gateway `mvshare` ([SHARE.md](SHARE.md), dort auch Deutsch).
 
 ## So funktioniert es
 
@@ -28,7 +28,7 @@ Die Live-Map von Dune Docker liest Postgres. Spieler und Fahrzeuge stehen in der
 ```
 
 - **mvagent** (dieses Repository) – ein Container neben Dune Docker. `pid: host`, um die Spielprozesse zu sehen, nur `SYS_PTRACE` + `DAC_OVERRIDE`, AppArmor `unconfined` wie die Dune-Container, schreibgeschütztes Dateisystem. Er lauscht **nur auf 127.0.0.1:8796 des Hosts**; nach außen ist nichts offen.
-- **Dune-Docker-Console** – die einzige Tür. Ihre Routen `/api/realtime/*` prüfen den API-Key wie jeden anderen API-Aufruf. Dafür braucht es die Änderung aus [dune-docker-integration/](dune-docker-integration/README.md), die noch nicht Teil von Dune Docker ist.
+- **Dune-Docker-Console** – die einzige Tür. Ihre Routen `/api/realtime/*` prüfen den API-Key wie jeden anderen API-Aufruf. Das ist seit Dune Docker v1.4.50 eingebaut; für ältere Versionen siehe [dune-docker-integration/](dune-docker-integration/README.md) (die gemergten Änderungen als Patches).
 - **mvtls** (dieses Repository, optional) – der **verschlüsselte Eingang**: HTTPS mit eigenem, langlebigem Schlüssel, den der Viewer festlegt, und Weiterleitung an die unveränderte Console auf `127.0.0.1:8088`. Für die Verschlüsselung muss an Dune Docker nichts geändert werden, und alle anderen nutzen `http://…:8088` genau wie bisher. Siehe [Verschlüsselte Verbindung](#verschlüsselte-verbindung).
 - **MapViewer3D** (ab Beta.16) – fragt die Console kurz, ob Realtime Data für seinen Key verfügbar ist. Wenn nicht (ältere Dune-Docker-Version, kein Agent, Key ohne das Recht, keine verschlüsselte Verbindung), werden die Live-Schalter einfach nicht angezeigt. `mvtls` erkennt er selbst und bietet an, es zu nutzen.
 
@@ -67,7 +67,7 @@ Port **8797/TCP** öffnen (am besten nur für die eigene IP: `MV_TLS_ALLOW`). Be
 - **`MV_TLS_FULL=true`** leitet zusätzlich die Weboberfläche und den Login der Console weiter, damit sich die ganze Console verschlüsselt öffnen lässt (nötig für das Console-Addon über HTTPS). Damit liegt der Admin-Login auf diesem Port – nur mit `MV_TLS_ALLOW` und gut überlegt, wenn die Console bewusst nicht öffentlich ist.
 - Eine Console, die schon hinter einem eigenen Reverse Proxy mit echtem Zertifikat steht (Caddy/nginx + Let's Encrypt), braucht kein `mvtls`.
 
-**Fest in Dune Docker (Patch 2 in [dune-docker-integration/](dune-docker-integration/README.md)):** Der Dune-Docker-Installer startet diesen Eingang dann selbst und zeigt Adresse und **Fingerabdruck des Schlüssels** unter dem ersten Admin-Passwort an; derselbe Wert steht in **Settings → Encrypted API Access** (mit Ein/Aus-Schalter) und bei `dune encrypted-api fingerprint`. Ohne diesen Patch den Container dieses Stacks wie oben beschrieben starten.
+**Fest in Dune Docker (seit v1.4.50, bei neuen Installationen standardmäßig aus: `DUNE_ENCRYPTED_API=1`):** Dune Docker startet diesen Eingang dann selbst und zeigt Adresse und **Fingerabdruck des Schlüssels** unter dem ersten Admin-Passwort an; derselbe Wert steht in **Settings → Encrypted API Access** (mit Ein/Aus-Schalter) und bei `dune encrypted-api fingerprint`. Bei älteren Versionen den Container dieses Stacks wie oben beschrieben starten.
 
 **Der Viewer findet es selbst.** Ist MapViewer3D (ab Beta.16) per einfachem HTTP mit einer Console verbunden, fragt er auf demselben Host den Port 8797 an (TLS-Handshake ohne Token, dazu `GET /mvtls`). Antwortet `mvtls`, zeigt der Viewer den **Fingerabdruck** und bittet, ihn mit der Ausgabe von `mvtls -pin` auf dem Server zu vergleichen. **Dieser Vergleich hält einen Angreifer in der Mitte draußen**, deshalb ist es ein bewusster Klick und keine Automatik. Nach der Bestätigung legt der Viewer den Schlüssel fest, sendet den Token nur noch verschlüsselt und nutzt den Weg ab dann für alles (Karten, Basen, Symbole, Realtime Data). Kennt er den Fingerabdruck schon (`-api-pin`), stellt er ohne Rückfrage um.
 

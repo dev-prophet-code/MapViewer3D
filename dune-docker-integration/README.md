@@ -1,5 +1,7 @@
 # Dune Docker integration
 
+> **Status: merged.** Both changes are part of Dune Docker since **v1.4.50** (pull requests #242 and #243). The patches below are kept for older Dune Docker versions and as a record of what was submitted; on v1.4.50 or newer you need nothing from this folder.
+
 Two ready-to-merge changes for [Red-Blink/dune-awakening-selfhost-docker](https://github.com/Red-Blink/dune-awakening-selfhost-docker),
 **independent of each other**: each applies directly with `git apply` on upstream `main` at `6b2ea8f9` (v1.4.48 plus later commits). They touch neighbouring lines of
 `server.js`, `actions.js` and `SettingsPanel.tsx`, so the one merged second needs a trivial conflict resolution:
