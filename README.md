@@ -65,9 +65,10 @@ A browser page inside the console cannot serve the public, so links come from th
 - visitors never get an API key: the gateway uses **one read-only key of its own** for a short list of `GET` routes and
   rebuilds every answer from allowed fields (no account ids, no storage contents, no settings files),
 - the Console's login, settings, write and admin routes are not reachable through a link, and managing links needs a
-  separate admin secret that is good for nothing else.
+  Console API key that the Console itself accepts (the one you already entered in the addon, so there is nothing else to
+  set up; a key can only create links that offer what it can read itself).
 
-In the addon the admin secret is held in the page's memory only (like the API key); only the gateway's public address is
+The addon sends your API key only to the gateway, never stores it (like before); only the gateway's public address is
 remembered (with the instance names). Without a gateway the addon works exactly as before; the button just finds nothing to connect to.
 
 ## Realtime Data status
@@ -117,7 +118,7 @@ Browser (addon page inside the console)
   (`web/vendor`, versions in `web/vendor/README.md`).
 - **Network use:** the addon page contacts this console, `raw.githubusercontent.com` and `cdn.jsdelivr.net`, and nothing else.
   Requests to GitHub carry no cookies and no referrer.
-- **No server component** for the viewer itself: there is no listening port, no container, no stored password, no installer. Only the optional share links need the share gateway of the MapViewer3D stack; the admin secret of the gateway is memory-only like the API key.
+- **No server component** for the viewer itself: there is no listening port, no container, no stored password, no installer. Only the optional share links need the share gateway of the MapViewer3D stack; the addon never stores the key it sends there.
 
 Found a problem? See the viewer's [SECURITY.md](https://github.com/dev-prophet-code/MapViewer3D/blob/main/SECURITY.md).
 

@@ -113,12 +113,11 @@
     <div class="li-head"><h1 id="shareTitle" data-i18n="share.title">Share this map</h1><button id="shareClose" class="li-close" type="button" data-i18n-title="close">×</button></div>
     <p class="muted small" data-i18n="share.intro"></p>
 
-    <form id="shareConnect" autocomplete="off">
+    <div id="shareWait" class="muted small" data-i18n="share.connecting" hidden>Looking for the share gateway …</div>
+    <form id="shareConnect" autocomplete="off" hidden>
+      <p class="small" data-i18n="share.nogateway.help"></p>
       <label><span data-i18n="share.gateway">Share gateway address</span>
         <input id="shareGateway" type="text" inputmode="url" placeholder="https://share.example.org" spellcheck="false" data-i18n-ph="share.gateway.ph">
-      </label>
-      <label><span data-i18n="share.secret">Admin secret</span>
-        <input id="shareSecret" name="mapviewer3d-share-secret" type="password" placeholder="mva_…" spellcheck="false" autocomplete="current-password">
       </label>
       <div class="btnrow"><button id="shareConnectBtn" type="submit" class="primary" data-i18n="share.connect">Connect</button></div>
     </form>

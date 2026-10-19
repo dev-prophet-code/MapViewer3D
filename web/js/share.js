@@ -1,20 +1,19 @@
 // Share links for the 3D map: the admin creates a link that lets people who are not console users
 // look at the map. The links are issued by the share gateway of the MapViewer3D stack (branch ddp,
-// service "mvshare"), not by the console: the addon cannot open anything to the public by itself,
-// and the console's API keys must not be handed out.
+// service "mvshare"), not by the console: the addon cannot open anything to the public by itself.
 //
-// What this page holds: the gateway address (not secret, kept with the instance names) and the
-// gateway's admin secret (memory only, like the API key). The gateway stores only a hash of each link's
-// token; the link is shown once, right after it was created.
+// Nothing to set up in this dialog: the gateway checks the API key the admin already entered in
+// the addon against the console (it is sent only to the gateway, over the same kind of connection as
+// to the console, and never stored). The gateway's address is not secret and is remembered once.
 import { store } from './store.js';
 import { t, lang } from './i18n.js';
-import { durationSeconds, linkUrl, normalizeGateway, SECRET_PATTERN, TOKEN_PATTERN } from './share-core.js';
+import { currentKey } from './console.js';
+import { durationSeconds, linkUrl, normalizeGateway, TOKEN_PATTERN } from './share-core.js';
 
 const $ = (id) => document.getElementById(id);
 const GATEWAY_STORE = 'share.gateway';
 
 let origin = null;
-let secret = null; // memory only
 
 class GatewayError extends Error {
   constructor(key, detail = '') { super(key); this.key = key; this.detail = detail; }
@@ -25,7 +24,7 @@ async function gw(method, path, body) {
   try {
     r = await fetch(`${origin}/share-admin/${path}`, {
       method, credentials: 'omit', cache: 'no-store',
-      headers: { Authorization: `Bearer ${secret}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      headers: { Authorization: `Bearer ${currentKey()}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (e) {
@@ -56,13 +55,12 @@ function showError(msg) {
 function renderCaps(st) {
   const yes = (v) => (v ? t('share.yes') : t('share.no'));
   const lines = [
-    `${t('share.cap.key')}: ${st.keyConfigured ? (st.keyAccepted ? t('share.yes') : t('share.cap.rejected')) : t('share.cap.nokey')}`,
     `${t('share.cap.maps')}: ${yes(st.maps)}`,
     `${t('share.cap.bases')}: ${yes(st.bases)}`,
     `${t('share.cap.players')}: ${yes(st.players)}`,
     `${t('share.cap.realtime')}: ${st.realtime ? t('share.yes') : `${t('share.no')}${st.realtimeReason ? ` (${st.realtimeReason})` : ''}`}`,
   ];
-  $('shareCaps').textContent = lines.join('\n');
+  $('shareCaps').textContent = lines.join('\n') + (st.adopted ? `\n${t('share.adopted')}` : '');
   // the options the gateway's key cannot serve are switched off
   for (const [id, ok] of [['shareRealtime', st.realtime], ['shareBases', st.bases], ['sharePlayers', st.players]]) {
     const box = $(id);
@@ -103,29 +101,42 @@ async function refreshList() {
   }));
 }
 
-async function connect() {
+// Finds the gateway (the remembered address, then the console's own address) and shows the dialog.
+async function connect(manual) {
   showError('');
-  const o = normalizeGateway($('shareGateway').value, location.origin);
-  if (!o) { showError(t('share.err.address')); return; }
-  const s = $('shareSecret').value.trim();
-  if (!SECRET_PATTERN.test(s)) { showError(t('share.err.secret_format')); return; }
-  origin = o;
-  secret = s;
-  $('shareConnectBtn').disabled = true;
-  try {
-    const st = await gw('GET', 'status');
-    renderCaps(st);
-    await refreshList();
-    $('shareSecret').value = '';
-    $('shareMain').hidden = false;
-    $('shareConnect').hidden = true;
-    store.put(GATEWAY_STORE, { origin: $('shareGateway').value.trim() }).catch(() => {});
-  } catch (e) {
-    secret = null;
-    showError(errText(e));
-  } finally {
-    $('shareConnectBtn').disabled = false;
+  const tries = [];
+  if (manual) {
+    const o = normalizeGateway($('shareGateway').value, location.origin);
+    if (!o) { showError(t('share.err.address')); return; }
+    tries.push(o);
+  } else {
+    const saved = await store.get(GATEWAY_STORE).catch(() => null);
+    const o = saved?.origin ? normalizeGateway(saved.origin, location.origin) : null;
+    if (o) tries.push(o);
+    if (!tries.includes(location.origin)) tries.push(location.origin);
   }
+  $('shareConnectBtn').disabled = true;
+  $('shareWait').hidden = false;
+  let st = null;
+  let lastErr = null;
+  for (const o of tries) {
+    origin = o;
+    try { st = await gw('GET', 'status'); break; } catch (e) { lastErr = e; if (e instanceof GatewayError && ['auth', 'blocked', 'nokey'].includes(e.key)) break; }
+  }
+  $('shareWait').hidden = true;
+  $('shareConnectBtn').disabled = false;
+  if (!st) {
+    origin = null;
+    $('shareConnect').hidden = false;
+    $('shareMain').hidden = true;
+    showError(lastErr instanceof GatewayError && lastErr.key !== 'unreachable' ? errText(lastErr) : t('share.nogateway'));
+    return;
+  }
+  $('shareConnect').hidden = true;
+  $('shareMain').hidden = false;
+  renderCaps(st);
+  if (origin !== location.origin || manual) store.put(GATEWAY_STORE, { origin }).catch(() => {});
+  await refreshList().catch((e) => showError(errText(e)));
 }
 
 async function create(never) {
@@ -156,26 +167,30 @@ async function create(never) {
 }
 
 export async function openShare() {
-  const modal = $('share');
   showError('');
   $('shareResult').hidden = true;
   $('shareLink').value = '';
-  if (!secret) {
-    $('shareConnect').hidden = false;
+  $('share').hidden = false;
+  if (!currentKey()) {
+    $('shareConnect').hidden = true;
     $('shareMain').hidden = true;
-    const saved = await store.get(GATEWAY_STORE).catch(() => null);
-    $('shareGateway').value = saved?.origin ?? '';
-    $('shareSecret').value = '';
-  } else {
-    refreshList().catch((e) => showError(errText(e)));
+    showError(t('share.err.nokey'));
+    return;
   }
-  modal.hidden = false;
-  (secret ? $('shareLabel') : $('shareSecret')).focus();
+  if (origin) { // already connected in this page
+    $('shareMain').hidden = false;
+    $('shareConnect').hidden = true;
+    refreshList().catch((e) => showError(errText(e)));
+    return;
+  }
+  $('shareMain').hidden = true;
+  $('shareConnect').hidden = true;
+  await connect(false);
 }
 
 export function initShare() {
   $('shareClose').onclick = () => { $('share').hidden = true; $('shareLink').value = ''; $('shareResult').hidden = true; };
-  $('shareConnect').onsubmit = (e) => { e.preventDefault(); connect(); };
+  $('shareConnect').onsubmit = (e) => { e.preventDefault(); connect(true); };
   $('shareDuration').onchange = () => { $('shareCustom').hidden = $('shareDuration').value !== 'custom'; };
   $('shareCreate').onsubmit = (e) => { e.preventDefault(); create(false); };
   $('shareForever').onclick = () => create(true);
@@ -188,5 +203,5 @@ export function initShare() {
   $('shareLink').addEventListener('focus', () => $('shareLink').select());
 }
 
-// forget the admin secret together with the API key
-export function forgetShare() { secret = null; origin = null; }
+// forget the gateway connection together with the API key
+export function forgetShare() { origin = null; }

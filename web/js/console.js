@@ -40,6 +40,8 @@ export async function loadToken() {
   return token;
 }
 
+// For the share dialog: the key is sent to the share gateway to authorise link management.
+export const currentKey = () => token;
 export const hasToken = () => SHARE_BASE !== null || token !== null;
 export const keyId = () => (token ? token.split('_')[1] : '');
 
