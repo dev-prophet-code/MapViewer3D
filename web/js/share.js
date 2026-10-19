@@ -105,15 +105,17 @@ async function refreshList() {
 async function connect(manual) {
   showError('');
   const tries = [];
-  if (manual) {
-    const o = normalizeGateway($('shareGateway').value, location.origin);
+  const typed = manual ? $('shareGateway').value.trim() : '';
+  if (typed) {
+    const o = normalizeGateway(typed, location.origin);
     if (!o) { showError(t('share.err.address')); return; }
     tries.push(o);
   } else {
+    // the remembered address, the console's own address (a proxy serves both), then the gateway's
+    // default port on the console's host
     const saved = await store.get(GATEWAY_STORE).catch(() => null);
     const o = saved?.origin ? normalizeGateway(saved.origin, location.origin) : null;
-    if (o) tries.push(o);
-    if (!tries.includes(location.origin)) tries.push(location.origin);
+    for (const c of [o, location.origin, `https://${location.hostname}:8798`]) if (c && !tries.includes(c)) tries.push(c);
   }
   $('shareConnectBtn').disabled = true;
   $('shareWait').hidden = false;
@@ -135,7 +137,7 @@ async function connect(manual) {
   $('shareConnect').hidden = true;
   $('shareMain').hidden = false;
   renderCaps(st);
-  if (origin !== location.origin || manual) store.put(GATEWAY_STORE, { origin }).catch(() => {});
+  if (origin !== location.origin) store.put(GATEWAY_STORE, { origin }).catch(() => {});
   await refreshList().catch((e) => showError(errText(e)));
 }
 
