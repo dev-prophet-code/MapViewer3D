@@ -65,6 +65,7 @@ h3 { font-size: 12px; margin: 10px 0 4px; color: var(--muted); font-weight: 600;
 .li-icon .ico-img { width: 28px; height: 28px; flex-basis: 28px; }
 .version { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: .04em; margin-left: 4px; vertical-align: middle; }
 .toggle input { margin: 0; accent-color: var(--accent); }
+.toggle.empty { opacity: .55; }
 .toggle .count { margin-left: auto; color: var(--muted); font-size: 11px; }
 
 /* Ebenen in Gruppen (wie die Layers-Liste der Console-Live-Karte) */

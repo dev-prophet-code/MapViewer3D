@@ -35,7 +35,9 @@ export function bindUi({ live, jumpTo, onMap }) {
   // Schalter für alle ihre Ebenen (halb gesetzt, wenn nur einige an sind).
   const wrap = $('layers');
   const labelOf = (key) => (TOGGLE_KEYS.has(key) ? t(`toggle.${key}`) : t(`cat.${key}`));
-  const defaultOn = (key) => TOGGLES.find((x) => x.key === key)?.on ?? false;
+  // like the Console's Layers: spice, flour sand and the points of interest start on
+  const CAT_ON = new Set(['spice', 'flour', 'cave', 'ecolab', 'wreck', 'sietch', 'trading', 'npc']);
+  const defaultOn = (key) => TOGGLES.find((x) => x.key === key)?.on ?? CAT_ON.has(key);
   const refreshGroup = (box) => {
     const inputs = [...box.closest('.lgroup').querySelectorAll('.toggle input')];
     const n = inputs.filter((i) => i.checked).length;
@@ -73,7 +75,8 @@ export function bindUi({ live, jumpTo, onMap }) {
         const head = sec.querySelector('.lhead input');
         if (head) refreshGroup(head);
       });
-      l.append(input, icon(key), document.createTextNode(labelOf(key)));
+      const name = Object.assign(document.createElement('span'), { className: 'lname', textContent: labelOf(key) });
+      l.append(input, icon(key), name);
       list.append(l);
     }
     sec.append(list);
@@ -82,9 +85,22 @@ export function bindUi({ live, jumpTo, onMap }) {
     if (head) refreshGroup(head);
   }
 
+  // Anzahl je Ebene hinter dem Namen; 0 = die Console liefert für diese Karte nichts (Ebene ausgegraut)
+  live.onCounts = (counts) => {
+    for (const l of wrap.querySelectorAll('.toggle')) {
+      const n = counts[l.dataset.key];
+      if (n === undefined) continue;
+      let c = l.querySelector('.count');
+      if (!c) { c = Object.assign(document.createElement('span'), { className: 'count' }); l.append(c); }
+      c.textContent = n;
+      l.classList.toggle('empty', n === 0);
+      l.title = n === 0 ? t('layers.empty') : '';
+    }
+  };
+
   // Sprachwechsel ohne Neuladen: Beschriftung tauschen, Zustand behalten
   window.addEventListener('langchange', () => {
-    for (const l of wrap.querySelectorAll('.toggle')) l.lastChild.textContent = labelOf(l.dataset.key);
+    for (const l of wrap.querySelectorAll('.toggle')) { l.querySelector('.lname').textContent = labelOf(l.dataset.key); if (l.classList.contains('empty')) l.title = t('layers.empty'); }
     for (const h of wrap.querySelectorAll('[data-i18n-key]')) h.textContent = t(h.dataset.i18nKey);
   });
 

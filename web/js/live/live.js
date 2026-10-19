@@ -427,6 +427,11 @@ export class LiveLayer {
     }
     if (missing.length) this.sampleHeights(missing);
     this.applyVisibility();
+    // how much of each layer the console delivers for this map, so an empty layer is explained
+    const counts = Object.fromEntries(CATEGORIES.map((c) => [c.key, this.layers[c.key].rows.length]));
+    counts.bases = this.data.overlays.filter((r) => r.type === 'base' && this.inPartition(r)).length;
+    counts.vehicles = this.data.overlays.filter((r) => r.type === 'vehicle' && this.inPartition(r)).length;
+    this.onCounts?.(counts);
   }
 
   removeLayer(l) {
