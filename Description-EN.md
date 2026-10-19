@@ -86,7 +86,13 @@ Browser  ⇄  local viewer server (127.0.0.1)  ⇄  your server's console (API)
 - **Realtime Data (Beta.16):** with an API key that has the scope *Realtime Data*, sandworms,
   enemies, civilians, vehicles and storms also reach a viewer on your own PC through the
   console. The viewer asks at start; if the server does not offer it, the switches are
-  simply not shown. See [docs/Agent-EN.md](docs/Agent-EN.md).
+  simply not shown. The *Realtime Data* permission is built into Dune Docker since v1.4.50; the
+  position agent runs next to it ([docs/Agent-EN.md](docs/Agent-EN.md)).
+- **Console addon:** for servers with the Red-Blink stack there is an addon for the Dune Docker
+  Console that needs nothing on the server (branch `DD-Addon`, listed on the console's
+  *Addons* page). The branch also holds **share links** (addon 0.4.0, not yet released):
+  time-limited or open-ended, revocable token links to the 3D map for players without a
+  console account, served by the small share gateway `mvshare` (branch `ddp`).
 
 ## Use it on your own website (with real-time data)
 

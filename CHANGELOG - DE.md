@@ -64,6 +64,7 @@ Jede Änderung am Viewer steht hier, die neueste Version oben.
 ### Hinweise
 
 - Die nötigen Änderungen an Dune Docker (API-Key-Recht *Realtime Data*, verschlüsselter API-Zugang mit Fingerabdruck im Installer und in den Settings) liegen als zwei Patches im Branch `ddp` bereit und sind noch nicht Teil von Dune Docker. Ohne sie bleiben die Echtzeit-Schalter ausgeblendet, und der Viewer verhält sich wie Beta.15. Beide liegen bei Red-Blink als Pull Requests; der Viewer funktioniert mit jeder Dune-Docker-Version bis v1.4.47 (die benutzten API-Routen sind dort unverändert).
+- **Update 19.10.2026:** Red-Blink hat beide Änderungen gemergt (Pull Requests #242 und #243); sie sind Teil von **Dune Docker v1.4.50**. Nur der Positions-Agent (Branch `ddp`) muss weiterhin daneben laufen; die Patches in `ddp` bleiben für ältere Dune-Docker-Versionen.
 
 ### Behoben
 
