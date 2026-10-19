@@ -81,6 +81,13 @@ func newStore(dir string) (*store, error) {
 	if err := json.Unmarshal(b, &s.links); err != nil {
 		return nil, errors.New("links.json is not valid: " + err.Error())
 	}
+	kept := s.links[:0]
+	for _, l := range s.links { // links revoked by older versions are removed now
+		if !l.Revoked {
+			kept = append(kept, l)
+		}
+	}
+	s.links = kept
 	s.reindex()
 	return s, nil
 }
@@ -197,11 +204,15 @@ func (s *store) list() []linkView {
 func (s *store) revoke(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// A revoked link is deleted outright: it vanishes from the list and its token never works again.
 	for i := range s.links {
-		if s.links[i].ID == id && !s.links[i].Revoked {
-			s.links[i].Revoked = true
+		if s.links[i].ID == id {
+			removed := s.links[i]
+			s.links = append(s.links[:i:i], s.links[i+1:]...)
+			s.reindex()
 			if err := s.save(); err != nil {
-				s.links[i].Revoked = false
+				s.links = append(s.links[:i:i], append([]link{removed}, s.links[i:]...)...)
+				s.reindex()
 				return false
 			}
 			return true

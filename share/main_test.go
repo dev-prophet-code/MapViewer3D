@@ -236,6 +236,16 @@ func TestExpiryAndRevocation(t *testing.T) {
 	if code, _, _ := f.do("GET", "/s/"+tok+"/", nil, nil); code != 404 {
 		t.Fatal("revoked link accepted")
 	}
+	if _, b := f.admin("GET", "links", nil); strings.Contains(b, id) {
+		t.Fatalf("revoked link still listed: %s", b)
+	}
+	if code, _ := f.admin("DELETE", "links/"+id, nil); code != 404 {
+		t.Fatal("revoking twice must say 404")
+	}
+	st2, _ := newStore(f.gw.cfg.State)
+	if _, ok := st2.lookup(tok); ok {
+		t.Fatal("revoked link is back after a restart")
+	}
 	if code, _ := f.admin("POST", "links", createReq{Seconds: 5}); code != 400 {
 		t.Fatal("too short duration accepted")
 	}
