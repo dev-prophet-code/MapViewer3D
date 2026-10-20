@@ -28,6 +28,12 @@ jobs:
         run: node tests/key-storage.mjs
       - name: Realtime Data (per-map filtering, no players, key on every call, revoked key ends the stream)
         run: node tests/realtime.mjs
+      - name: Share links (dialog helpers, a visitor's page sends no key and only its own link path)
+        run: |
+          node tests/share.mjs
+          node tests/share-visitor.mjs
+      - name: Layer list (every layer grouped and translated)
+        run: node tests/ui-layers.mjs
       - name: Data path tests (tile generator -> loader, checksums, tamper checks, SHA-256 fallback)
         run: node tests/unit.mjs
       - name: Pinned data release is reachable and matches the pinned catalog checksum
