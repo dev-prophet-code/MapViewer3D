@@ -90,7 +90,7 @@ Browser  ⇄  local viewer server (127.0.0.1)  ⇄  your server's console (API)
   position agent runs next to it ([docs/Agent-EN.md](docs/Agent-EN.md)).
 - **Console addon:** for servers with the Red-Blink stack there is an addon for the Dune Docker
   Console that needs nothing on the server (branch `DD-Addon`, listed on the console's
-  *Addons* page). The branch also holds **share links** (addon 0.4.0, not yet released):
+  *Addons* page). The branch also holds **share links** (addon 0.4.0):
   time-limited or open-ended, revocable token links to the 3D map for players without a
   console account, served by the small share gateway `mvshare` (branch `ddp`).
 
