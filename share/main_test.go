@@ -268,6 +268,9 @@ func TestAdminAuthAndCORS(t *testing.T) {
 		t.Fatalf("foreign origin: %d", code)
 	}
 	code, _, h := f.do("OPTIONS", "/share-admin/links", nil, map[string]string{"Origin": "https://console.example.org"})
+	if h.Get("Access-Control-Allow-Private-Network") != "" {
+		t.Fatal("private network access granted without being asked")
+	}
 	if code != 204 || h.Get("Access-Control-Allow-Origin") != "https://console.example.org" || h.Get("Access-Control-Allow-Credentials") != "" {
 		t.Fatalf("preflight: %d %v", code, h)
 	}
@@ -674,5 +677,17 @@ func TestServiceKeyIsAdoptedOnlyWhenNeeded(t *testing.T) {
 	tok, _ := f.newLink(createReq{Never: true})
 	if code, _, _ := f.do("GET", "/s/"+tok+"/api/map/status", nil, nil); code != 200 {
 		t.Fatalf("link after adoption: %d", code)
+	}
+}
+
+func TestPreflightPrivateNetwork(t *testing.T) {
+	f := newFixture(t)
+	_, _, h := f.do("OPTIONS", "/share-admin/status", nil, map[string]string{"Origin": "https://console.example.org", "Access-Control-Request-Private-Network": "true"})
+	if h.Get("Access-Control-Allow-Private-Network") != "true" {
+		t.Fatalf("%v", h)
+	}
+	_, _, h = f.do("OPTIONS", "/share-admin/status", nil, map[string]string{"Origin": "https://evil.example", "Access-Control-Request-Private-Network": "true"})
+	if h.Get("Access-Control-Allow-Private-Network") != "" {
+		t.Fatal("granted to a foreign origin")
 	}
 }

@@ -818,6 +818,9 @@ func (g *gateway) corsAdmin(w http.ResponseWriter, r *http.Request) bool {
 			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 			h.Set("Access-Control-Allow-Methods", "GET, POST, DELETE")
 			h.Set("Access-Control-Max-Age", "600")
+			if r.Header.Get("Access-Control-Request-Private-Network") == "true" {
+				h.Set("Access-Control-Allow-Private-Network", "true") // an https console page reaching a gateway on this machine (tunnel)
+			}
 			return true
 		}
 	}
