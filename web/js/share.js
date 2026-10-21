@@ -8,7 +8,7 @@
 import { store } from './store.js';
 import { t, lang } from './i18n.js';
 import { currentKey } from './console.js';
-import { durationSeconds, findGateway, linkUrl, normalizeGateway, TOKEN_PATTERN } from './share-core.js';
+import { durationSeconds, findGateway, gatewayCandidates, linkUrl, normalizeGateway, TOKEN_PATTERN } from './share-core.js';
 
 const $ = (id) => document.getElementById(id);
 const GATEWAY_STORE = 'share.gateway';
@@ -30,11 +30,11 @@ async function gw(method, path, body) {
   } catch (e) {
     throw new GatewayError('unreachable', e.message);
   }
-  if (r.status === 401) throw new GatewayError('auth');
-  if (r.status === 403) throw new GatewayError('origin');
-  if (r.status === 429) throw new GatewayError('blocked');
   let doc = null;
   try { doc = await r.json(); } catch { /* not the gateway */ }
+  if (r.status === 401) throw new GatewayError('auth');
+  if (r.status === 403) throw new GatewayError(doc?.needs === 'addons:read' ? 'admin_scope' : 'origin');
+  if (r.status === 429) throw new GatewayError('blocked');
   if (!r.ok) throw new GatewayError('http', `${r.status}${doc?.error ? ` ${doc.error}` : ''}`);
   if (!doc || typeof doc !== 'object') throw new GatewayError('not_gateway');
   return doc;
@@ -78,25 +78,23 @@ async function refreshList() {
   if (!rows.length) { list.textContent = t('share.none'); return; }
   list.replaceChildren(...rows.map((l) => {
     const row = document.createElement('div');
-    row.className = `sharerow${l.active ? '' : ' dead'}`;
+    row.className = 'sharerow';
     const opts = [l.realtime && t('share.o.realtime'), l.bases && t('share.o.bases'), l.players && t('share.o.players')].filter(Boolean).join(', ');
     const info = document.createElement('div');
     const title = document.createElement('strong');
     title.textContent = l.label || `#${l.id}`;
     const meta = document.createElement('div');
     meta.className = 'muted';
-    const state = !l.active ? t('share.ended') : l.expires ? t('share.until', { when: fmtTime(l.expires) }) : t('share.never');
+    const state = l.expires ? t('share.until', { when: fmtTime(l.expires) }) : t('share.never');
     meta.textContent = `${state} · ${opts || t('share.o.map')}${l.lastUsed ? ` · ${t('share.lastUsed', { when: fmtTime(l.lastUsed) })}` : ''}`;
     info.append(title, meta);
     row.append(info);
-    if (l.active) {
-      const b = Object.assign(document.createElement('button'), { type: 'button', className: 'danger', textContent: t('share.revoke') });
-      b.onclick = async () => {
-        if (!confirm(t('share.revoke.confirm'))) return;
-        try { await gw('DELETE', `links/${l.id}`); await refreshList(); } catch (e) { showError(errText(e)); }
-      };
-      row.append(b);
-    }
+    const b = Object.assign(document.createElement('button'), { type: 'button', className: 'danger', textContent: t('share.revoke') });
+    b.onclick = async () => {
+      if (!confirm(t('share.revoke.confirm'))) return;
+      try { await gw('DELETE', `links/${l.id}`); await refreshList(); } catch (e) { showError(errText(e)); }
+    };
+    row.append(b);
     return row;
   }));
 }
@@ -104,26 +102,27 @@ async function refreshList() {
 // Finds the gateway (the remembered address, then the console's own address) and shows the dialog.
 async function connect(manual) {
   showError('');
-  const tries = [];
+  let tries;
   const typed = manual ? $('shareGateway').value.trim() : '';
   if (typed) {
     const o = normalizeGateway(typed, location.origin);
     if (!o) { showError(t('share.err.address')); return; }
-    tries.push(o);
+    tries = [{ origin: o, askFirst: false }]; // typed by the administrator: no question
   } else {
-    // the remembered address, the console's own address (a proxy serves both), then the gateway's
-    // default port on the console's host
+    // the remembered address (asked about first), the console's own address (a proxy serves both),
+    // then the gateway's default port on the console's host
     const saved = await store.get(GATEWAY_STORE).catch(() => null);
-    const o = saved?.origin ? normalizeGateway(saved.origin, location.origin) : null;
-    const defaults = [o, location.origin, `https://${location.hostname}:8798`];
-    if (location.protocol === 'http:') defaults.push(`http://${location.hostname}:8798`); // as plain as the console page itself
-    for (const c of defaults) if (c && !tries.includes(c)) tries.push(c);
+    tries = gatewayCandidates({ saved: saved?.origin, pageOrigin: location.origin, protocol: location.protocol, hostname: location.hostname });
   }
+  const ask = new Set(tries.filter((c) => c.askFirst).map((c) => c.origin));
   $('shareConnectBtn').disabled = true;
   $('shareWait').hidden = false;
-  const found = await findGateway(tries, {
+  const found = await findGateway(tries.map((c) => c.origin), {
     fetchFn: (u, i) => fetch(u, i),
     status: async (o) => {
+      // the remembered address comes from storage that every user of the addon can write: the key goes
+      // there only after the administrator has seen the address and agreed
+      if (ask.has(o) && !confirm(t('share.confirm.address', { address: o }))) { const e = new GatewayError('declined'); e.stop = true; throw e; }
       origin = o;
       try { return await gw('GET', 'status'); } catch (e) { if (e instanceof GatewayError && ['auth', 'blocked'].includes(e.key)) e.stop = true; throw e; }
     },
@@ -146,7 +145,9 @@ async function connect(manual) {
   await refreshList().catch((e) => showError(errText(e)));
 }
 
+let creating = false;
 async function create(never) {
+  if (creating) return; // a double click must not create two links (only the last token would be shown)
   showError('');
   const body = {
     label: $('shareLabel').value.trim(),
@@ -161,6 +162,8 @@ async function create(never) {
     body.seconds = s;
   }
   if (body.players && !confirm(t('share.players.confirm'))) return;
+  creating = true;
+  $('shareMake').disabled = $('shareForever').disabled = true;
   try {
     const doc = await gw('POST', 'links', body);
     if (!TOKEN_PATTERN.test(doc.token ?? '')) throw new GatewayError('not_gateway');
@@ -171,6 +174,9 @@ async function create(never) {
     await refreshList();
   } catch (e) {
     showError(errText(e));
+  } finally {
+    creating = false;
+    $('shareMake').disabled = $('shareForever').disabled = false;
   }
 }
 
@@ -207,7 +213,6 @@ export function initShare() {
     try { await navigator.clipboard.writeText(v); $('shareCopy').textContent = t('share.copied'); } catch { $('shareLink').select(); }
     setTimeout(() => { $('shareCopy').textContent = t('share.copy'); }, 1500);
   };
-  // leaving the gateway forgets the secret (it is only held in memory anyway)
   $('shareLink').addEventListener('focus', () => $('shareLink').select());
 }
 

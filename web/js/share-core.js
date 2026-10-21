@@ -31,6 +31,22 @@ export function durationSeconds(choice, customAmount, customUnit) {
   return Number.isFinite(s) && s >= MIN_SECONDS && s <= MAX_SECONDS ? s : null;
 }
 
+// The addresses to try, in order, as { origin, askFirst }. The remembered address lives in the addon's
+// storage, which every user of the addon can write, so it is NOT trusted silently: the administrator
+// confirms it before the key is sent to it. The console's own address and port 8798 of the console's
+// host are derived from the page itself and need no question.
+export function gatewayCandidates({ saved, pageOrigin, protocol, hostname }) {
+  const derived = [pageOrigin, `https://${hostname}:8798`];
+  if (protocol === 'http:') derived.push(`http://${hostname}:8798`); // as plain as the console page itself
+  const out = [];
+  const seen = new Set();
+  const add = (origin, askFirst) => { if (origin && !seen.has(origin)) { seen.add(origin); out.push({ origin, askFirst }); } };
+  const s = saved ? normalizeGateway(saved, pageOrigin) : null;
+  if (s) add(s, !derived.includes(s));
+  for (const d of derived) add(d, false);
+  return out;
+}
+
 // Finds the gateway among the candidate addresses. A candidate is first asked who it is, WITHOUT any
 // credential (GET /mvshare: no Authorization, no cookies, no redirects); only an answer that names
 // the share gateway earns the administrator's API key, which then goes with the status call. An address

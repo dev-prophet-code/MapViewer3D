@@ -3,7 +3,7 @@
 //   addon (checksum pinned by the Red-Blink catalog)
 //     -> CATALOG_SHA256 -> catalog.json -> sha256 of every map index (m/<map>.json)
 //       -> content id of every terrain tile (p/..): the SHA-256 of the tile itself.
-export const ADDON_VERSION = '0.4.1';
+export const ADDON_VERSION = '0.4.2';
 
 // A visitor of a share link (https://<host>/s/<token>/) opens the viewer from the share gateway
 // (MapViewer3D stack, branch ddp). There is no API key in the page: every console call goes to the

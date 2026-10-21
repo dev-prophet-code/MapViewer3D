@@ -64,11 +64,12 @@ A browser page inside the console cannot serve the public, so links come from th
 - visitors never get an API key: the gateway uses **one read-only key of its own** for a short list of `GET` routes and
   rebuilds every answer from allowed fields (no account ids, no storage contents, no settings files),
 - the Console's login, settings, write and admin routes are not reachable through a link, and managing links needs a
-  Console API key that the Console itself accepts (the one you already entered in the addon, so there is nothing else to
-  set up; a key can only create links that offer what it can read itself).
+  Console API key that the Console itself accepts **and that holds `Addons: Read`** (the key you already entered in the addon,
+  plus that one read-only scope, which keeps bots and monitoring keys from publishing or deleting links; a key can only create
+  links that offer what it can read itself).
 
 The addon sends your API key only to the gateway, never stores it (like before); only the gateway's public address is
-remembered (with the instance names). Before the key is sent to an address that was only guessed (the console's own address, port 8798 of its host), the addon asks that address who it is **without any credential**; only a share gateway gets the key. Without a gateway the addon works exactly as before; the button just finds nothing to connect to.
+remembered (with the instance names); because every user of the addon can change that stored address, it is shown to you and has to be confirmed before the key is sent to it for the first time in a session. Before the key is sent to an address that was only guessed (the console's own address, port 8798 of its host), the addon asks that address who it is **without any credential**; only a share gateway gets the key. Without a gateway the addon works exactly as before; the button just finds nothing to connect to.
 
 ## Realtime Data status
 

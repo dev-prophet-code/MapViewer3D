@@ -46,6 +46,15 @@ await test('a 5xx keeps the last good data and is retried within seconds', async
   assert.deepEqual(await cons.consoleGet('/api/map/overlays?map=A', 20000), { rows: [2] }, 'recovered: new data');
 });
 
+await test('a probe (ttl 0) sees the failure itself instead of old data', async () => {
+  answer = () => ({ status: 200, body: { available: true } });
+  assert.deepEqual(await cons.consoleGet('/api/realtime/healthz', 0), { available: true });
+  for (const status of [503, 500, 429]) {
+    answer = () => ({ status, body: {} });
+    await assert.rejects(() => cons.consoleGet('/api/realtime/healthz', 0), /http_status/, `${status}`);
+  }
+});
+
 await test('429 keeps the data too', async () => {
   clock += 21000;
   answer = () => ({ status: 429, body: {} });

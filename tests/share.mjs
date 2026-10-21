@@ -1,6 +1,6 @@
 // Tests of the pure parts of the share dialog: gateway address, link address, duration.
 import assert from 'node:assert/strict';
-import { durationSeconds, findGateway, linkUrl, normalizeGateway, SECRET_PATTERN, TOKEN_PATTERN } from '../web/js/share-core.js';
+import { durationSeconds, findGateway, gatewayCandidates, linkUrl, normalizeGateway, SECRET_PATTERN, TOKEN_PATTERN } from '../web/js/share-core.js';
 
 const own = 'https://console.example.org';
 assert.equal(normalizeGateway('', own), own, 'empty = own origin');
@@ -33,6 +33,23 @@ assert.equal(durationSeconds('custom', 'abc', 3600), null);
 assert.equal(durationSeconds('custom', 2000, 86400), null, 'more than 5 years');
 assert.equal(durationSeconds('30'), null, 'less than a minute');
 console.log('ok   share dialog helpers');
+
+// ---- the remembered address (writable by every user of the addon) is asked about first; derived ones are not
+{
+  const page = { pageOrigin: 'http://console.example.org:8089', protocol: 'http:', hostname: 'console.example.org' };
+  let c = gatewayCandidates({ ...page, saved: 'https://evil.example' });
+  assert.deepEqual(c.map((x) => [x.origin, x.askFirst]), [
+    ['https://evil.example', true], ['http://console.example.org:8089', false], ['https://console.example.org:8798', false], ['http://console.example.org:8798', false]]);
+  c = gatewayCandidates({ ...page, saved: 'http://console.example.org:8798' });
+  assert.equal(c[0].askFirst, false, 'a saved address equal to a derived one needs no question');
+  assert.equal(c.length, 3, 'and is not listed twice');
+  c = gatewayCandidates({ ...page, saved: 'http://evil.example' }); // plain http to another host is not even a candidate
+  assert.ok(!c.some((x) => x.origin.includes('evil')));
+  c = gatewayCandidates({ pageOrigin: 'https://console.example.org', protocol: 'https:', hostname: 'console.example.org', saved: undefined });
+  assert.deepEqual(c.map((x) => x.origin), ['https://console.example.org', 'https://console.example.org:8798'], 'no http candidate next to an https console');
+  assert.ok(c.every((x) => !x.askFirst));
+  console.log('ok   a remembered gateway address is confirmed before the key is sent, derived ones are not');
+}
 
 // ---- the key goes only to an address that has identified itself as the share gateway
 {

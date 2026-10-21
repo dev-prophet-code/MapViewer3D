@@ -36,6 +36,7 @@ export async function isAvailable(force = false) {
     const doc = await consoleGet('/api/realtime/healthz', 0);
     available = Boolean(doc?.available);
     why = available ? '' : 'agent';
+    if (available) feed.denied = false; // the console accepts the key again
   } catch (e) {
     available = false;
     // 401/403: the key lacks the Realtime Data scope; 404: this console has none; 503: the agent does not run
@@ -50,6 +51,8 @@ export const keyDenied = () => feed.denied === true;
 export function reset() {
   availableAt = 0;
   available = false;
+  why = '';
+  feed.denied = false; // a new key starts clean
   feed.close();
 }
 
@@ -165,13 +168,15 @@ class Feed {
     const res = await consoleStream('/api/realtime/stream', ctrl.signal).catch((e) => {
       // key disabled, expired or revoked, or the scope removed: stop for good, switches go away on reload
       if (e?.code === 'token_rejected' || (e?.code === 'http_status' && ['404', '403'].includes(e.detail))) {
-        this.denied = true;
+        this.denied = true; // stays until the key is replaced or the console accepts it again
         available = false;
+        why = 'scope';
         availableAt = Date.now();
       }
       throw e;
     });
     this.backoff = 1000;
+    this.denied = false; // the console accepted the key again
     // the watchdog belongs to ITS connection (kept on the controller), so a finishing old connection
     // cannot cancel the watchdog of a newer one
     const dog = () => { clearTimeout(ctrl.dog); ctrl.dog = setTimeout(() => { timedOut.add(ctrl); ctrl.abort(); }, WATCHDOG_MS); };
@@ -220,7 +225,6 @@ class Feed {
     this.abort?.abort();
     this.abort = null;
     this.connected = false;
-    this.denied = false;
   }
 }
 

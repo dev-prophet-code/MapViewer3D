@@ -153,7 +153,24 @@ await test('a revoked key ends the stream for good and the feature switches off'
   assert.equal(c.requests.filter((r) => r.url === '/api/realtime/stream').length, streams, 'no retry after the key was refused');
   assert.ok(errors >= 1);
   assert.equal(await rt.isAvailable(), false);
+  // a refused key is a state of its own: it is reported as such, also after the last layer closed
+  assert.equal(rt.keyDenied(), true);
+  assert.equal(rt.unavailableReason(), 'scope', 'the reason is the refused key, not a stopped agent');
   h.close();
+  assert.equal(rt.keyDenied(), true, 'closing the layers does not turn it back into "agent not reachable"');
+  rt.reset(); // a new key starts clean
+  assert.equal(rt.keyDenied(), false);
+  assert.equal(rt.unavailableReason(), '');
+});
+
+await test('the health probe sees an agent that stops (503), not a cached answer', async () => {
+  const c = mockConsole();
+  const { cons, rt } = await modules();
+  await cons.saveToken(KEY);
+  assert.equal(await rt.isAvailable(true), true);
+  c.mode = 'agent'; // the console answers 503 for a stopped position agent
+  assert.equal(await rt.isAvailable(true), false, 'the stale body of the last good answer must not be served');
+  assert.equal(rt.unavailableReason(), 'agent');
 });
 
 // The 65 s watchdog is captured instead of waited for: the test fires it by hand, exactly as the

@@ -116,11 +116,12 @@ export async function consoleGet(path, ttl) {
       cache.delete(path);
       throw fail('token_rejected');
     }
-    if (r.status === 429 && c?.body) { cache.set(path, { ...c, at: Date.now() - ttl + RETRY_AFTER_ERROR_MS }); return c.body; }
+    if (ttl > 0 && r.status === 429 && c?.body) { cache.set(path, { ...c, at: Date.now() - ttl + RETRY_AFTER_ERROR_MS }); return c.body; }
     if (!r.ok) {
       // A transient failure (5xx, timeout) keeps serving what was good before and is retried soon.
       // A definite answer (404, 400, ...) replaces it.
-      if (c?.body && (r.status >= 500 || r.status === 408)) { cache.set(path, { at: Date.now() - ttl + RETRY_AFTER_ERROR_MS, status: 200, body: c.body }); return c.body; }
+      // (only for data feeds: a probe with ttl 0, like the Realtime health check, must see the failure itself)
+      if (ttl > 0 && c?.body && (r.status >= 500 || r.status === 408)) { cache.set(path, { at: Date.now() - ttl + RETRY_AFTER_ERROR_MS, status: 200, body: c.body }); return c.body; }
       cache.set(path, { at: Date.now(), status: r.status, body: null });
       throw fail('http_status', String(r.status));
     }

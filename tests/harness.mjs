@@ -102,6 +102,7 @@ function api(req, res, url) {
   log.push(url.pathname + url.search);
   const p = url.pathname;
   if (p.startsWith('/api/realtime/')) return realtime(res, p);
+  if (p === '/api/addons/installed') return send(res, 200, { rows: [] }); // the scope that marks an administrator's key
   if (p === '/api/map/partitions') return send(res, 200, { rows: [
     { map: 'HaggaBasin', partition_id: 1, name: 'Survival_1_P1', alive: true },
     { map: 'DeepDesert', partition_id: 2, name: 'DeepDesert_1_P2', alive: true },

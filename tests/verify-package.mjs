@@ -29,6 +29,7 @@ function pack(mutate) {
 }
 const append = (file, code) => (dir) => fs.appendFileSync(path.join(dir, 'web', 'js', file), `\n${code}\n`);
 
+import { strip } from '../scripts/strip-comments.mjs';
 let failures = 0;
 const test = (name, fn) => { try { fn(); console.log(`ok   ${name}`); } catch (e) { failures++; console.error(`FAIL ${name}\n     ${e.stack ?? e}`); } };
 const refused = (r, text) => { assert.notEqual(r.status, 0, 'the package must be refused'); assert.match(r.stderr, text); };
@@ -40,8 +41,20 @@ test('a cookie anywhere', () => refused(pack(append('i18n.js', "document.cookie 
 test('IndexedDB in the file that may use the Cache API', () => refused(pack(append('data.js', "indexedDB.open('k');")), /data\.js uses indexedDB/));
 test('a brand-new script is not accepted unreviewed', () => refused(pack((dir) => fs.writeFileSync(path.join(dir, 'web', 'js', 'extra.js'), 'export const x = 1;\n')), /set of scripts in web\/js changed/));
 test('computed access to a global (window["local"+"Storage"])', () => refused(pack(append('ui.js', "const s = window['local' + 'Storage'];")), /computed access|dynamic code/));
+test('code after a URL on the same line (the old comment stripping hid it)', () => refused(pack(append('share.js', "const u = 'https://x'; localStorage.setItem('k', currentKey());")), /share\.js uses localStorage|browser storage API/));
+test('code after a // inside a template string', () => refused(pack(append('api.js', "const u = `//`; sessionStorage.setItem('k', 1);")), /api\.js uses sessionStorage/));
 test('eval', () => refused(pack(append('main.js', "eval('1');")), /dynamic code/));
 test('dynamic import', () => refused(pack(append('main.js', "const m = import('./x.js');")), /dynamic code/));
+
+test('the comment scanner: comments go, markers inside strings and regexes stay', () => {
+  assert.equal(strip("a(); // c\nb();").trim(), 'a(); \nb();');
+  assert.equal(strip("/* x */ y();").trim(), 'y();');
+  assert.equal(strip("const u = 'https://x'; z();"), "const u = 'https://x'; z();");
+  assert.equal(strip('const u = "a // b"; z();'), 'const u = "a // b"; z();');
+  assert.equal(strip("const t = `//${1}`; z();"), "const t = `//${1}`; z();");
+  assert.equal(strip("const r = /'\\/\\/(x)/; z();"), "const r = /'\\/\\/(x)/; z();");
+  assert.equal(strip("const d = a / b; // c").trim(), 'const d = a / b;');
+});
 
 if (failures) { console.error(`\n${failures} test(s) failed`); process.exit(1); }
 console.log('\nall package check tests passed');

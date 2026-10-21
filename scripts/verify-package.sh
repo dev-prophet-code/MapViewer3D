@@ -14,6 +14,9 @@
 #   - the permission list is exactly files:addon-data (instance names, removal of a legacy key),
 #   - addon.json id/version match the file name.
 set -euo pipefail
+# comments are removed by a real scanner (a '//' inside a string, e.g. a URL, is not a comment)
+STRIP_JS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/strip-comments.mjs"
+strip() { node "$STRIP_JS" "$@"; }
 SRC="${1:?usage: verify-package.sh <addon zip or URL>}"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -25,6 +28,8 @@ esac
 [ -f "$ZIP" ] || fail "no such file: $ZIP"
 mkdir "$T/x"; unzip -q "$ZIP" -d "$T/x"
 
+# the scanner must really produce code: an empty answer would make every search below pass
+[ -n "$(strip "$T/x/web/js/config.js")" ] || fail "scripts/strip-comments.mjs produced no output"
 SIZE="$(wc -c < "$ZIP" | tr -d ' ')"
 [ "$SIZE" -lt $((10 * 1024 * 1024)) ] || fail "package is $SIZE bytes; expected well below 10 MiB (data is streamed, not shipped)"
 echo "ok:   package size $SIZE bytes"
@@ -48,21 +53,28 @@ echo "ok:   node --check on the addon's JavaScript"
 
 # The API key must never be persisted (the console shares addon storage between users).
 for f in console.js store.js; do
-  if sed 's://.*$::' "$T/x/web/js/$f" | grep -Eq 'getItem\(|setItem\(|sessionStorage|indexedDB|caches\.open|document\.cookie'; then
+  CODE="$(strip "$T/x/web/js/$f")"
+
+  if echo "$CODE" | grep -Eq 'getItem\(|setItem\(|sessionStorage|indexedDB|caches\.open|document\.cookie'; then
     fail "web/js/$f uses a browser storage API; the API key must stay in memory only"
   fi
 done
-if sed 's://.*$::' "$T/x/web/js/console.js" | grep -Eq "store\.put\([^)]*(KEY|token|key)"; then
+CODE="$(strip "$T/x/web/js/console.js")"
+
+if echo "$CODE" | grep -Eq "store\.put\([^)]*(KEY|token|key)"; then
   fail "console.js writes the key to the addon storage"
 fi
 echo "ok:   API key is memory-only (no browser storage API in console.js / store.js)"
 
-# The share gateway's admin secret is memory-only too; only its (public) address may be stored.
-if sed 's://.*$::' "$T/x/web/js/share.js" | grep -Eq 'getItem\(|setItem\(|sessionStorage|indexedDB|caches\.open|document\.cookie'; then
-  fail "web/js/share.js uses a browser storage API; the admin secret must stay in memory only"
+# The share dialog never stores the key either; only the gateway's (public) address may be stored.
+CODE="$(strip "$T/x/web/js/share.js")"
+
+if echo "$CODE" | grep -Eq 'getItem\(|setItem\(|sessionStorage|indexedDB|caches\.open|document\.cookie'; then
+  fail "web/js/share.js uses a browser storage API; the API key must stay in memory only"
 fi
-if sed 's://.*$::' "$T/x/web/js/share.js" | grep -E 'store\.put\(' | grep -Eiq 'secret|token'; then
-  fail "share.js writes the admin secret or a link token to the addon storage"
+CODE="$(strip "$T/x/web/js/share.js")"
+if echo "$CODE" | grep -E 'store\.put\(' | grep -Eiq 'secret|token'; then
+  fail "share.js writes the API key or a link token to the addon storage"
 fi
 echo "ok:   share dialog keeps the admin secret and link tokens in memory only"
 
@@ -88,7 +100,7 @@ allowed_for() {
 }
 while IFS= read -r f; do
   rel="${f#"$T/x/web/js/"}"
-  found="$(sed -e 's://.*$::' "$f" | grep -oE "$STORAGE" | sort -u || true)"
+  found="$(strip "$f" | grep -oE "$STORAGE" | sort -u || true)"
   [ -z "$found" ] && continue
   ok="$(allowed_for "$rel")"
   for tok in $found; do
@@ -99,7 +111,7 @@ echo "ok:   browser storage is used only by the files meant to, in the intended 
 
 # 3. No dynamic code and no computed access to the global object (it would get around any text search).
 # (collected first: with pipefail, `grep -q` would end the pipeline early and hide the match)
-DYN="$(find "$T/x/web/js" -name '*.js' -print0 | xargs -0 sed -e 's://.*$::' | grep -E '(window|globalThis|self|top|parent)[[:space:]]*\[|(^|[^A-Za-z0-9_.$])eval[[:space:]]*\(|new[[:space:]]+Function|(^|[^A-Za-z0-9_.$])Function[[:space:]]*\(|(^|[^A-Za-z0-9_.$])import[[:space:]]*\(' || true)"
+DYN="$(find "$T/x/web/js" -name '*.js' -print0 | xargs -0 node "$STRIP_JS" | grep -E '(window|globalThis|self|top|parent)[[:space:]]*\[|(^|[^A-Za-z0-9_.$])eval[[:space:]]*\(|new[[:space:]]+Function|(^|[^A-Za-z0-9_.$])Function[[:space:]]*\(|(^|[^A-Za-z0-9_.$])import[[:space:]]*\(' || true)"
 [ -z "$DYN" ] || fail "dynamic code or computed access to a global object in web/js: $(echo "$DYN" | head -1)"
 echo "ok:   no dynamic code, no computed access to globals"
 
