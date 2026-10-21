@@ -98,6 +98,19 @@ await test('two users: user A enters the key, user B can never get it from the s
   for (const k of all.keys) assert.ok(!JSON.stringify(sharedStorage.get(k)).includes(KEY), `value of ${k}`);
 });
 
+await test('the key label shown in the panel is a hash, never a piece of the key', async () => {
+  sharedStorage.clear();
+  // keys have no fixed shape: with and without underscores after the first one
+  for (const k of ['dak_00000000_TestTestTestTestTestTestTestTestTest0000', 'dak_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789', 'dak_a_b_c_d_e_f_g_h_i_j_k']) {
+    const p = await page({ user: 'A', inFrame: true, withBridge: true });
+    globalThis.fetch = async (url, opts) => ({ status: opts.headers.Authorization === `Bearer ${k}` ? (String(url).includes('partitions') ? 200 : 404) : 401, json: async () => ({ rows: [] }) });
+    await p.mod.saveToken(k);
+    const id = p.mod.keyId();
+    assert.match(id, /^[0-9a-f]{8}$/, `label ${id}`);
+    assert.ok(!k.includes(id), 'the label is not a substring of the key');
+  }
+});
+
 await test('non-secret data (instance names) still persists in the shared storage', async () => {
   sharedStorage.clear();
   const a = await page({ user: 'A', inFrame: true, withBridge: true });

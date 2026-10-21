@@ -178,7 +178,7 @@ export class LiveLayer {
       if (feed === 'overlays') { this.syncVehicles(); this.syncBases(); this.syncLayers(); }
       if (feed === 'poi' || feed === 'spice') this.syncLayers();
     } catch (e) {
-      this.errors[feed] = e.message;
+      this.errors[feed] = e.code ? t(`err.${e.code}`, { detail: e.detail ?? '' }) : e.message; // translated, never the raw code
       console.warn('Live', feed, e);
     }
     this.status();
@@ -222,7 +222,7 @@ export class LiveLayer {
       seen.add(row.id);
       let p = this.players.get(row.id);
       if (p && p.online !== online) { this.group.remove(p.obj); p = null; }
-      const pos = this.agent.livePlayer(row.id) ?? ueToThree(row.x, row.y, row.z);
+      const pos = ueToThree(row.x, row.y, row.z);
       if (!p) {
         const obj = playerModel(online);
         const lab = label(row.name, { color: online ? '#ffd9a8' : '#cccccc' });
@@ -345,6 +345,7 @@ export class LiveLayer {
       b.inView = inView;
       if (inView || d < BASE_AROUND) {
         b.outSince = 0;
+        if (b.state === 'error' && now >= (b.retryAt ?? 0)) b.state = 'none';
         if (b.state === 'none') want.push({ b, d });
         continue;
       }
@@ -381,7 +382,12 @@ export class LiveLayer {
       this.applyVisibility();
     } catch (e) {
       console.warn('Basis', b.row.id, e);
-      if (b.loadToken === token) b.state = 'error';
+      if (b.loadToken === token) {
+        // a blip (network, rate limit) must not leave the base without buildings for the whole session: try again later, with growing pauses
+        b.state = 'error';
+        b.fails = (b.fails ?? 0) + 1;
+        b.retryAt = performance.now() + Math.min(30000 * 2 ** (b.fails - 1), 5 * 60 * 1000);
+      }
     }
     this.status();
   }
@@ -457,10 +463,14 @@ export class LiveLayer {
     const r = this.canvas.getBoundingClientRect();
     const v = new THREE.Vector3();
     const w = new THREE.Vector3();
+    const cs = new THREE.Vector3();
+    this.camera.updateMatrixWorld();
     let best = null, bestD = PICK_PX;
     const test = (local, item) => {
       v.copy(local);
       this.group.localToWorld(v);
+      // behind the camera (camera space looks down -z) the projection flips to the other side of the screen
+      if (cs.copy(v).applyMatrix4(this.camera.matrixWorldInverse).z >= 0) return;
       v.project(this.camera);
       if (v.z > 1) return;
       const x = (v.x + 1) / 2 * r.width + r.left, y = (1 - v.y) / 2 * r.height + r.top;
@@ -490,8 +500,7 @@ export class LiveLayer {
   update(dt) {
     if (!this.map) return;
     const k = 1 - Math.exp(-dt * 3); // weiche Bewegung zwischen zwei Abrufen
-    const kLive = 1 - Math.exp(-dt * 10); // Echtzeitspieler folgen schnell
-    for (const [id, p] of this.players) p.obj.position.lerp(p.target, this.agent.livePlayer(id) ? kLive : k);
+    for (const p of this.players.values()) p.obj.position.lerp(p.target, k);
     this.agent.update(dt);
     if (this.selected?.obj) this.highlight.position.copy(this.selected.obj.position);
     const s = 1 + 0.15 * Math.sin(performance.now() / 250);

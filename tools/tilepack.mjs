@@ -6,7 +6,8 @@
 //
 // Output (in <outDir>):
 //   m/<map>.json     tile index of one map (meta, levels, tile -> content id)
-//   p/<xx>/<rest>.z  one tile, named by the SHA-256 of its content, so identical tiles
+//   p/<xx>/<rest>.z  one tile, named by the first 64 bits of the SHA-256 of its content (the index
+//                    lists the whole digest, which is what the addon verifies), so identical tiles
 //                    (the repeated dune template of Deep Desert, open sea, ...) are stored
 //                    once across all maps and layouts
 //
@@ -96,13 +97,13 @@ function packMap(name) {
         }
         if (!any) { empty++; continue; }
         const raw = encodeTile(heights, mats);
-        const id = crypto.createHash('sha256').update(raw).digest('hex').slice(0, 16);
+        const id = crypto.createHash('sha256').update(raw).digest('hex'); // full digest; the file name uses its first 16 characters
         let idx = table.get(id);
         if (idx === undefined) {
           idx = ids.length;
           ids.push(id);
           table.set(id, idx);
-          const file = path.join(outDir, 'p', id.slice(0, 2), id.slice(2) + '.z');
+          const file = path.join(outDir, 'p', id.slice(0, 2), id.slice(2, 16) + '.z');
           if (!fs.existsSync(file)) {
             const z = zlib.gzipSync(raw, { level: 9 });
             fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -143,7 +144,7 @@ if (fs.existsSync(path.join(bSrc, 'index.json'))) {
   for (const f of fs.readdirSync(path.join(bSrc, 'mesh')).filter((n) => /^[0-9]+\.bin$/.test(n)).sort()) {
     const bytes = fs.readFileSync(path.join(bSrc, 'mesh', f));
     fs.writeFileSync(path.join(outDir, 'buildables', 'mesh', f), bytes);
-    meshes[f.replace('.bin', '')] = sha(bytes).slice(0, 16);
+    meshes[f.replace('.bin', '')] = sha(bytes); // full digest
   }
   buildables = { index: sha(indexBytes), meshes };
   console.log(`buildables: ${Object.keys(meshes).length} meshes`);

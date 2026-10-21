@@ -53,6 +53,15 @@ function sha256js(buf) {
   H.forEach((v, i) => odv.setUint32(4 * i, v));
   return out.buffer;
 }
+// Does a content digest match the id the index/catalog gives for it? Ids are full SHA-256 digests (64
+// hex characters, compared whole). Older data releases (data-v1) list only the first 64 bits (16 hex
+// characters) of the digest; those are still accepted by prefix, so the old release keeps working.
+export function sameDigest(digest, want) {
+  if (typeof want !== 'string' || !/^[0-9a-f]+$/.test(want)) return false;
+  if (want.length === 64) return digest === want;
+  return want.length === 16 && digest.startsWith(want);
+}
+
 export const sha256 = async (buf) => hex(globalThis.crypto?.subtle ? await crypto.subtle.digest('SHA-256', buf) : sha256js(buf));
 
 // Cache API wrapper: tiles are content-addressed, so a cached copy never goes stale.
@@ -174,8 +183,9 @@ export function getTile(name, l, x, y) {
     const hash = idx.ids[id];
     await slot();
     try {
-      const gz = await fetchData(`p/${hash.slice(0, 2)}/${hash.slice(2)}.z`, async (b) => {
-        try { return (await sha256(await gunzip(b))).startsWith(hash); } catch { return false; }
+      // the file is named by the first 64 bits of the digest; the whole digest is what is checked
+      const gz = await fetchData(`p/${hash.slice(0, 2)}/${hash.slice(2, 16)}.z`, async (b) => {
+        try { return sameDigest(await sha256(await gunzip(b)), hash); } catch { return false; }
       });
       return await decodeTile(await gunzip(gz), idx.patchQuads);
     } finally { release(); }
@@ -237,6 +247,6 @@ export async function loadMesh(id) {
   if (!want) throw new Error(`unknown building model ${id}`);
   await slot();
   try {
-    return await fetchData(`buildables/mesh/${id}.bin`, async (b) => (await sha256(b)).startsWith(want));
+    return await fetchData(`buildables/mesh/${id}.bin`, async (b) => sameDigest(await sha256(b), want));
   } finally { release(); }
 }

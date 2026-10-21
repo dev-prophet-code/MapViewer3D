@@ -10,6 +10,7 @@
 // Punktwolke, damit auch einige Tausend nichts kosten.
 import * as THREE from 'three';
 import { ueToThree } from '../coords.js';
+import { keyDenied } from '../realtime.js';
 import { api } from '../api.js';
 import { plainHttp } from '../realtime.js';
 import { t } from '../i18n.js';
@@ -62,7 +63,6 @@ export class AgentLayer {
     this.movers = new Map();  // id → { obj, label, icon, target, kind } (Würmer, Fahrzeuge)
     this.clouds = {};         // npcs/civilians → { points, index: Map(id → n), ids: [] }
     this.players = null;      // Spieler der Live-Ebene (id → Eintrag), vom LiveLayer gesetzt
-    this.livePos = new Map(); // Console-Spieler-ID → { v: Position (three), t: Zeitpunkt }
     this.es = null;
     this.pollTimer = null;
     this.connected = false;
@@ -117,8 +117,6 @@ export class AgentLayer {
     this.gen = v.gen ?? 0;
     this.weather = v.weather ?? null;
     this.items = new Map((v.objects ?? []).map((o) => [o.i, o]));
-    this.livePos.clear();
-    for (const o of this.items.values()) if (o.k === 'player') this.applyPlayer(o);
     this.rebuild();
   }
 
@@ -129,7 +127,6 @@ export class AgentLayer {
       const o = this.items.get(id);
       if (!o) continue;
       o.x = x; o.y = y; o.z = z;
-      if (o.k === 'player') { this.applyPlayer(o); continue; }
       const m = this.movers.get(id);
       if (m) this.aim(m, o); else this.moveDot(o);
     }
@@ -142,20 +139,6 @@ export class AgentLayer {
     }
   }
 
-  // Echtzeitposition eines Spielers, den der Server der Console zugeordnet hat (o.pl)
-  applyPlayer(o) {
-    if (o.pl === undefined || o.pl === null) return;
-    const v = ueToThree(o.x, o.y, o.z);
-    this.livePos.set(o.pl, { v, t: performance.now() });
-    this.players?.get(o.pl)?.target.copy(v);
-  }
-
-  // Aktuelle Echtzeitposition (höchstens 4 s alt) oder null
-  livePlayer(id) {
-    const e = this.livePos.get(id);
-    return e && performance.now() - e.t < 4000 ? e.v : null;
-  }
-
   // ---- Aufbau ----
   clear() {
     for (const m of this.movers.values()) this.group.remove(m.obj);
@@ -163,7 +146,6 @@ export class AgentLayer {
     for (const c of Object.values(this.clouds)) { this.group.remove(c.points); c.points.geometry.dispose(); c.points.material.dispose(); }
     this.clouds = {};
     this.items = new Map();
-    this.livePos.clear();
   }
 
   rebuild() {
@@ -336,7 +318,7 @@ export class AgentLayer {
 
   statusText() {
     if (!this.map) return '';
-    if (!this.connected && !this.items.size) return t('agent.off');
+    if (!this.connected && !this.items.size) return keyDenied() ? t('agent.denied') : t('agent.off');
     const c = this.counts();
     const age = this.connected && this.lastEvent ? '' : t('agent.stale');
     let s = t('agent.status', { worms: c.worm, npcs: c.npc + c.civilian }) + age;

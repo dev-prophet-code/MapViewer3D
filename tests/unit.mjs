@@ -103,7 +103,8 @@ await test('sampleHeights matches the reference formula (random points, tile bor
 await test('a damaged tile is refused (content checksum)', async () => {
   const idx = await data.loadIndex('synth');
   const id = idx.ids[idx.levels[idx.maxLevel].cells.find((c) => c >= 0)];
-  const file = path.join(out, 'p', id.slice(0, 2), id.slice(2) + '.z');
+  assert.match(id, /^[0-9a-f]{64}$/, 'the index lists full SHA-256 digests');
+  const file = path.join(out, 'p', id.slice(0, 2), id.slice(2, 16) + '.z');
   const good = fs.readFileSync(file);
   const bad = Buffer.from(good); bad[bad.length - 12] ^= 0xff;
   fs.writeFileSync(file, bad);
@@ -112,6 +113,15 @@ await test('a damaged tile is refused (content checksum)', async () => {
     const fresh = await import(pathToFileURL(path.join(root, 'web', 'js', 'data.js')).href + '?x=1');
     await assert.rejects(() => fresh.getTile('synth', idx.maxLevel, 0, 0));
   } finally { fs.writeFileSync(file, good); }
+});
+
+await test('content ids are compared in full (64 hex); 16-hex ids of data-v1 still work by prefix', async () => {
+  const d = crypto.createHash('sha256').update('x').digest('hex');
+  assert.ok(data.sameDigest(d, d), 'full digest');
+  assert.ok(data.sameDigest(d, d.slice(0, 16)), 'legacy 64-bit id');
+  assert.ok(!data.sameDigest(d, d.slice(0, 16) + '0'.repeat(48)), 'same first 64 bits, different rest: refused');
+  assert.ok(!data.sameDigest(d, d.slice(0, 15)) && !data.sameDigest(d, d.slice(0, 8)) && !data.sameDigest(d, ''), 'too short');
+  assert.ok(!data.sameDigest(d, d.slice(0, 16).toUpperCase()) && !data.sameDigest(d, undefined), 'malformed');
 });
 
 await test('a tampered catalog is refused (pinned checksum)', async () => {

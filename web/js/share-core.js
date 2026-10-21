@@ -30,3 +30,25 @@ export function durationSeconds(choice, customAmount, customUnit) {
   const s = choice === 'custom' ? Math.round(Number(customAmount) * Number(customUnit)) : Number(choice);
   return Number.isFinite(s) && s >= MIN_SECONDS && s <= MAX_SECONDS ? s : null;
 }
+
+// Finds the gateway among the candidate addresses. A candidate is first asked who it is, WITHOUT any
+// credential (GET /mvshare: no Authorization, no cookies, no redirects); only an answer that names
+// the share gateway earns the administrator's API key, which then goes with the status call. An address
+// that merely answers (another service, a stray proxy) never sees the key.
+//   fetchFn(url, init)   fetch-like
+//   status(origin)       does the authorised status call and returns its document (throws)
+// Returns { origin, doc } or { error } (the last error; undefined when nothing identified itself).
+export async function findGateway(candidates, { fetchFn, status }) {
+  let error;
+  for (const origin of candidates) {
+    let who;
+    try {
+      const r = await fetchFn(`${origin}/mvshare`, { method: 'GET', credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer' });
+      if (!r.ok) continue;
+      who = await r.json();
+    } catch { continue; }
+    if (!who || typeof who !== 'object' || !('mapviewer-share' in who)) continue;
+    try { return { origin, doc: await status(origin) }; } catch (e) { error = e; if (e?.stop) break; }
+  }
+  return { error };
+}

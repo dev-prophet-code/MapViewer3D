@@ -170,6 +170,7 @@ function captureWatchdog() {
   const realClear = globalThis.clearTimeout;
   globalThis.clearTimeout = (h) => { if (h?.slot) h.slot.live = false; else realClear(h); };
   return {
+    armed() { return armed.filter((s) => s.live).length; },
     fire() { const slot = armed.filter((s) => s.live).at(-1); assert.ok(slot, 'the watchdog is armed while a stream is open'); slot.live = false; slot.fn(); },
     restore() { globalThis.setTimeout = real; globalThis.clearTimeout = realClear; },
   };
@@ -231,6 +232,31 @@ await test('a key that is refused at the reconnect is not retried', async () => 
     assert.equal(streams(c), after, 'no further attempt');
     assert.equal(await rt.isAvailable(), false);
     h.close();
+  } finally { dog.restore(); }
+});
+
+await test('a replaced connection cannot disturb its successor (state and watchdog)', async () => {
+  const c = mockConsole();
+  const dog = captureWatchdog();
+  try {
+    const { cons, rt } = await modules();
+    await cons.saveToken(KEY);
+    const a = rt.attach('Survival_1', null, { snap() {}, pos() {}, error() {} });
+    await settle();
+    // the last layer goes away and a new one attaches at once: the old stream is still winding down
+    a.close();
+    const errors = [];
+    const snaps = [];
+    const b = rt.attach('Survival_1', null, { snap: (v) => snaps.push(v), pos() {}, error: () => errors.push(1) });
+    await settle(200);
+    assert.equal(errors.length, 0, 'the old connection ended, which must not be reported to the new layer');
+    assert.ok(snaps.at(-1)?.connected, 'the new connection is still seen as connected');
+    // the new connection's watchdog is armed and survives the old one's cleanup
+    assert.ok(dog.armed() >= 1, 'a watchdog is armed for the new connection');
+    dog.fire();
+    await settle(1300);
+    assert.equal(streams(c), 3, 'the new connection (not the old one) timed out and reconnected: its watchdog still worked');
+    b.close();
   } finally { dog.restore(); }
 });
 

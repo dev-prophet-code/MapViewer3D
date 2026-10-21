@@ -66,6 +66,43 @@ if sed 's://.*$::' "$T/x/web/js/share.js" | grep -E 'store\.put\(' | grep -Eiq '
 fi
 echo "ok:   share dialog keeps the admin secret and link tokens in memory only"
 
+# ---- the same rules for EVERY script, so moving code into another file cannot get around them -------
+# 1. The set of scripts is fixed. A new file has to be reviewed against the rules below and added here.
+EXPECTED="api.js compass.js config.js console.js coords.js data.js fly.js i18n.js live/agent.js live/buildables.js live/icons.js live/live.js live/models.js live/storm.js live/world-models.js main.js meshes.js realtime.js scene.js setup.js share-core.js share.js store.js terrain.js theme.js ui.js"
+ACTUAL="$(cd "$T/x/web/js" && find . -name '*.js' | sed 's|^\./||' | sort | tr '\n' ' ' | sed 's/ $//')"
+[ "$ACTUAL" = "$(echo "$EXPECTED" | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//')" ] || fail "the set of scripts in web/js changed (review the new file, then add it to EXPECTED): $ACTUAL"
+echo "ok:   the set of scripts is the reviewed one"
+
+# 2. Browser storage APIs only where they are meant to be, and only the intended ones:
+#    data.js: Cache API (public terrain data); i18n.js, theme.js: localStorage for language/theme;
+#    store.js: localStorage.removeItem (purge of a legacy development copy). Nowhere else, and never cookies,
+#    sessionStorage or IndexedDB anywhere.
+STORAGE='localStorage|sessionStorage|indexedDB|caches\.|document\.cookie|getItem\(|setItem\(|removeItem\('
+allowed_for() {
+  case "$1" in
+    data.js) echo 'caches\.' ;;
+    i18n.js|theme.js) echo 'localStorage|getItem\(|setItem\(' ;;
+    store.js) echo 'localStorage|removeItem\(' ;;
+    *) echo '' ;;
+  esac
+}
+while IFS= read -r f; do
+  rel="${f#"$T/x/web/js/"}"
+  found="$(sed -e 's://.*$::' "$f" | grep -oE "$STORAGE" | sort -u || true)"
+  [ -z "$found" ] && continue
+  ok="$(allowed_for "$rel")"
+  for tok in $found; do
+    if [ -z "$ok" ] || ! echo "$tok" | grep -Eq "^($ok)$"; then fail "web/js/$rel uses $tok, which is not allowed in this file"; fi
+  done
+done < <(find "$T/x/web/js" -name '*.js')
+echo "ok:   browser storage is used only by the files meant to, in the intended way"
+
+# 3. No dynamic code and no computed access to the global object (it would get around any text search).
+# (collected first: with pipefail, `grep -q` would end the pipeline early and hide the match)
+DYN="$(find "$T/x/web/js" -name '*.js' -print0 | xargs -0 sed -e 's://.*$::' | grep -E '(window|globalThis|self|top|parent)[[:space:]]*\[|(^|[^A-Za-z0-9_.$])eval[[:space:]]*\(|new[[:space:]]+Function|(^|[^A-Za-z0-9_.$])Function[[:space:]]*\(|(^|[^A-Za-z0-9_.$])import[[:space:]]*\(' || true)"
+[ -z "$DYN" ] || fail "dynamic code or computed access to a global object in web/js: $(echo "$DYN" | head -1)"
+echo "ok:   no dynamic code, no computed access to globals"
+
 grep -Eq "DATA_TAG = 'data-v[0-9]+'" "$T/x/web/js/config.js" || fail "config.js does not pin a data tag"
 grep -Eq "CATALOG_SHA256 = '[0-9a-f]{64}'" "$T/x/web/js/config.js" || fail "config.js does not pin the catalog checksum"
 grep -q "CATALOG_SHA256 = '0\{64\}'" "$T/x/web/js/config.js" && fail "catalog checksum is still the placeholder"

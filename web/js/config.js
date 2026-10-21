@@ -3,7 +3,7 @@
 //   addon (checksum pinned by the Red-Blink catalog)
 //     -> CATALOG_SHA256 -> catalog.json -> sha256 of every map index (m/<map>.json)
 //       -> content id of every terrain tile (p/..): the SHA-256 of the tile itself.
-export const ADDON_VERSION = '0.4.0';
+export const ADDON_VERSION = '0.4.1';
 
 // A visitor of a share link (https://<host>/s/<token>/) opens the viewer from the share gateway
 // (MapViewer3D stack, branch ddp). There is no API key in the page: every console call goes to the
@@ -13,8 +13,8 @@ export const SHARE_BASE = shareMatch ? shareMatch[1] : null;
 export const apiUrl = (path) => (SHARE_BASE ? SHARE_BASE + path : path);
 
 export const DATA_REPO = 'dev-prophet-code/MapViewer3D';
-export const DATA_TAG = 'data-v1';
-export let CATALOG_SHA256 = '4b0fcaa50b1c64d336301b825724ecb74e1f1132ac608eb85c1810314f08515b';
+export const DATA_TAG = 'data-v2';
+export let CATALOG_SHA256 = 'a802bb664262c742286c5e445805cff18c56e699b8ff8f727bb8f1355fe23ff8';
 
 // Mirrors for the data files, tried in this order. A tag never changes its content, so
 // both are safe to cache for a long time.

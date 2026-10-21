@@ -1,6 +1,6 @@
 // Tests of the pure parts of the share dialog: gateway address, link address, duration.
 import assert from 'node:assert/strict';
-import { durationSeconds, linkUrl, normalizeGateway, SECRET_PATTERN, TOKEN_PATTERN } from '../web/js/share-core.js';
+import { durationSeconds, findGateway, linkUrl, normalizeGateway, SECRET_PATTERN, TOKEN_PATTERN } from '../web/js/share-core.js';
 
 const own = 'https://console.example.org';
 assert.equal(normalizeGateway('', own), own, 'empty = own origin');
@@ -33,3 +33,37 @@ assert.equal(durationSeconds('custom', 'abc', 3600), null);
 assert.equal(durationSeconds('custom', 2000, 86400), null, 'more than 5 years');
 assert.equal(durationSeconds('30'), null, 'less than a minute');
 console.log('ok   share dialog helpers');
+
+// ---- the key goes only to an address that has identified itself as the share gateway
+{
+  const KEY = 'dak_secretkey_0123456789';
+  const seen = [];
+  const web = (map) => async (url, init = {}) => {
+    seen.push({ url, init });
+    if (init.headers?.Authorization) assert.ok(map[new URL(url).origin]?.gateway, `the key was sent to ${url}`);
+    const m = map[new URL(url).origin];
+    if (!m) throw new Error('unreachable');
+    if (url.endsWith('/mvshare')) return { ok: m.status !== 404, json: async () => m.who };
+    return { ok: true, json: async () => ({ maps: true }) };
+  };
+  const status = (fetchFn) => async (origin) => (await fetchFn(`${origin}/share-admin/status`, { headers: { Authorization: `Bearer ${KEY}` } })).json();
+
+  let fetchFn = web({
+    'https://console.example.org': { who: '<html>', status: 404 },
+    'https://console.example.org:8798': { who: { other: 1 } }, // answers, but is not the gateway
+    'http://console.example.org:8798': { who: { 'mapviewer-share': 1 }, gateway: true },
+  });
+  const r = await findGateway(['https://console.example.org', 'https://console.example.org:8798', 'http://console.example.org:8798'], { fetchFn, status: status(fetchFn) });
+  assert.equal(r.origin, 'http://console.example.org:8798');
+  assert.ok(!seen.some((s) => s.init.headers?.Authorization && !s.url.startsWith('http://console.example.org:8798')), 'only the gateway saw the key');
+  for (const s of seen.filter((x) => x.url.endsWith('/mvshare'))) {
+    assert.ok(!s.init.headers && s.init.credentials === 'omit' && s.init.redirect === 'error', 'the identification carries no credential');
+  }
+
+  seen.length = 0;
+  fetchFn = web({ 'https://console.example.org:8798': { who: { other: 1 } } });
+  const none = await findGateway(['https://console.example.org:8798'], { fetchFn, status: status(fetchFn) });
+  assert.equal(none.origin, undefined);
+  assert.ok(!seen.some((s) => s.init.headers?.Authorization), 'an address that is not the gateway never sees the key');
+  console.log('ok   the key is sent only to an address that identified itself as the gateway');
+}

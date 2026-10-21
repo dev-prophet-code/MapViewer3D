@@ -8,7 +8,7 @@
 import { store } from './store.js';
 import { t, lang } from './i18n.js';
 import { currentKey } from './console.js';
-import { durationSeconds, linkUrl, normalizeGateway, TOKEN_PATTERN } from './share-core.js';
+import { durationSeconds, findGateway, linkUrl, normalizeGateway, TOKEN_PATTERN } from './share-core.js';
 
 const $ = (id) => document.getElementById(id);
 const GATEWAY_STORE = 'share.gateway';
@@ -121,12 +121,15 @@ async function connect(manual) {
   }
   $('shareConnectBtn').disabled = true;
   $('shareWait').hidden = false;
-  let st = null;
-  let lastErr = null;
-  for (const o of tries) {
-    origin = o;
-    try { st = await gw('GET', 'status'); break; } catch (e) { lastErr = e; if (e instanceof GatewayError && ['auth', 'blocked', 'nokey'].includes(e.key)) break; }
-  }
+  const found = await findGateway(tries, {
+    fetchFn: (u, i) => fetch(u, i),
+    status: async (o) => {
+      origin = o;
+      try { return await gw('GET', 'status'); } catch (e) { if (e instanceof GatewayError && ['auth', 'blocked'].includes(e.key)) e.stop = true; throw e; }
+    },
+  });
+  const st = found.doc ?? null;
+  const lastErr = found.error ?? null;
   $('shareWait').hidden = true;
   $('shareConnectBtn').disabled = false;
   if (!st) {

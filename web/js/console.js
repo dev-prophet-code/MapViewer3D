@@ -43,7 +43,15 @@ export async function loadToken() {
 // For the share dialog: the key is sent to the share gateway to authorise link management.
 export const currentKey = () => token;
 export const hasToken = () => SHARE_BASE !== null || token !== null;
-export const keyId = () => (token ? token.split('_')[1] : '');
+// A short label for the key in the connection panel. It is a 32-bit hash of the whole key, never a
+// piece of it (keys have no fixed shape, so cutting a segment out could show most of the secret).
+// FNV-1a: synchronous and available on plain-http pages, where crypto.subtle is not.
+export function keyId() {
+  if (!token) return '';
+  let h = 0x811c9dc5;
+  for (let i = 0; i < token.length; i++) { h ^= token.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, '0');
+}
 
 // Headers of a console call: the admin's key, or nothing at all for a visitor of a share link.
 const authHeaders = (accept) => ({ Accept: accept, ...(SHARE_BASE ? {} : { Authorization: `Bearer ${token}` }) });
@@ -83,6 +91,7 @@ export async function saveToken(candidate) {
 // ---------- requests with caching ----------
 
 const cache = new Map(); // path -> { at, status, body, pending }
+const RETRY_AFTER_ERROR_MS = 5000; // after a failed refresh the old data is asked for again within 5 s
 
 // Live data of the console, at most `ttl` ms old. Parallel requests share one call.
 // A failed call keeps serving older data (better than none); unknown things (404) are
@@ -107,8 +116,11 @@ export async function consoleGet(path, ttl) {
       cache.delete(path);
       throw fail('token_rejected');
     }
-    if (r.status === 429 && c?.body) { cache.set(path, { ...c, at: Date.now() }); return c.body; }
+    if (r.status === 429 && c?.body) { cache.set(path, { ...c, at: Date.now() - ttl + RETRY_AFTER_ERROR_MS }); return c.body; }
     if (!r.ok) {
+      // A transient failure (5xx, timeout) keeps serving what was good before and is retried soon.
+      // A definite answer (404, 400, ...) replaces it.
+      if (c?.body && (r.status >= 500 || r.status === 408)) { cache.set(path, { at: Date.now() - ttl + RETRY_AFTER_ERROR_MS, status: 200, body: c.body }); return c.body; }
       cache.set(path, { at: Date.now(), status: r.status, body: null });
       throw fail('http_status', String(r.status));
     }

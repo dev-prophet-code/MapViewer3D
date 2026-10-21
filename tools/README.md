@@ -21,7 +21,7 @@ node tools/tilepack.mjs <dataDir> <outDir>        # outDir = a checkout of branc
 ```
 
 Writes `catalog.json`, `m/<map>.json`, `p/<xx>/<id>.z` and `buildables/`. Tiles are content-addressed (file name = first 16 hex
-digits of the SHA-256 of the tile), so unchanged or shared tiles (the repeated dune template, identical areas across layouts) are
+digits of the SHA-256 of the tile; the index lists the whole 64-digit digest and the addon compares all of it), so unchanged or shared tiles (the repeated dune template, identical areas across layouts) are
 stored once; re-running only adds what is new. It prints the SHA-256 of `catalog.json`.
 
 ## 3. Publish and pin
@@ -29,6 +29,8 @@ stored once; re-running only adds what is new. It prints the SHA-256 of `catalog
 1. Commit the new files in branch `cdn` (in several pushes of ~10-25 MB each; one giant push can fail), tag the last commit `data-vN`.
 2. `node tools/pin-data.mjs <outDir> data-vN` writes the tag and the catalog checksum into `web/js/config.js`.
 3. Bump the addon version, run `bash scripts/package.sh`, release as usual (`addon-vX.Y.Z`).
+
+`data-v1` lists only the first 64 bits of each digest; `node tools/upgrade-ids.mjs <checkout of data-v1>` turns it into the full-digest format without touching a tile (`data-v2`). The addon accepts both.
 
 Older data tags stay valid forever: an installed addon always loads exactly the data it was released with.
 

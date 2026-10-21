@@ -68,7 +68,7 @@ A browser page inside the console cannot serve the public, so links come from th
   set up; a key can only create links that offer what it can read itself).
 
 The addon sends your API key only to the gateway, never stores it (like before); only the gateway's public address is
-remembered (with the instance names). Without a gateway the addon works exactly as before; the button just finds nothing to connect to.
+remembered (with the instance names). Before the key is sent to an address that was only guessed (the console's own address, port 8798 of its host), the addon asks that address who it is **without any credential**; only a share gateway gets the key. Without a gateway the addon works exactly as before; the button just finds nothing to connect to.
 
 ## Realtime Data status
 
@@ -92,8 +92,8 @@ Browser (addon page inside the console)
   carrying a session cookie, so this can be checked in a real browser.
 - **Terrain and models** are static data in branch [`cdn`](https://github.com/dev-prophet-code/MapViewer3D/tree/cdn) of this
   repository (terrain tiles for Hagga Basin and the Deep Desert layouts, building models). The addon is pinned to a tag
-  (`data-v1`) and **verifies every file**: the SHA-256 of `catalog.json` is built into the addon, the catalog lists the
-  SHA-256 of each map index and model, and each terrain tile is named after the SHA-256 of its content. A mirror that
+  (`data-v2`) and **verifies every file**: the SHA-256 of `catalog.json` is built into the addon, the catalog lists the
+  SHA-256 of each map index and model, and the index lists the full SHA-256 of every terrain tile and the catalog that of every model, all compared in full (`data-v1`, which listed only 64 bits of each digest, is still accepted by prefix). A mirror that
   delivers anything else is skipped. Two mirrors are tried (raw.githubusercontent.com, then jsDelivr).
 - **Deep Desert follows the Coriolis cycle.** The console reports the current layout; the addon shows the terrain generated
   for that layout. A layout that is not in the data release yet falls back to the plain dune template and the panel says so
@@ -142,7 +142,8 @@ Close TCP port `8795` again if you had opened it for other computers. Then creat
 | `tools/tilepack.mjs`, `tools/pin-data.mjs` | Cut extracted terrain into the streaming format; pin a data release into the addon. See `tools/README.md` |
 | `tests/unit.mjs` | Data-path tests (tile generator → loader, checksums, tamper checks) |
 | `tests/realtime.mjs` | Realtime Data: per-map filtering, no players, key on every call, revoked key ends the stream, hidden when not offered |
-| `tests/share.mjs`, `tests/share-visitor.mjs` | Share dialog helpers (gateway address, durations); a visitor's page sends no key and only calls its own link path |
+| `tests/share.mjs`, `tests/share-visitor.mjs` | Share dialog helpers (gateway address, durations); the key goes only to an address that identified itself as the gateway; a visitor's page sends no key and only calls its own link path |
+| `tests/console-cache.mjs`, `tests/pin-data.mjs`, `tests/verify-package.mjs` | The console cache keeps good data over a transient error; the data pinning tool really pins (and fails when it cannot); the package checks catch storage APIs outside their files, unreviewed scripts and dynamic code |
 | `tests/harness.mjs` | Mock console for trying the addon in a browser without a server (`REALTIME=1` adds Realtime Data) |
 | `scripts/validate.js`, `scripts/package.sh`, `scripts/verify-package.sh` | Validation and release packaging |
 

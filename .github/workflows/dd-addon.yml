@@ -32,6 +32,11 @@ jobs:
         run: |
           node tests/share.mjs
           node tests/share-visitor.mjs
+      - name: Console cache, data pinning tool, package checks
+        run: |
+          node tests/console-cache.mjs
+          node tests/pin-data.mjs
+          node tests/verify-package.mjs
       - name: Layer list (every layer grouped and translated)
         run: node tests/ui-layers.mjs
       - name: Data path tests (tile generator -> loader, checksums, tamper checks, SHA-256 fallback)

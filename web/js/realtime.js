@@ -44,6 +44,9 @@ export async function isAvailable(force = false) {
   return available;
 }
 
+// True after the console refused the key (revoked, expired, or the scope was removed) while streaming.
+export const keyDenied = () => feed.denied === true;
+
 export function reset() {
   availableAt = 0;
   available = false;
@@ -143,9 +146,13 @@ class Feed {
     this.abort = ctrl;
     this.read(ctrl).catch(() => {}).finally(() => {
       const current = this.abort === ctrl; // false: close() (or a newer connection) took over
-      if (current) this.abort = null;
-      this.connected = false;
-      for (const sub of this.subs) sub.handlers.error?.();
+      // A connection that was replaced must not mark the shared feed as disconnected or tell the
+      // subscribers of its successor: only the current one may change shared state.
+      if (current) {
+        this.abort = null;
+        this.connected = false;
+        for (const sub of this.subs) sub.handlers.error?.();
+      }
       const intentional = ctrl.signal.aborted && !timedOut.has(ctrl);
       if (current && this.subs.size && !intentional && !this.denied) {
         this.retry = setTimeout(() => { this.retry = null; this.open(); }, this.backoff);
@@ -165,7 +172,9 @@ class Feed {
       throw e;
     });
     this.backoff = 1000;
-    const dog = () => { clearTimeout(this.dog); this.dog = setTimeout(() => { timedOut.add(ctrl); ctrl.abort(); }, WATCHDOG_MS); };
+    // the watchdog belongs to ITS connection (kept on the controller), so a finishing old connection
+    // cannot cancel the watchdog of a newer one
+    const dog = () => { clearTimeout(ctrl.dog); ctrl.dog = setTimeout(() => { timedOut.add(ctrl); ctrl.abort(); }, WATCHDOG_MS); };
     dog();
     const reader = res.body.getReader();
     const text = new TextDecoder();
@@ -185,7 +194,7 @@ class Feed {
         }
       }
     } finally {
-      clearTimeout(this.dog);
+      clearTimeout(ctrl.dog);
       reader.cancel().catch(() => {});
     }
   }
@@ -206,7 +215,7 @@ class Feed {
 
   close() {
     clearTimeout(this.retry);
-    clearTimeout(this.dog);
+    clearTimeout(this.abort?.dog);
     this.retry = null;
     this.abort?.abort();
     this.abort = null;
