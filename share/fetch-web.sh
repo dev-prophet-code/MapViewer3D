@@ -7,8 +7,8 @@
 #
 # Re-run it after an addon update; no restart of the gateway is needed.
 set -eu
-VERSION="${1:-0.4.0}"
-SHA256="${2:-d41accb26cef8541dbb6fc2ddca60525b3784d3b628c6647a254b824dda947b7}"
+VERSION="${1:-0.4.1}"
+SHA256="${2:-68acdaba23b37b97255e9dc7a112c1673759dda1c3867eaa900af888a511c2dc}"
 OUT="${MV_SHARE_WEB:-./share-web}"
 URL="https://github.com/dev-prophet-code/MapViewer3D/releases/download/addon-v${VERSION}/mapviewer3d-${VERSION}.zip"
 
