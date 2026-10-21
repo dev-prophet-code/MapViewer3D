@@ -36,7 +36,7 @@ console.log('ok   share dialog helpers');
 
 // ---- the key goes only to an address that has identified itself as the share gateway
 {
-  const KEY = 'dak_secretkey_0123456789';
+  const KEY = 'dak_test_test_test_test'; // obvious dummy (gitleaks generic-api-key)
   const seen = [];
   const web = (map) => async (url, init = {}) => {
     seen.push({ url, init });
