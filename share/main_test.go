@@ -680,6 +680,17 @@ func TestServiceKeyIsAdoptedOnlyWhenNeeded(t *testing.T) {
 	}
 }
 
+func TestIdentificationIsPublicAndCredentialFree(t *testing.T) {
+	f := newFixture(t)
+	code, b, h := f.do("GET", "/mvshare", nil, map[string]string{"Origin": "https://console.example.org"})
+	if code != 200 || !strings.Contains(b, "mapviewer-share") || h.Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatalf("%d %s %v", code, b, h)
+	}
+	if strings.Contains(b, "dak_") || strings.Contains(b, "mva_") || strings.Contains(b, "mvs_") {
+		t.Fatal("identification leaks a credential")
+	}
+}
+
 func TestPreflightPrivateNetwork(t *testing.T) {
 	f := newFixture(t)
 	_, _, h := f.do("OPTIONS", "/share-admin/status", nil, map[string]string{"Origin": "https://console.example.org", "Access-Control-Request-Private-Network": "true"})

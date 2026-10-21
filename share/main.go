@@ -359,8 +359,11 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 	switch {
 	case p == "/mvshare":
+		// public identification: the addon asks it (without any credential) before it sends the
+		// administrator's key to an address it only guessed
 		h.Set("Content-Type", "application/json")
 		h.Set("Cache-Control", "no-store")
+		h.Set("Access-Control-Allow-Origin", "*")
 		fmt.Fprintf(w, `{"mapviewer-share":%s}`, version)
 	case strings.HasPrefix(p, "/s/"):
 		g.share(w, r)
