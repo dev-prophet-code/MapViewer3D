@@ -328,8 +328,15 @@ func (g *gateway) upstreamRequestKey(ctx context.Context, key, p, rawQuery strin
 	return req, nil
 }
 
+// clientIP is the address the limits count. A reverse proxy on the same host (the usual setup: nginx or
+// Caddy forwarding to 127.0.0.1) would otherwise make every visitor look like 127.0.0.1, so one
+// scanner could lock out everybody; therefore X-Forwarded-For (its last entry, the one the proxy
+// appended) is used when the peer is a loopback address, or when MV_SHARE_TRUST_PROXY=true names a
+// proxy elsewhere.
 func (g *gateway) clientIP(r *http.Request) net.IP {
-	if g.cfg.TrustProxy {
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	peer := net.ParseIP(host)
+	if g.cfg.TrustProxy || (peer != nil && peer.IsLoopback()) {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			parts := strings.Split(xff, ",")
 			if ip := net.ParseIP(strings.TrimSpace(parts[len(parts)-1])); ip != nil {
@@ -337,8 +344,7 @@ func (g *gateway) clientIP(r *http.Request) net.IP {
 			}
 		}
 	}
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	return net.ParseIP(host)
+	return peer
 }
 
 func jsonError(w http.ResponseWriter, code int, msg string) {
@@ -509,6 +515,8 @@ var routes = []route{
 		clean: func(b []byte, _ linkOptions) ([]byte, error) { return sanitizeSettings(b) }},
 	{re: regexp.MustCompile(`^/api/bases/[0-9]{1,12}/export$`), ttl: 60 * time.Second, option: func(l link) bool { return l.Bases },
 		clean: func(b []byte, _ linkOptions) ([]byte, error) { return sanitizeBase(b) }},
+	{re: regexp.MustCompile(`^/api/realtime/objects$`), ttl: 2 * time.Second, option: func(l link) bool { return l.Realtime },
+		clean: func(b []byte, _ linkOptions) ([]byte, error) { return sanitizeRealtimeObjects(b) }},
 	{re: regexp.MustCompile(`^/api/realtime/healthz$`), ttl: 10 * time.Second, option: func(l link) bool { return l.Realtime },
 		clean: func(b []byte, _ linkOptions) ([]byte, error) { return sanitizeRealtimeHealth(b) }},
 }
@@ -558,10 +566,6 @@ func (g *gateway) api(w http.ResponseWriter, r *http.Request, p string, l link) 
 			return
 		}
 		g.hub.serve(w, r, func() bool { return g.st.stillActive(l.Hash) })
-		return
-	}
-	if p == "/api/realtime/objects" {
-		jsonError(w, http.StatusNotFound, "use the stream") // the viewer streams; no snapshot route for visitors
 		return
 	}
 	for _, rt := range routes {
@@ -869,12 +873,18 @@ func (g *gateway) admin(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusTooManyRequests, "too many attempts")
 		return
 	}
-	p, code := g.authenticate(r.Context(), r)
-	if code != 0 {
-		if code == http.StatusUnauthorized || code == http.StatusForbidden {
+	p, refused := g.authenticate(r.Context(), r)
+	if refused != nil {
+		if refused.Status == http.StatusUnauthorized || refused.Status == http.StatusForbidden {
 			g.fails.fail(ip)
 		}
-		jsonError(w, code, map[int]string{401: "an API key or the admin secret is required", 403: "the key needs maps: Read", 503: "console unreachable"}[code])
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(refused.Status)
+		doc := obj{"error": refused.Msg}
+		if refused.Needs != "" {
+			doc["needs"] = refused.Needs
+		}
+		json.NewEncoder(w).Encode(doc)
 		return
 	}
 	adopted := false

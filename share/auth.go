@@ -33,12 +33,13 @@ type caps struct {
 	Bases    bool   // bases: Read
 	Players  bool   // players visible through maps
 	Realtime bool   // Realtime Data: Read and the agent runs
+	Admin    bool   // addons: Read - the proof of an administrator (see authenticate)
 	Why      string // why Realtime Data is not available
 }
 
 func and(a, b caps) caps {
 	return caps{Console: a.Console && b.Console, KeyOK: a.KeyOK && b.KeyOK, Maps: a.Maps && b.Maps, Bases: a.Bases && b.Bases,
-		Players: a.Players && b.Players, Realtime: a.Realtime && b.Realtime, Why: firstNonEmpty(a.Why, b.Why)}
+		Players: a.Players && b.Players, Realtime: a.Realtime && b.Realtime, Admin: a.Admin, Why: firstNonEmpty(a.Why, b.Why)}
 }
 
 func firstNonEmpty(s ...string) string {
@@ -73,6 +74,7 @@ func (g *gateway) probeCaps(ctx context.Context, key string) caps {
 	if !c.Maps {
 		return c
 	}
+	c.Admin = probe("/api/addons/installed", "") == 200
 	c.Bases = probe("/api/bases/0/export", "") != 403
 	c.Players = probe("/api/map/players", "map=Survival_1") == 200
 	switch rt := probe("/api/realtime/healthz", ""); rt {
@@ -110,20 +112,39 @@ type principal struct {
 	secret bool
 }
 
-// authenticate identifies the caller of the admin API. code != 0 is the status to answer with.
-func (g *gateway) authenticate(ctx context.Context, r *http.Request) (p principal, code int) {
+// authError is why a caller was refused. Needs names the scope an otherwise valid key lacks.
+type authError struct {
+	Status int
+	Msg    string
+	Needs  string
+}
+
+var (
+	errNoCredential = &authError{Status: http.StatusUnauthorized, Msg: "an API key or the admin secret is required"}
+	errNoConsole    = &authError{Status: http.StatusServiceUnavailable, Msg: "console unreachable"}
+	errNoMaps       = &authError{Status: http.StatusForbidden, Msg: "the key needs maps: Read", Needs: "maps:read"}
+	errNotAdmin     = &authError{Status: http.StatusForbidden, Msg: "managing share links needs an administrator's key: grant it Addons: Read (Settings, API Keys)", Needs: "addons:read"}
+)
+
+// authenticate identifies the caller of the admin API.
+//
+// An API key is accepted only if the Console accepts it AND it holds the scope Addons: Read. That scope
+// is what separates the administrator from the many other keys a server has (bots, monitoring: those
+// carry maps: Read at most): without it any such key could publish links, delete everybody's links or
+// take over the gateway's own key. The admin secret (mva_, for scripts) is the other way in.
+func (g *gateway) authenticate(ctx context.Context, r *http.Request) (p principal, fail *authError) {
 	a := r.Header.Get("Authorization")
 	if len(a) < 8 || !strings.EqualFold(a[:7], "bearer ") {
-		return p, http.StatusUnauthorized
+		return p, errNoCredential
 	}
 	cred := strings.TrimSpace(a[7:])
 	switch {
 	case strings.HasPrefix(cred, adminPrefix):
 		d := sha256.Sum256([]byte(cred))
 		if subtle.ConstantTimeCompare(d[:], g.adminDigest[:]) == 1 {
-			return principal{secret: true}, 0
+			return principal{secret: true}, nil
 		}
-		return p, http.StatusUnauthorized
+		return p, errNoCredential
 	case keyPattern.MatchString(cred):
 		d := sha256.Sum256([]byte(cred))
 		id := hex.EncodeToString(d[:])
@@ -143,15 +164,17 @@ func (g *gateway) authenticate(ctx context.Context, r *http.Request) (p principa
 		}
 		switch {
 		case !e.c.Console:
-			return p, http.StatusServiceUnavailable
+			return p, errNoConsole
 		case !e.c.KeyOK:
-			return p, http.StatusUnauthorized
+			return p, errNoCredential
 		case !e.c.Maps:
-			return p, http.StatusForbidden
+			return p, errNoMaps
+		case !e.c.Admin:
+			return p, errNotAdmin
 		}
-		return principal{key: cred, caps: e.c}, 0
+		return principal{key: cred, caps: e.c}, nil
 	}
-	return p, http.StatusUnauthorized
+	return p, errNoCredential
 }
 
 // serviceCaps is what the gateway's own key can serve (cached).
@@ -182,8 +205,9 @@ func (g *gateway) maybeAdopt(ctx context.Context, key string) bool {
 	if cur == key {
 		return false
 	}
-	if cur != "" && g.probeCaps(ctx, cur).KeyOK {
-		return false // a working service key is never replaced
+	if cur != "" && g.serviceCaps(ctx).KeyOK { // cached: this runs on every admin call
+		// (a working service key is never replaced by a presented one)
+		return false
 	}
 	tmp := g.cfg.KeyFile + ".tmp"
 	if err := os.MkdirAll(filepath.Dir(g.cfg.KeyFile), 0o700); err != nil {

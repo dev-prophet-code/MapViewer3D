@@ -168,6 +168,16 @@ func sanitizeRealtimeHealth(body []byte) ([]byte, error) {
 	return json.Marshal(obj{"available": v["available"] == true})
 }
 
+// The snapshot route (polling fallback of the viewer): the same content as a stream snapshot, players removed.
+func sanitizeRealtimeObjects(body []byte) ([]byte, error) {
+	v, err := decode(body)
+	if err != nil {
+		return nil, err
+	}
+	dropPlayers(v, map[string]bool{})
+	return json.Marshal(keep(v, "gen", "t", "sources", "objects"))
+}
+
 // dropPlayers removes player objects from a realtime snapshot and returns their ids.
 func dropPlayers(snap obj, dropped map[string]bool) {
 	list, _ := snap["objects"].([]any)

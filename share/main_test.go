@@ -22,6 +22,7 @@ const (
 	otherKey   = "dak_otheradmin_0123456789"
 	limitedKey = "dak_limited_0123456789"
 	noMapsKey  = "dak_nomaps_0123456789"
+	botKey     = "dak_botkey_0123456789" // a valid key with maps: Read only, no Addons: Read
 )
 
 type fixture struct {
@@ -46,6 +47,11 @@ func newFixture(t *testing.T) *fixture {
 		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		switch got {
 		case svcKey, otherKey:
+		case botKey:
+			if r.URL.Path == "/api/addons/installed" {
+				http.Error(w, `{"error":"forbidden"}`, 403)
+				return
+			}
 		case limitedKey:
 			if r.URL.Path == "/api/map/players" || strings.HasPrefix(r.URL.Path, "/api/realtime/") {
 				http.Error(w, `{"error":"forbidden"}`, 403)
@@ -62,6 +68,10 @@ func newFixture(t *testing.T) *fixture {
 			t.Errorf("upstream got %s", r.Method)
 		}
 		switch r.URL.Path {
+		case "/api/addons/installed":
+			io.WriteString(w, `{"rows":[]}`)
+		case "/api/realtime/objects":
+			io.WriteString(w, `{"gen":3,"t":9,"sources":[{"map":"Survival_1"}],"objects":[{"i":1,"k":"worm","x":1,"y":2,"z":3},{"i":2,"k":"player","x":7,"y":8,"z":9}],"secret":1}`)
 		case "/api/map/partitions":
 			io.WriteString(w, `{"rows":[{"map":"Survival_1","alive":true,"partition_id":7,"name":"P7","server_id":"secret-id"}]}`)
 		case "/api/map/status":
@@ -306,7 +316,7 @@ func TestAllowListAndMethods(t *testing.T) {
 	tok, _ := f.newLink(createReq{Never: true, Bases: true, Realtime: true})
 	base := "/s/" + tok
 	for _, p := range []string{"/api/auth/login", "/api/settings", "/api/players", "/api/server/restart", "/api/addons/installed", "/api/map/storage",
-		"/api/map/services", "/api/bases/12/export-backup", "/api/bases/x/export", "/api/maps/userengine", "/api/realtime/objects", "/images/maps/../../etc/passwd",
+		"/api/map/services", "/api/bases/12/export-backup", "/api/bases/x/export", "/api/maps/userengine", "/images/maps/../../etc/passwd",
 		"/images/maps/x.sh", "/api/map/overlays/x"} {
 		code, _, _ := f.do("GET", base+p, nil, nil)
 		if code == 200 {
@@ -669,6 +679,7 @@ func TestServiceKeyIsAdoptedOnlyWhenNeeded(t *testing.T) {
 	os.WriteFile(keyFile, []byte("dak_revokedone_0123456789\n"), 0o600)
 	f.gw.keyStamp = time.Time{}
 	f.gw.keyVal = ""
+	f.gw.auth.svc = capEntry{} // (in service the answer is at most 15 s old)
 	f.adminAs(svcKey, "GET", "status", nil)
 	if read() != svcKey {
 		t.Fatalf("rotated key not replaced: %q", read())
@@ -700,5 +711,95 @@ func TestPreflightPrivateNetwork(t *testing.T) {
 	_, _, h = f.do("OPTIONS", "/share-admin/status", nil, map[string]string{"Origin": "https://evil.example", "Access-Control-Request-Private-Network": "true"})
 	if h.Get("Access-Control-Allow-Private-Network") != "" {
 		t.Fatal("granted to a foreign origin")
+	}
+}
+
+func TestOnlyAdministratorsManageLinks(t *testing.T) {
+	f := newFixture(t)
+	good, _ := f.newLink(createReq{Never: true})
+	_ = good
+	var id string
+	{
+		_, b := f.admin("GET", "links", nil)
+		var doc struct{ Links []linkView }
+		json.Unmarshal([]byte(b), &doc)
+		id = doc.Links[0].ID
+	}
+	// a valid key without Addons: Read (a bot, a monitor) is refused for everything, and told what is missing
+	for _, c := range []struct{ m, p string }{{"GET", "links"}, {"GET", "status"}, {"POST", "links"}, {"DELETE", "links/" + id}} {
+		code, b := f.adminAs(botKey, c.m, c.p, createReq{Never: true})
+		if code != 403 || !strings.Contains(b, `"needs":"addons:read"`) {
+			t.Fatalf("%s %s with a bot key: %d %s", c.m, c.p, code, b)
+		}
+	}
+	if _, b := f.admin("GET", "links", nil); !strings.Contains(b, id) {
+		t.Fatal("a bot key revoked a link")
+	}
+	// ... and it can never take over the gateway's key, even when none works
+	os.Remove(f.gw.cfg.KeyFile)
+	f.gw.keyStamp = time.Time{}
+	f.gw.keyVal = ""
+	f.adminAs(botKey, "GET", "status", nil)
+	if b, _ := os.ReadFile(f.gw.cfg.KeyFile); len(b) != 0 {
+		t.Fatalf("a bot key became the gateway's key: %q", b)
+	}
+	if code, _ := f.adminAs(otherKey, "GET", "status", nil); code != 200 {
+		t.Fatal("an administrator's key is refused")
+	}
+}
+
+func TestProxyClientAddress(t *testing.T) {
+	f := newFixture(t)
+	bad := "/s/mvs_" + strings.Repeat("B", 43) + "/"
+	// the proxy runs on this host (loopback peer) and appends the real client; one scanner is blocked, others are not
+	for i := 0; i < 20; i++ {
+		f.do("GET", bad, nil, map[string]string{"X-Forwarded-For": "203.0.113.9"})
+	}
+	if code, _, _ := f.do("GET", bad, nil, map[string]string{"X-Forwarded-For": "203.0.113.9"}); code != 429 {
+		t.Fatalf("scanner not blocked: %d", code)
+	}
+	tok, _ := f.newLink(createReq{Never: true})
+	if code, _, _ := f.do("GET", "/s/"+tok+"/", nil, map[string]string{"X-Forwarded-For": "198.51.100.4"}); code != 200 {
+		t.Fatalf("an unrelated visitor is locked out by the scanner: %d", code)
+	}
+	// a client cannot choose its own address by prepending entries: the LAST one (the proxy's) counts
+	if ip := f.gw.clientIP(httpRequest("127.0.0.1:5", "10.0.0.1, 198.51.100.77")); ip.String() != "198.51.100.77" {
+		t.Fatalf("%v", ip)
+	}
+	// a non-loopback peer cannot spoof it unless a proxy is configured
+	if ip := f.gw.clientIP(httpRequest("192.0.2.5:5", "198.51.100.77")); ip.String() != "192.0.2.5" {
+		t.Fatalf("spoofable: %v", ip)
+	}
+}
+
+func httpRequest(remote, xff string) *http.Request {
+	r := httptest.NewRequest("GET", "/", nil)
+	r.RemoteAddr = remote
+	r.Header.Set("X-Forwarded-For", xff)
+	return r
+}
+
+func TestRealtimeSnapshotForVisitors(t *testing.T) {
+	f := newFixture(t)
+	rt, _ := f.newLink(createReq{Never: true, Realtime: true})
+	none, _ := f.newLink(createReq{Never: true})
+	code, b, _ := f.do("GET", "/s/"+rt+"/api/realtime/objects", nil, nil)
+	if code != 200 || !strings.Contains(b, `"worm"`) || strings.Contains(b, "player") || strings.Contains(b, "secret") {
+		t.Fatalf("snapshot: %d %s", code, b)
+	}
+	if code, _, _ := f.do("GET", "/s/"+none+"/api/realtime/objects", nil, nil); code != 403 {
+		t.Fatalf("snapshot without the option: %d", code)
+	}
+}
+
+func TestAdoptionDoesNotHammerTheConsole(t *testing.T) {
+	f := newFixture(t)
+	f.adminAs(otherKey, "GET", "status", nil) // different from the gateway's key: maybeAdopt runs on every call
+	before := f.hits.Load()
+	for i := 0; i < 10; i++ {
+		f.adminAs(otherKey, "GET", "links", nil)
+	}
+	if n := f.hits.Load() - before; n > 8 {
+		t.Fatalf("%d console requests for 10 admin calls", n)
 	}
 }
