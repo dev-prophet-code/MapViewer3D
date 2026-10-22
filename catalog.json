@@ -26,7 +26,7 @@
   },
   {
    "file": "m/deepdesert_1_l00.json",
-   "sha256": "bfe8d7c4a73c1d84cbf9daae5a1ec789b4e1f6ec42e0d57f3f4dbf78231e5089",
+   "sha256": "dad8d8c0a649e0a3dd4db6e682f9d1ce6eaf73f89767e4ec39a6f7120f1e6ca5",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l00",
@@ -49,7 +49,7 @@
   },
   {
    "file": "m/deepdesert_1_l01.json",
-   "sha256": "c28f65b48bdd22f7031bbb899fb99d8e5983bce0d4212ad3d6e191f928cce642",
+   "sha256": "a9ae9297f3485d60945ce83bc9b084da153e96586b67ae9ea94b0279710c6deb",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l01",
@@ -73,7 +73,7 @@
   },
   {
    "file": "m/deepdesert_1_l02.json",
-   "sha256": "0dd71ad7df798441594a6baefc67a4ec9aff75d93d94d3f1d96b7958d2c825cc",
+   "sha256": "180f387507594e4f8384cfbffc910ef08ed58173657c0724449605191be48bdb",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l02",
@@ -97,7 +97,7 @@
   },
   {
    "file": "m/deepdesert_1_l03.json",
-   "sha256": "c0cb9fd05972060cb0c443eadeab4cc83b5e6bcd644107ad3eb8c8cecc614f81",
+   "sha256": "884e345b7f03661d531228294dbf6b8225b0d10eab67e80093905dfe4dd780ae",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l03",
@@ -121,7 +121,7 @@
   },
   {
    "file": "m/deepdesert_1_l04.json",
-   "sha256": "72c3258a902309eba9e90edc98a8f59820cf4e7c38bd10ba017a1d4a03958367",
+   "sha256": "a5939b65d87fc4b34ca16736b8f3d1912c3e99db37f417c498a5113bf74003a6",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l04",
@@ -145,7 +145,7 @@
   },
   {
    "file": "m/deepdesert_1_l05.json",
-   "sha256": "746bb73d3175eb4bd6fd5fe93deb5a15e87b177e6113f616f49f1a983d28e0cd",
+   "sha256": "dda4e05ed57f9f9331e6023c9ad579a793b37df945c1c170886b9c23c094e6a8",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l05",
@@ -169,7 +169,7 @@
   },
   {
    "file": "m/deepdesert_1_l06.json",
-   "sha256": "a0ba5cbf81fa5386746e10f8c975155de5749d6fd8932b526f82667c5f2a9254",
+   "sha256": "93cc634a3f0d3e2ee814ffd6f212587cef9970f90f5030284750a25522e22660",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l06",
@@ -193,7 +193,7 @@
   },
   {
    "file": "m/deepdesert_1_l07.json",
-   "sha256": "d6fa29a3b3089677d832d496587cdfb9abb0e0dcd56aacc334acd5b7b8a4fe74",
+   "sha256": "f59c010fe23a79db1d333e92d6d174454b27c8cadb0cd1ee56c21d6771934662",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l07",
@@ -241,7 +241,7 @@
   },
   {
    "file": "m/deepdesert_1_l10.json",
-   "sha256": "7d12519bbcf5607edc54e5b1a8ad66fe510016b55420dff84c896f188f1cb53c",
+   "sha256": "f2c5edbcf3da6b692cedb66e48af78a8a96d416913cd4c1f5a46b31042675921",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l10",
@@ -265,7 +265,7 @@
   },
   {
    "file": "m/deepdesert_1_l11.json",
-   "sha256": "5a72ff515cf8bdeeb03f8ebf1d449de070292006a9d85e69c04a5ec47b37e8a5",
+   "sha256": "dcff89c1063773c05c1ffedcf71f4f271d09845499b7daa25dcdc78e5e057b02",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l11",
@@ -289,7 +289,7 @@
   },
   {
    "file": "m/deepdesert_1_l12.json",
-   "sha256": "5f1dbe92ca76eaabb2c60a7115847366ea8dbf8444a6b78cf21b04b484cc3aa5",
+   "sha256": "c38a5ff1aa653ddca7644087cb9e4b211306d3ff2ac4cca2ff60cf1261a9b58c",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l12",
@@ -313,7 +313,7 @@
   },
   {
    "file": "m/deepdesert_1_l13.json",
-   "sha256": "dde32935ab66a1b19df28d01a646d35fd70500e50a5f1befc3393b736f92b403",
+   "sha256": "eb660ae974d4be680268995da978ba489125b934e3dcba2640e22628288e91c8",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l13",
@@ -337,7 +337,7 @@
   },
   {
    "file": "m/deepdesert_1_l14.json",
-   "sha256": "45e1d3ad31020da0e4ef350624aafae5e82ab9c541bbf48d87c573eeab4385f3",
+   "sha256": "21285eeafc6fe80afa056bb09573acc69a81b3e94148f03f86e0c718e64c608d",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l14",
@@ -361,7 +361,7 @@
   },
   {
    "file": "m/deepdesert_1_l16.json",
-   "sha256": "b52a77220a19dcff42aae0178e92e4548dce4089d5fc8c63abcfb843eb0e5d78",
+   "sha256": "89ec55b965fe899b3a1e759886dfb5eca5b0cf3286b4b7b1b64d8b12476aa512",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l16",
@@ -385,7 +385,7 @@
   },
   {
    "file": "m/deepdesert_1_l18.json",
-   "sha256": "6128727ab35cd13b4a17df88e82930fd268ee531dbaee9606076b3a7c3f1fb4e",
+   "sha256": "7d8272dfd7b92a6d7363b486dfae4c19b6c8c317d6df2313d84145415ad70a73",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "deepdesert_1_l18",
@@ -409,7 +409,7 @@
   },
   {
    "file": "m/survival_1.json",
-   "sha256": "8cd4730a5ac01f069dee90992d21ee8455fbfa58e0411478f277ec4e54f3d13e",
+   "sha256": "46758bc99a7c4023d50315e92f28f359736779e4fe9e054f12054f52c65ca473",
    "patchQuads": 128,
    "maxLevel": 6,
    "name": "survival_1",
