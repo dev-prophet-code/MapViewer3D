@@ -839,3 +839,18 @@ func TestAdminPageCallsItsOwnGateway(t *testing.T) {
 		t.Fatalf("foreign origin: %d", code)
 	}
 }
+
+func TestAdminPageOriginIsNotRebindable(t *testing.T) {
+	for origin, want := range map[string]bool{
+		"https://share.example.org": true, "http://127.0.0.1:8798": true, "http://localhost:8798": true, "http://[::1]:8798": true,
+		"http://share.example.org": false, "http://192.168.1.5:8798": false,
+	} {
+		host := strings.TrimPrefix(strings.TrimPrefix(origin, "https://"), "http://")
+		if got := sameOriginAdminPage(origin, host); got != want {
+			t.Errorf("%s: %v, want %v", origin, got, want)
+		}
+	}
+	if sameOriginAdminPage("https://evil.example", "share.example.org") {
+		t.Error("a foreign origin passed as the gateway")
+	}
+}

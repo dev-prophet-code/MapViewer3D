@@ -849,7 +849,7 @@ func (g *gateway) corsAdmin(w http.ResponseWriter, r *http.Request) bool {
 	if o == "" {
 		return true // not a browser (curl, script)
 	}
-	if o == "https://"+r.Host || o == "http://"+r.Host {
+	if sameOriginAdminPage(o, r.Host) {
 		return true // the admin page of this gateway itself (/admin/)
 	}
 	for _, a := range g.cfg.AdminOrigins {
@@ -865,6 +865,29 @@ func (g *gateway) corsAdmin(w http.ResponseWriter, r *http.Request) bool {
 		}
 	}
 	return false
+}
+
+// The admin page's own origin. https needs a certificate for the host name, so a page of another site
+// that re-binds its name to this address (DNS rebinding) cannot pass as the gateway; plain http is
+// accepted only for a loopback host (a tunnel or a local test), anything else is listed in
+// MV_SHARE_ADMIN_ORIGINS.
+func sameOriginAdminPage(origin, host string) bool {
+	if origin == "https://"+host {
+		return true
+	}
+	if origin != "http://"+host {
+		return false
+	}
+	name := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		name = h
+	}
+	name = strings.Trim(name, "[]")
+	if name == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(name)
+	return ip != nil && ip.IsLoopback()
 }
 
 type createReq struct {
