@@ -50,6 +50,7 @@ The MapViewer3D addon of the Dune Docker Console can create **links to the 3D ma
    ```
    share.example.org {
        reverse_proxy /s/* 127.0.0.1:8798
+       reverse_proxy /admin/* 127.0.0.1:8798
        reverse_proxy /share-admin/* 127.0.0.1:8798
    }
    ```
