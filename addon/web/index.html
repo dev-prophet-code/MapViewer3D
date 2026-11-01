@@ -56672,17 +56672,17 @@ void main(){
   UI.add({
     en: {
       'g.world': 'World', 'l.online': 'Players online', 'l.offline': 'Players offline', 'l.bases': 'Bases',
-      'start.title': 'Connect to your Dune Docker server', 'start.intro': 'In the console this addon reads players and bases through the console bridge (read-only, permission database:read). Realtime Data (sandworms, enemies), the full 1 m terrain and the API-token sign-in run in the companion: it asks for your token on its own start screen. The console sandbox has no network access, so a token cannot be used here and is not requested.',
-      'start.companion': 'Companion address (optional)', 'start.continue': 'Continue', 'start.bad': 'Only https:// (or http://localhost) without credentials.',
-      'conn.bridge': 'Console bridge', 'conn.db': 'Game data (database:read)', 'conn.rt': 'Realtime Data', 'conn.rt.off': 'only in the companion (sandbox without network)',
+      'start.title': 'Set up the companion (optional)', 'start.intro': 'In the console this addon reads players and bases through the console bridge (read-only, permission database:read). Realtime Data is built into the console API, but the console bridge offers no realtime action to addons. Sandworms and enemies, the full 1 m terrain and the API-token sign-in therefore run in the companion: it asks for your token on its own start screen. The console sandbox has no network access, so a token cannot be used here and is not requested.',
+      'start.companion': 'Companion address (optional)', 'start.continue': 'Save', 'start.bad': 'Only https:// (or http://localhost) without credentials.',
+      'conn.console': 'Dune Docker Console', 'conn.console.yes': 'detected', 'conn.console.no': 'not detected (preview outside the console)', 'conn.bridge': 'Console bridge', 'conn.db': 'Game data (database:read)', 'conn.rt': 'Realtime Data', 'conn.rt.off': 'only in the companion (sandbox without network)',
       'conn.ok': 'connected', 'conn.preview': 'preview outside the console', 'conn.companion': 'Companion', 'conn.change': 'Companion address …', 'conn.none': 'not set',
       'live.status': '{0} players, {1} bases', 'terrain': 'Terrain (embedded): {0}×{0} points · {1} m grid', 'hq': 'Finer terrain (slower)', 'saved': 'Saved. Open this address in a new browser tab.',
     },
     de: {
       'g.world': 'Welt', 'l.online': 'Spieler online', 'l.offline': 'Spieler offline', 'l.bases': 'Basen',
-      'start.title': 'Mit deinem Dune-Docker-Server verbinden', 'start.intro': 'In der Console liest dieses Addon Spieler und Basen über die Console-Brücke (nur lesend, Berechtigung database:read). Realtime Data (Sandwürmer, Gegner), das volle 1-m-Gelände und die Anmeldung mit API-Token laufen im Companion: Er fragt den Token auf seinem eigenen Startbildschirm ab. Die Console-Sandbox hat kein Netzwerk, ein Token ist hier nicht nutzbar und wird deshalb nicht abgefragt.',
-      'start.companion': 'Adresse des Companion (optional)', 'start.continue': 'Weiter', 'start.bad': 'Nur https:// (oder http://localhost) ohne Zugangsdaten.',
-      'conn.bridge': 'Console-Brücke', 'conn.db': 'Spieldaten (database:read)', 'conn.rt': 'Realtime Data', 'conn.rt.off': 'nur im Companion (Sandbox ohne Netzwerk)',
+      'start.title': 'Companion einrichten (optional)', 'start.intro': 'In der Console liest dieses Addon Spieler und Basen über die Console-Brücke (nur lesend, Berechtigung database:read). Realtime Data steckt in der Console-API, aber die Console-Brücke bietet Addons keine Realtime-Aktion. Sandwürmer und Gegner, das volle 1-m-Gelände und die Anmeldung mit API-Token laufen deshalb im Companion: Er fragt den Token auf seinem eigenen Startbildschirm ab. Die Console-Sandbox hat kein Netzwerk, ein Token ist hier nicht nutzbar und wird deshalb nicht abgefragt.',
+      'start.companion': 'Adresse des Companion (optional)', 'start.continue': 'Speichern', 'start.bad': 'Nur https:// (oder http://localhost) ohne Zugangsdaten.',
+      'conn.console': 'Dune Docker Console', 'conn.console.yes': 'erkannt', 'conn.console.no': 'nicht erkannt (Vorschau außerhalb der Console)', 'conn.bridge': 'Console-Brücke', 'conn.db': 'Spieldaten (database:read)', 'conn.rt': 'Realtime Data', 'conn.rt.off': 'nur im Companion (Sandbox ohne Netzwerk)',
       'conn.ok': 'verbunden', 'conn.preview': 'Vorschau außerhalb der Console', 'conn.companion': 'Companion', 'conn.change': 'Companion-Adresse …', 'conn.none': 'nicht gesetzt',
       'live.status': '{0} Spieler, {1} Basen', 'terrain': 'Gelände (eingebettet): {0}×{0} Punkte · {1} m Raster', 'hq': 'Feineres Gelände (langsamer)', 'saved': 'Gespeichert. Öffne diese Adresse in einem neuen Browser-Tab.',
     },
@@ -56700,8 +56700,15 @@ void main(){
   const pick = (r) => (Array.isArray(r) ? r : (r && Array.isArray(r.rows) ? r.rows : []));
   const pt = (r) => ({ x: MV.cm2m(r.x), y: MV.cm2m(r.y), z: MV.cm2m(r.z) });
 
+  // Erkannt gilt erst, wenn die Console-Brücke wirklich geantwortet hat (nicht schon bei einem bloßen Rahmen)
+  let consoleState = 'wait'; // 'wait' | 'yes' | 'no'
   function renderConn() {
-    UI.conn([UI.t('conn.bridge') + ': ' + bridgeState[0], UI.t('conn.db') + ': ' + bridgeState[1], UI.t('conn.rt') + ': ' + UI.t('conn.rt.off'), UI.t('conn.companion') + ': ' + (companion || UI.t('conn.none'))].concat(storeNote ? [storeNote] : []).join('\n'));
+    UI.conn([
+      UI.t('conn.console') + ': ' + (consoleState === 'wait' ? '…' : UI.t(consoleState === 'yes' ? 'conn.console.yes' : 'conn.console.no')),
+      UI.t('conn.bridge') + ': ' + bridgeState[0], UI.t('conn.db') + ': ' + bridgeState[1],
+      UI.t('conn.rt') + ': ' + UI.t('conn.rt.off'),
+      UI.t('conn.companion') + ': ' + (companion || UI.t('conn.none')),
+    ].concat(storeNote ? [storeNote] : []).join('\n'));
     UI.mapinfo(terrainArgs ? UI.t('terrain', terrainArgs[0], terrainArgs[1]) : '');
   }
   UI.onLang(() => { renderConn(); applyRows(); });
@@ -56737,9 +56744,10 @@ void main(){
     try {
       const [p, b] = await Promise.all([DuneAddon.request('database.query', { query: SQL_PLAYERS }), DuneAddon.request('database.query', { query: SQL_BASES })]);
       rows = { players: pick(p), bases: pick(b) };
-      bridgeState = [UI.t('conn.ok'), rows.players.length + ' / ' + rows.bases.length];
+      consoleState = 'yes'; bridgeState = [UI.t('conn.ok'), rows.players.length + ' / ' + rows.bases.length];
       applyRows();
     } catch (e) {
+      consoleState = window.parent === window ? 'no' : 'wait'; // im Rahmen, aber ohne Antwort: weiter prüfen
       bridgeState = [window.parent === window ? UI.t('conn.preview') : String(e && e.message || e).slice(0, 80), '–'];
     }
     polling = false; renderConn();
@@ -56759,7 +56767,7 @@ void main(){
     renderConn(); return null;
   }
   const startDialog = () => UI.dialog({
-    title: UI.t('start.title'), intro: UI.t('start.intro'), submit: UI.t('start.continue'), cancel: null,
+    title: UI.t('start.title'), intro: UI.t('start.intro'), submit: UI.t('start.continue'), cancel: UI.t('cancel'),
     fields: [{ name: 'companion', label: UI.t('start.companion'), placeholder: 'https://…', value: companion }],
     onSubmit: (v) => saveCompanion(v.companion),
   });
@@ -56773,13 +56781,13 @@ void main(){
   }).catch(() => { /* noch nichts gespeichert oder Vorschau */ });
 
   $('map').onchange = (e) => showMap(e.target.value);
-  UI.button(UI.t('conn.change'), startDialog);
-  UI.onLang(() => { UI.clearButtons(); UI.button(UI.t('conn.change'), startDialog); });
+  const buttons = () => { UI.clearButtons(); UI.button(UI.t('conn.change'), startDialog); };
+  buttons(); UI.onLang(buttons);
   UI.toggle('hq', (on) => { hq = on; showMap(current, true); });
   UI.followCursor(env);
 
   renderConn();
-  startDialog();           // zuerst die Verbindungsabfrage, die Karte lädt im Hintergrund
+  // Kein Startdialog: Die Console wird automatisch erkannt. Die Companion-Adresse ist optional (Knopf im Bereich Verbindung).
   await showMap('hagga');
   poll(); setInterval(poll, POLL_MS);
 })();

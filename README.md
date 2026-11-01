@@ -22,7 +22,7 @@
 | Realtime (worms, NPCs, …) | ❌ | ✅ if the token allows it |
 | Sign-in | via the console | **API token** (`dak_…`), Realtime Data check |
 
-The console runs addons with `sandbox="allow-scripts"` and `connect-src 'none'`. An addon therefore cannot use a token or load anything; everything that needs a network is done by the companion. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The console detects and runs the addon by itself (no address to enter). Realtime Data is built into the console API (`/api/realtime/*`), but the addon bridge has no realtime action, and the console runs addons with `sandbox="allow-scripts"` and `connect-src 'none'`. An addon therefore cannot use a token or load anything; everything that needs a network is done by the companion. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Start the companion
 
@@ -91,7 +91,7 @@ No token, password or IP address is ever stored in this repository. The token li
 | Realtime (Würmer, NPCs, …) | ❌ | ✅ wenn der Token es darf |
 | Anmeldung | über die Console | **API-Token** (`dak_…`), Prüfung von Realtime Data |
 
-Die Console startet Addons mit `sandbox="allow-scripts"` und `connect-src 'none'`. Ein Addon kann deshalb keinen Token verwenden und nichts nachladen; alles, was Netzwerk braucht, übernimmt der Companion. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Die Console erkennt und startet das Addon selbst (keine Adresse einzugeben). Realtime Data steckt in der Console-API (`/api/realtime/*`), aber die Addon-Brücke hat keine Realtime-Aktion, und die Console startet Addons mit `sandbox="allow-scripts"` und `connect-src 'none'`. Ein Addon kann deshalb keinen Token verwenden und nichts nachladen; alles, was Netzwerk braucht, übernimmt der Companion. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Companion starten
 

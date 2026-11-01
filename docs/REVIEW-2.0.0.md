@@ -72,3 +72,9 @@ Zweites Code-Review (High) über `viewer/` und `scripts/`, danach erneuter Pente
 | 9 | Tests | Reihenfolge „Token-Abfrage zuerst“ ungeprüft | Niedrig | behoben (Test) |
 
 **Hinweis zur Token-Abfrage:** Im Companion ist die Token-Abfrage der erste Bildschirm; vorher lädt weder Karte noch Kachel (der Server liefert ohne Sitzung 401). Im Addon kann ein Token nicht verwendet werden, weil die Console die Addon-Seite mit `connect-src 'none'` ausliefert; der erste Bildschirm fragt dort stattdessen die Adresse des Companion ab und erklärt das.
+
+## 5. Nachtrag: automatische Console-Erkennung statt Adressabfrage
+
+Das Addon fragt beim Start nicht mehr nach einer Adresse. Es erkennt die Dune Docker Console daran, dass die Console-Brücke antwortet. Geprüft im Console-Code (v1.4.59): Realtime Data steckt in der Console-API (`/api/realtime/*`, Scope `realtime:read`), die Addon-Brücke hat aber keine Realtime-Aktion, und die Addon-Seite hat `connect-src 'none'`. Realtime bleibt deshalb dem Companion vorbehalten; die Adresse des Companion ist eine optionale Einstellung im Bereich „Verbindung“.
+
+Code-Review (High) über `viewer/addon-app.js`: 4 Funde (Erkennung nur am Rahmen, Dialogtexte, doppelte Prüfung, doppelter Knopf), alle behoben. 26 Tests und 57 Angriffe: 0 durchgekommen.
