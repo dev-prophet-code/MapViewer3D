@@ -112,7 +112,7 @@ try {
   const html = await authed.text();
   check(!/<script[^>]+\bsrc=/i.test(html) && !/<link[^>]+href=/i.test(html), 'the page loads no separate script or style file');
   const sibling = await fetch(`${BASE}/api/addons/installed/${ID}/content/addon.json`, { headers: { Cookie: ownCookies.map((c) => `${c.name}=${c.value}`).join('; ') } });
-  check(sibling.status !== 500, 'a second file of the package answers without a server error', String(sibling.status));
+  check(sibling.status === 200 && JSON.parse(await sibling.text()).id === ID, 'a second file of the package is served, with its own content', String(sibling.status));
   const escape = await fetch(`${BASE}/api/addons/installed/${ID}/content/..%2F..%2Fstate.json`, { headers: { Cookie: ownCookies.map((c) => `${c.name}=${c.value}`).join('; ') } });
   check(escape.status >= 400 && !(await escape.text()).includes('approvedPermissions'), 'the content route does not leave the addon folder', String(escape.status));
 
@@ -138,7 +138,10 @@ try {
   check(terrain.drawn > 0 && terrain.minLevel >= 1, 'terrain tiles are drawn from the embedded data', JSON.stringify(terrain));
   // a flat picture compresses to a few KB; terrain, sky and fog do not
   const shot = await frameEl.screenshot();
-  check(shot.length > 40000, 'the 3D view is not blank', `${shot.length} bytes of PNG`);
+  await frame.evaluate(() => { document.getElementById('view').style.visibility = 'hidden'; });
+  const without = await frameEl.screenshot();
+  await frame.evaluate(() => { document.getElementById('view').style.visibility = ''; });
+  check(shot.length > 1.5 * without.length && shot.length > 40000, 'the 3D view is not blank', `${shot.length} bytes with the canvas, ${without.length} without`);
 
   // ---- authenticated live data through the bridge ----
   await frame.waitForFunction(() => document.querySelectorAll('#playerList > *').length > 0, null, { timeout: 60000 }).catch(() => {});

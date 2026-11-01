@@ -29,7 +29,7 @@ const viewRank = (label) => {
 async function listMaps() {
   const catalog = await data.loadCatalog();
   catalog.maps.forEach((m) => WORLD.set(m.name, m));
-  const parts = (await live.get('/api/map/partitions', 0).catch(() => ({ rows: [] }))).rows;
+  const parts = (await live.get('/api/map/partitions', 0).catch((e) => { console.warn('Instances', e); return { rows: [] }; })).rows;
   const custom = await customLabels();
   const list = [];
   for (const m of pickLayouts(catalog.maps)) {

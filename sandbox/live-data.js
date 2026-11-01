@@ -17,6 +17,8 @@ const MIN_SNAPSHOT_MS = 4000;
 const POI_TTL = 5 * 60 * 1000;
 const PARTITIONS_TTL = 60 * 1000;
 const BASE_TTL = 2 * 60 * 1000;
+const STALE_MS = 60 * 1000; // after a failure the last good picture is shown this long, then the error is
+const MAX_CACHED = 80;
 
 export function createLive({ call = (query) => request('database.query', { query }), now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const stamps = [];
@@ -41,24 +43,29 @@ export function createLive({ call = (query) => request('database.query', { query
       return result?.rows ?? [];
     } catch (e) {
       const message = String(e?.message ?? e);
-      if (!retried && /too many|rate limit|retry/i.test(message)) { await sleep(5000); return query(sql, true); }
+      if (!retried && /too many|rate limit|429/i.test(message)) { await sleep(5000); return query(sql, true); }
       throw fail('bridge', message);
     }
   }
 
-  const cached = new Map(); // key -> { at, value, pending }
+  const cached = new Map(); // key -> { at, okAt, value, pending }
   async function memo(key, maxAge, load) {
     const c = cached.get(key);
     if (c?.pending) return c.pending;
-    if (c && now() - c.at < maxAge) return c.value;
-    const pending = load().then((value) => { cached.set(key, { at: now(), value }); return value; })
+    if (c && c.value !== undefined && now() - c.at < maxAge) return c.value;
+    const pending = load().then((value) => { cached.set(key, { at: now(), okAt: now(), value }); return value; })
       .catch((e) => {
-        if (c?.value !== undefined) { cached.set(key, { at: now() - maxAge + 5000, value: c.value }); return c.value; } // keep the last good data, ask again soon
+        if (c?.value !== undefined && now() - c.okAt < STALE_MS) { cached.set(key, { ...c, at: now() - maxAge + 5000, pending: undefined }); return c.value; } // keep the last good data for a moment, ask again soon
         cached.delete(key);
         throw e;
       });
     cached.set(key, { ...(c ?? { at: 0 }), pending });
-    return pending.finally(() => { const cur = cached.get(key); if (cur?.pending === pending) { const { pending: _p, ...rest } = cur; cached.set(key, rest); } });
+    return pending.finally(() => {
+      const cur = cached.get(key);
+      if (cur?.pending === pending) cached.set(key, { ...cur, pending: undefined });
+      // the oldest entries go (base exports can be large and there is one per base looked at)
+      for (const k of cached.keys()) { if (cached.size <= MAX_CACHED) break; if (k !== key && !cached.get(k).pending) cached.delete(k); }
+    });
   }
 
   const snapshot = (source, maxAge) => memo(`snap/${source}`, Math.max(maxAge, MIN_SNAPSHOT_MS), async () => {
