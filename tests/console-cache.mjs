@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv3d-cache-'));
-for (const f of ['console.js', 'store.js', 'config.js']) fs.copyFileSync(path.join(root, 'web', 'js', f), path.join(dir, f));
+for (const f of ['console.js', 'store.js', 'config.js', 'errors.js', 'labels.js']) fs.copyFileSync(path.join(root, 'web', 'js', f), path.join(dir, f));
 const KEY = 'dak_test_test_test_test';
 let answer = () => ({ status: 200, body: { rows: [1] } });
 let calls = 0;

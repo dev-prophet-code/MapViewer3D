@@ -70,7 +70,7 @@ let n = 0;
 async function modules() {
   const dir = path.join(tmp, `m${n++}`);
   fs.mkdirSync(dir, { recursive: true });
-  for (const f of ['console.js', 'store.js', 'config.js', 'realtime.js']) fs.copyFileSync(path.join(root, 'web', 'js', f), path.join(dir, f));
+  for (const f of ['console.js', 'store.js', 'config.js', 'errors.js', 'labels.js', 'realtime.js']) fs.copyFileSync(path.join(root, 'web', 'js', f), path.join(dir, f));
   globalThis.location ??= { search: '', pathname: '/api/addons/installed/mapviewer3d/content/web/index.html' };
   const url = (f) => pathToFileURL(path.join(dir, f)).href;
   return { cons: await import(url('console.js')), rt: await import(url('realtime.js')) };

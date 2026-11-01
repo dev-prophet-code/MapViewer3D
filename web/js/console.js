@@ -10,23 +10,16 @@
 //    user of the console), localStorage, sessionStorage, IndexedDB or the Cache API. It has to
 //    be entered again each time the addon page is opened (a password manager can fill it).
 import { store } from './store.js';
+import { fail } from './errors.js';
 import { apiUrl, SHARE_BASE } from './config.js';
 
 const LEGACY_KEY = 'console.key'; // versions up to 0.2.0 stored the key here; removed on start
-const LABEL_STORE = 'instance.names';
 const KEY_PATTERN = /^dak_[A-Za-z0-9_-]{8,200}$/;
-const LABEL_PATTERN = /^[\p{L}\p{N} ._\-()/+&]{1,40}$/u;
 
 let token = null;
 let purged = false;
 
-// Errors carry a code the UI translates (err.<code> in i18n.js) and an optional detail.
-function fail(code, detail = '') {
-  const e = new Error(`${code}: ${detail}`);
-  e.code = code;
-  e.detail = detail;
-  return e;
-}
+export { fail };
 
 // ---------- key ----------
 
@@ -192,22 +185,7 @@ export async function partitions() {
   try { return (await consoleGet('/api/map/partitions', 60 * 1000))?.rows ?? []; } catch { return []; }
 }
 
-export async function customLabels() {
-  const v = await store.get(LABEL_STORE).catch(() => null);
-  return v && typeof v === 'object' ? v : {};
-}
-
-export async function saveLabels(labels) {
-  const out = {};
-  for (const [k, raw] of Object.entries(labels ?? {})) {
-    const v = String(raw).trim();
-    if (!/^\d+$/.test(k) || !v) continue;
-    if (!LABEL_PATTERN.test(v)) throw fail('name_invalid', v);
-    out[k] = v;
-  }
-  try { await store.put(LABEL_STORE, out); } catch (e) { throw fail('save_failed', e.message); }
-  return out;
-}
+export { customLabels, saveLabels } from './labels.js';
 
 function cleanLabel(label, mapTitle) {
   let l = String(label ?? '').trim();

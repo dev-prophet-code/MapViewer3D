@@ -87,9 +87,13 @@ export function showConnection(status) {
   const admin = status.admin !== false;
   $('connInfo').textContent = !admin
     ? t(status.share ? 'conn.share' : status.configured ? 'conn.remote' : 'conn.none')
-    : status.stored
+    : status.bridge
+      ? t('conn.bridge')
+      : status.stored
       ? t('conn.info', { server: status.server, fp: status.fingerprint })
       : t('conn.none');
   // Besucher eines öffentlichen Viewers dürfen nichts umstellen
   for (const id of ['connNames', 'connChange', 'connDelete', 'connShare']) $(id).hidden = !admin;
+  // inside the console there is no key to change or delete
+  if (status.bridge) $('connChange').hidden = $('connDelete').hidden = true;
 }

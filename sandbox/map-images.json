@@ -1,0 +1,4 @@
+{
+  "HaggaBasin": { "file": "hagga-basin.png", "bounds": [-456752.21, 354547.46, -450630.14, 353821.95], "flipY": false },
+  "DeepDesert": { "file": "deep-desert.png", "bounds": [-1268450, 1158400, -1261434, 1165416], "flipY": false }
+}

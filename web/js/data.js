@@ -7,6 +7,9 @@
 //   tiles         against the content id in their file name (first 16 hex of SHA-256).
 // A mirror that returns something else is skipped; if none matches the load fails.
 import { CATALOG_SHA256, DATA_MIRRORS } from './config.js';
+import { decodeTile, gunzip, sampleHeightsAt } from './tiles.js';
+
+export { decodeTile };
 
 const CACHE_NAME = 'mapviewer3d-data-v1';
 const MAX_PARALLEL = 8;
@@ -125,30 +128,6 @@ export function loadIndex(name) {
 
 // ---------- tiles ----------
 
-// FORMAT 1 (see tools/tilepack.mjs): gzip( low-byte plane | high-byte plane | materials ),
-// heights delta-coded along rows. Returns heights (uint16) followed by materials (uint8),
-// the layout terrain.js expects.
-async function gunzip(buf) {
-  const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
-}
-
-export async function decodeTile(raw, patchQuads) {
-  const N = patchQuads + 1, NN = N * N;
-  if (raw.length !== 3 * NN) throw new Error('tile has the wrong size');
-  const out = new ArrayBuffer(3 * NN);
-  const h = new Uint16Array(out, 0, NN);
-  for (let j = 0; j < N; j++) {
-    let prev = 0;
-    for (let i = 0; i < N; i++) {
-      prev = (prev + (raw[j * N + i] | (raw[NN + j * N + i] << 8))) & 0xffff;
-      h[j * N + i] = prev;
-    }
-  }
-  new Uint8Array(out, 2 * NN).set(raw.subarray(2 * NN));
-  return out;
-}
-
 let running = 0;
 const waiting = [];
 async function slot() {
@@ -198,38 +177,10 @@ export function getTile(name, l, x, y) {
 
 // ---------- height sampling ----------
 
-// Terrain height (cm) at world position x/y (cm), bilinear; null outside the map or where there is no data.
-// Same maths as the old server (backend/server/terrain.go heightAt).
+// Terrain height (cm) at world positions x/y (cm), bilinear, from the finest tiles; null outside the map or where there is no data.
 export async function sampleHeights(name, pts) {
   const idx = await loadIndex(name);
-  const m = idx.meta, Q = idx.patchQuads, N = Q + 1;
-  const unit = (m.maxZ - m.minZ) / 65534;
-  const byTile = new Map();
-  const out = new Array(pts.length).fill(null);
-  pts.forEach((p, k) => {
-    const fx = (p[0] - m.originX) / m.spacing, fy = (p[1] - m.originY) / m.spacing;
-    if (!(fx >= 0 && fy >= 0 && fx <= m.width - 1 && fy <= m.height - 1)) return;
-    const i = Math.floor(fx), j = Math.floor(fy);
-    const tx = Math.floor(i / Q), ty = Math.floor(j / Q);
-    const key = `${tx},${ty}`;
-    if (!byTile.has(key)) byTile.set(key, { tx, ty, items: [] });
-    byTile.get(key).items.push({ k, fx, fy, i, j });
-  });
-  await Promise.all([...byTile.values()].map(async ({ tx, ty, items }) => {
-    const buf = await getTile(name, 0, tx, ty);
-    const h = new Uint16Array(buf, 0, N * N);
-    for (const { k, fx, fy, i, j } of items) {
-      const i1 = Math.min(i + 1, m.width - 1), j1 = Math.min(j + 1, m.height - 1);
-      const u = fx - i, v = fy - j;
-      let sum = 0, wsum = 0;
-      for (const [cx, cy, w] of [[i, j, (1 - u) * (1 - v)], [i1, j, u * (1 - v)], [i, j1, (1 - u) * v], [i1, j1, u * v]]) {
-        const hv = h[(cy - ty * Q) * N + (cx - tx * Q)];
-        if (hv !== 0 && w > 0) { sum += w * (m.minZ + (hv - 1) * unit); wsum += w; }
-      }
-      if (wsum > 0) out[k] = Math.round(sum / wsum);
-    }
-  }));
-  return out;
+  return sampleHeightsAt(idx, pts, 0, (l, x, y) => getTile(name, l, x, y));
 }
 
 // ---------- building models ----------

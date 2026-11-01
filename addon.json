@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "mapviewer3d",
   "name": "MapViewer3D",
-  "description": "Live 3D map of Hagga Basin and Deep Desert with players, bases, vehicles, hazards and resources, embedded in the console. Nothing to install on the server: terrain and models stream from GitHub, live data comes from the console API with a key you create (maps: Read, bases: Read; optionally Realtime Data: Read for live sandworms, enemies, vehicles and storms). Optional share links let players without a console account view the map (needs the MapViewer3D share gateway on the server).",
+  "description": "Live 3D map of Hagga Basin and Deep Desert with players, bases (as 3D buildings), vehicles, caves, hazards and resources, inside the console. Nothing to install or enter: it reads the game database through the addon bridge (permission database:read, read only) and carries its terrain in the page, so it works in the console's sandbox without network access. Optional share links for players without a console account come from the MapViewer3D share gateway.",
   "author": "LaFamilia-Gaming.eu",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "type": "ui",
   "entry": {
     "navigation": "3D Map",
@@ -13,6 +13,9 @@
   "permissions": {
     "files": [
       "addon-data"
+    ],
+    "database": [
+      "read"
     ]
   }
 }

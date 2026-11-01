@@ -167,6 +167,7 @@ export class Terrain {
     this.lodColors = false;
     this.detail = 3;
     this.meta = null;
+    this.minLevel = 0; // the finest level the data has (0 when streamed; coarser when the tiles are embedded in the package)
     this.nodes = new Map();
     this.queue = new Set();
     this.inflight = 0;
@@ -207,6 +208,7 @@ export class Terrain {
     this.drawn = [];
     this.loaded = 0;
     this.meta = meta;
+    this.minLevel = meta.minLevel ?? 0;
     this.uniforms.uMinH.value = meta.minZ / 100;
     this.uniforms.uMaxH.value = meta.maxZ / 100;
     this.uniforms.uFogDensity.value = 0.35 / this.extent;
@@ -390,7 +392,7 @@ export class Terrain {
     n.used = this.frame;
     if (n.state === 'empty' || !this._frustum.intersectsBox(this.nodeBox(n))) return;
     const d = this._box.distanceToPoint(camera.position);
-    if (n.l > 0 && d < this.detail * n.size) {
+    if (n.l > this.minLevel && d < this.detail * n.size) {
       const cs = this.children(n);
       let ready = true;
       for (const c of cs) {
@@ -428,7 +430,7 @@ export class Terrain {
     let best = null;
     for (;;) {
       if (n.state === 'ready') best = n;
-      if (n.l === 0) break;
+      if (n.l <= this.minLevel) break;
       const half = n.size / 2;
       const i = x >= n.x0 + half ? 1 : 0, j = z >= n.z0 + half ? 1 : 0;
       const c = this.nodes.get(`${n.l - 1}/${n.x * 2 + i}/${n.y * 2 + j}`);

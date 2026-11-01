@@ -20,7 +20,7 @@ let n = 0;
 async function load(pathname) {
   const dir = path.join(tmp, `v${n++}`);
   fs.mkdirSync(dir, { recursive: true });
-  for (const f of ['console.js', 'store.js', 'config.js', 'realtime.js']) fs.copyFileSync(path.join(root, 'web', 'js', f), path.join(dir, f));
+  for (const f of ['console.js', 'store.js', 'config.js', 'errors.js', 'labels.js', 'realtime.js']) fs.copyFileSync(path.join(root, 'web', 'js', f), path.join(dir, f));
   const calls = [];
   Object.assign(globalThis, {
     window: { parent: null }, localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} },

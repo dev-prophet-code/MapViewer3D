@@ -1,156 +1,124 @@
 # MapViewer3D – Dune Docker Console Addon
 
-Adds a **3D Map** page to Dune Docker Console: Hagga Basin and Deep Desert in 3D with live players, bases (as real
-3D buildings), vehicles, hazards and resources – and, when the console offers it, **Realtime Data**: live sandworms,
-enemies, civilians, vehicles and sandstorms (since 0.3.0).
+Adds a **3D Map** page to Dune Docker Console: Hagga Basin and Deep Desert in 3D with live players, bases (as real 3D
+buildings), vehicles, caves, hazards, resources and the Coriolis layout of the week.
 
-**Nothing to install on the server.** Install the addon, open it, enter an API key, done. There is no container, no
-installer, no extra port, no password and no reverse proxy: the whole viewer runs in your browser inside the addon page.
-Everything is read-only; nothing is written to the game or the database.
+**Nothing to install on the server, nothing to enter.** Install the addon, approve its two permissions, open it. There is
+no container, no port, no API key and no reverse proxy. Everything is read-only.
+
+## Version 0.5.0: built for the Console's sandbox
+
+The Console runs every addon in a locked-down frame (`sandbox="allow-scripts"`, a Content-Security-Policy with
+`connect-src 'none'`, an opaque origin): an addon page can load no second file and make no network request; the only way out is
+the **addon bridge** (`window.DuneAddon.request`) that the Console itself answers with the permissions you approved. Versions up
+to 0.4.x streamed their data from GitHub and called the Console's REST API with an API key, which that sandbox does not allow
+(Red-Blink's review of the catalog entry pointed this out). 0.5.0 works the way the sandbox intends:
+
+- **One self-contained page.** `web/index.html` holds the viewer (three.js included), the style and the map data. Nothing is
+  loaded from anywhere (`scripts/verify-package.sh` fails the build otherwise).
+- **Game data through the bridge.** Players, vehicles, bases, storage and markers are read from the game database with the
+  bridge action `database.query` (read-only, permission **`database:read`**, which you approve when you install the addon; the
+  Console runs the query in a read-only transaction and refuses write statements). The addon never sees a password or a key.
+  It asks for one combined snapshot every few seconds, stays far below the bridge's limit of 60 calls a minute, and keeps the
+  last good picture if the database does not answer.
+- **Terrain in the package.** The 50 MiB limit for addon packages does not allow the finest terrain tiles, so the package
+  carries the coarser levels (about 4 m between height samples on Hagga Basin instead of 1 m) from the same verified data
+  release (`tools/embed-data.mjs` checks every tile against the pinned catalog while it builds).
+- **Marker images** are those of the Console's own Live Map (Red-Blink/dune-awakening-selfhost-docker, MIT licence).
+
+What the sandbox does not allow, and therefore this edition does not have:
+
+| Missing in the Console | Why | Where to get it |
+|---|---|---|
+| **Realtime Data** (live sandworms, enemies, civilians, sandstorms) | needs a streaming network connection | the standalone viewer on your PC, branch [`main`](https://github.com/dev-prophet-code/MapViewer3D) / position agent in branch `ddp` |
+| Spice fields | not in the database | standalone viewer |
+| Share links from inside the addon | needs network access to the share gateway | the gateway's own page, below |
+
+### Permissions
+
+| Permission | Used for |
+|---|---|
+| `database:read` | the game database, read only, through the bridge: positions of players, vehicles, bases, storage, map markers |
+| `files:addon-data` | the instance names you may choose (stored in the Console's addon storage; no secret is ever stored) |
 
 ## Use
 
-1. In the console open **Settings → API Keys** and create a key (see below). The key is shown only once.
-2. Install **MapViewer3D** on the **Addons** page and approve its single permission (`files:addon-data`, used only for the instance names you may choose and to remove a key an older version left behind).
-3. Open **3D Map**. Paste the key (`dak_…`) when asked. The addon checks it against the console (both scopes) and keeps it **in the memory of the page only**: it is never saved, so you enter it again each time you open the addon (your browser's password manager can fill it in).
-4. Done. Terrain and building models stream from GitHub on first use and are cached by your browser.
+1. On the Console's **Addons** page install **MapViewer3D** and approve both permissions.
+2. Open **3D Map**. The map appears; the side panel lists players and layers.
+3. *Name instances* gives your server instances (PvE, PvP, …) names; *Share link …* explains where to create links.
 
-### The API key
+## Share links for your players (optional)
 
-| Field | Value |
-|---|---|
-| Name | `MapViewer3D` (any name) |
-| Scope **`maps`** | **Read**: map list, live players, vehicles, storage, locations, hazards, resources, spice |
-| Scope **`bases`** | **Read**: the pieces of each base, shown as 3D buildings |
-| **All other scopes** | **None** |
-| Expiry | none, or a date you will remember: an expired key stops the map |
-
-Choose **Read**, never *Read+write*. Revoke or rotate the key any time under *Settings → API Keys*; use **Change** in the
-addon's side panel to enter the new one.
-
-### Realtime Data (optional, since 0.3.0)
-
-Sandworms, enemies, civilians/traders, vehicles and sandstorms are not in the console's database, only in the memory of the
-game servers. The MapViewer3D position agent ([branch `ddp`](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp)) reads
-them, and a console with the **Realtime Data** permission (built into Dune Docker since **v1.4.50**) passes them on at `/api/realtime/*`. To use it:
-
-- on the server, run the agent from branch `ddp` (the console side needs Dune Docker v1.4.50 or newer),
-- give the key one more scope: **Realtime Data → Read** (**None** for everything else stays as it is).
-
-The addon checks this itself when it starts (and again every 10 minutes): if the console does not answer, or the key lacks the
-scope, the five live switches (*Sandworms*, *Sandstorms*, *Enemies*, *Civilians & traders*, *Vehicles (live)*) are simply **not
-shown** and nothing is reported. If the key is disabled, expires or is revoked while the stream is open, the addon stops for good.
-Player positions are not part of this in the addon (the standalone viewer matches them to the console's players); the players
-layer keeps coming from `/api/map/players`.
-
-**Transport.** Like every other call of this page, Realtime Data travels over whatever connection the console page itself uses.
-A browser cannot pin certificates, so the addon cannot make a plain-HTTP console encrypted: on plain HTTP it says so in the live
-status. Open the console via HTTPS (reverse proxy, or the encrypted front door of the MapViewer3D stack in *full console* mode)
-to encrypt the key and the positions. The standalone viewer (a program on your PC) additionally detects that front door
-and offers to use it.
-
-## Share links for your players (optional, since 0.4.0)
-
-The addon can create **links to the 3D map** that you give to players who have no console account. They open the map in a
-browser; no API key, no login. Press **Share link …** in the side panel, choose how long the link is valid (1 hour to any
-own duration) **or create a link without expiry with one click**, and choose what it shows (Realtime Data, bases as 3D
-buildings, player positions and names; players are off by default). Links can be revoked at any time, which also cuts open
-sessions.
-
-A browser page inside the console cannot serve the public, so links come from the small **share gateway** of the
-[MapViewer3D stack](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp) (`SHARE.md` there) that runs next to your console:
-
-- a link is a **random 256-bit token**; the gateway keeps only its hash, so links can be neither guessed nor forged,
-- visitors never get an API key: the gateway uses **one read-only key of its own** for a short list of `GET` routes and
-  rebuilds every answer from allowed fields (no account ids, no storage contents, no settings files),
-- the Console's login, settings, write and admin routes are not reachable through a link, and managing links needs a
-  Console API key that the Console itself accepts **and that holds `Addons: Read`** (the key you already entered in the addon,
-  plus that one read-only scope, which keeps bots and monitoring keys from publishing or deleting links; a key can only create
-  links that offer what it can read itself).
-
-The addon sends your API key only to the gateway, never stores it (like before); only the gateway's public address is
-remembered (with the instance names); because every user of the addon can change that stored address, it is shown to you and has to be confirmed before the key is sent to it for the first time in a session. Before the key is sent to an address that was only guessed (the console's own address, port 8798 of its host), the addon asks that address who it is **without any credential**; only a share gateway gets the key. Without a gateway the addon works exactly as before; the button just finds nothing to connect to.
-
-## Realtime Data status
-
-The connection panel tells you whether **your API key gets Realtime Data** and, if not, why: the key lacks the scope
-*Realtime Data: Read*, the console has no Realtime Data, or the position agent does not answer. The live switches appear
-only when it is available (as in 0.3.x).
+Links to the 3D map for players without a console account are made on the **admin page of the share gateway** (service
+`mvshare` of the [MapViewer3D stack](https://github.com/dev-prophet-code/MapViewer3D/tree/ddp), `SHARE.md` there): open
+`https://<your gateway>/admin/`, enter an API key that holds `Addons: Read`, choose the duration (or no expiry) and what the
+link shows, and copy the link. Visitors open `https://<your gateway>/s/<token>/` with no key and no login. A link is a random
+256-bit token, only its hash is stored, links can be revoked at any time (which cuts open sessions), and the gateway answers
+visitors only from a short allow list of read-only routes with cleaned data. The addon's own **Share link …** button now just
+points to that page, because the sandboxed addon has no network access.
 
 ## How it works
 
 ```
-Browser (addon page inside the console)
-  ├── live data ── GET /api/map/..., /api/bases/... ── same console, Authorization: Bearer <your key>
-  └── terrain, building models ── GET raw.githubusercontent.com / cdn.jsdelivr.net ── branch "cdn", tag data-vN
+Console page (signed-in administrator)
+  └── <iframe sandbox="allow-scripts">   MapViewer3D, one page, no network
+        └── postMessage  database.query / addon.storage.*     ← the only way out
 ```
 
-- **Live data** comes from the console's own API, with the API key and nothing else. Requests are `GET` only and are sent with
-  `credentials: "omit"`, so the browser never attaches the logged-in admin's session. The addon has exactly the rights of that
-  key (`maps: Read`, `bases: Read`, and optionally `Realtime Data: Read`). Realtime Data is read as a stream with `fetch` (an
-  `EventSource` cannot send the key header) in `web/js/realtime.js`, which does in the browser what the standalone viewer's server
-  does: one shared connection, each map layer gets only its map and instance. `tests/harness.mjs` is a mock console that records every request lacking the key or
-  carrying a session cookie, so this can be checked in a real browser.
-- **Terrain and models** are static data in branch [`cdn`](https://github.com/dev-prophet-code/MapViewer3D/tree/cdn) of this
-  repository (terrain tiles for Hagga Basin and the Deep Desert layouts, building models). The addon is pinned to a tag
-  (`data-v2`) and **verifies every file**: the SHA-256 of `catalog.json` is built into the addon, the catalog lists the
-  SHA-256 of each map index and model, and the index lists the full SHA-256 of every terrain tile and the catalog that of every model, all compared in full (`data-v1`, which listed only 64 bits of each digest, is still accepted by prefix). A mirror that
-  delivers anything else is skipped. Two mirrors are tried (raw.githubusercontent.com, then jsDelivr).
-- **Deep Desert follows the Coriolis cycle.** The console reports the current layout; the addon shows the terrain generated
-  for that layout. A layout that is not in the data release yet falls back to the plain dune template and the panel says so
-  until a new data release is published (see `tools/README.md`).
-- **The API key is never stored.** The console isolates addon storage per addon, not per signed-in user, so anything in
-  `addon.storage` could be read by every user who can reach the addon bridge. The key therefore lives in the memory of the
-  page only: not in `addon.storage`, not in `localStorage` / `sessionStorage` / IndexedDB / the Cache API, and it is sent
-  nowhere but this console. Opening the page directly (outside the normal addon bridge flow) persists nothing either.
-  Switching the language does not reload the page, so the key survives it; closing or reloading the page forgets it.
-  `addon.storage` keeps only the instance names you choose. Version 0.2.1 deletes a key that 0.2.0 left in the shared
-  storage; if you used 0.2.0, revoke that API key in the console and create a new one.
-
-## Security
-
-- **Least privilege:** the key only needs `maps: Read` and `bases: Read`; the addon asks for the single console permission
-  `files:addon-data` and nothing else (no database, no players, no rewards). It is used for the instance names, not for the key.
-- **No session, no write:** only the key is used, only `GET`, never the admin's session cookie.
-- **Verified data:** hash chain from the addon package to every downloaded tile (see above). A corrupted or tampered file is
-  refused, not rendered. `tests/unit.mjs` covers tampered tiles, a tampered catalog and the checksum fallback.
-- **No code from a CDN:** the data files are not code. Scripts (three.js and the viewer) are part of the addon package
-  (`web/vendor`, versions in `web/vendor/README.md`).
-- **Network use:** the addon page contacts this console, `raw.githubusercontent.com` and `cdn.jsdelivr.net`, and nothing else.
-  Requests to GitHub carry no cookies and no referrer.
-- **No server component** for the viewer itself: there is no listening port, no container, no stored password, no installer. Only the optional share links need the share gateway of the MapViewer3D stack; the addon never stores the key it sends there.
-
-Found a problem? See the viewer's [SECURITY.md](https://github.com/dev-prophet-code/MapViewer3D/blob/main/SECURITY.md).
-
-## Upgrading from 0.1.x
-
-0.1.x ran a companion container (`runtime/mapviewer3d`). It is no longer used. Update the addon in the console, then remove the
-old container and files on the server:
-
-```bash
-docker compose -f runtime/mapviewer3d/docker-compose.yml down
-rm -rf runtime/mapviewer3d
-```
-
-Close TCP port `8795` again if you had opened it for other computers. Then create (or reuse) an API key and enter it in the addon.
-
-## Files
+`sandbox/` holds what differs from the standalone viewer:
 
 | Path | Purpose |
 |---|---|
-| `addon.json` | Addon manifest (permission `files:addon-data`) |
-| `web/` | The viewer (three.js scene, live layer) and its browser backend: `js/api.js` facade, `js/data.js` verified terrain streaming, `js/console.js` console client with the API key, `js/realtime.js` Realtime Data stream, `js/store.js` private storage |
-| `tools/tilepack.mjs`, `tools/pin-data.mjs` | Cut extracted terrain into the streaming format; pin a data release into the addon. See `tools/README.md` |
-| `tests/unit.mjs` | Data-path tests (tile generator → loader, checksums, tamper checks) |
-| `tests/realtime.mjs` | Realtime Data: per-map filtering, no players, key on every call, revoked key ends the stream, hidden when not offered |
-| `tests/share.mjs`, `tests/share-visitor.mjs` | Share dialog helpers (gateway address, durations); the key goes only to an address that identified itself as the gateway; a visitor's page sends no key and only calls its own link path |
-| `tests/console-cache.mjs`, `tests/pin-data.mjs`, `tests/verify-package.mjs` | The console cache keeps good data over a transient error; the data pinning tool really pins (and fails when it cannot); the package checks catch storage APIs outside their files, unreviewed scripts and dynamic code |
-| `tests/harness.mjs` | Mock console for trying the addon in a browser without a server (`REALTIME=1` adds Realtime Data) |
-| `scripts/validate.js`, `scripts/package.sh`, `scripts/verify-package.sh` | Validation and release packaging |
+| `sandbox/bridge.js` | the bridge client (`window.DuneAddon.request`) |
+| `sandbox/sql.js` | the SQL for the snapshot, partitions, markers and base export, and the code that shapes rows into what the viewer draws; no write, no comment, no account id selected |
+| `sandbox/live-data.js` | the REST-shaped answers the viewer reads, produced from those queries: one shared query, spaced calls (at most 50 a minute), last good data kept |
+| `sandbox/api.js`, `sandbox/data-embedded.js`, `sandbox/embedded.js` | the viewer's backend on top of that and on top of the data inside the page |
+| `sandbox/realtime-off.js`, `sandbox/share-panel.js`, `sandbox/iconsrc.js` | stand-ins for the parts that need a network |
+| `scripts/build-sandbox.mjs`, `tools/embed-data.mjs` | build the single page (esbuild) with the verified map data inside |
+
+The viewer itself (`web/`) is shared with the standalone viewer and with the page the share gateway serves to visitors;
+those still work with an API key (`web/js/console.js`, `web/js/realtime.js`, `web/js/data.js`) and are not part of the Console package.
+
+## Build and test
+
+```bash
+npm ci
+git clone --depth 1 --branch data-v2 https://github.com/dev-prophet-code/MapViewer3D.git data        # the pinned data release
+git clone https://github.com/Red-Blink/dune-awakening-selfhost-docker.git console                       # marker images, test console
+git -C console checkout "$(cat tests/e2e/console-ref.txt)"
+bash scripts/package.sh data console                       # dist/mapviewer3d-<version>.zip, checked
+node tests/run-all.mjs                                     # unit tests
+node tests/e2e/run.mjs --pkg dist/package --console console
+```
+
+`tests/e2e/run.mjs` runs the **real Console** (its own server in mock mode with login, the iframe sandbox, the CSP and the
+protected addon routes) against a PostgreSQL-compatible fixture of the game database (`tests/fixtures/`, PGlite), installs the
+built package, signs in with a browser and checks: the protected route and CSP, the sandbox attribute, initial rendering,
+terrain loading from the embedded data, live data through `database.query` (and that a write statement is refused), the share
+dialog, and that no CSP violation or blocked request occurs.
+
+## Security
+
+- **Least privilege:** `database:read` (read-only, enforced by the Console) and `files:addon-data` (instance names). No
+  write, no players/rewards/server permissions.
+- **No credential in the page:** there is no API key; the Console authenticates the bridge with the administrator's own session.
+- **No network:** the page cannot make a request, so it cannot send data anywhere; the sent SQL contains no comments, validates
+  every value and selects no account or platform ids.
+- **Checked package:** `scripts/verify-package.sh` (exactly three files, no external reference, valid script, valid data,
+  exact permissions) runs in CI and again against the published release asset.
+- **Verified data:** `tools/embed-data.mjs` verifies the catalog, every map index and every tile and model against the pinned
+  hashes before it packs them.
+
+Found a problem? See the viewer's [SECURITY.md](https://github.com/dev-prophet-code/MapViewer3D/blob/main/SECURITY.md).
+
+## Upgrading
+
+From 0.4.x: update on the Addons page and approve `database:read`. Realtime Data and in-addon share links are gone from the
+Console edition (see above); existing links keep working. Before 0.2: remove the old companion container
+(`docker compose -f runtime/mapviewer3d/docker-compose.yml down; rm -rf runtime/mapviewer3d`).
 
 ## Source of the data
 
 The terrain is generated from the game files with the `extract` tool of the viewer on the [`main` branch](https://github.com/dev-prophet-code/MapViewer3D)
-and cut into tiles by `tools/tilepack.mjs`. The branch `cdn` contains only the result.
-
-MIT licensed. Unofficial fan project, not affiliated with Funcom.
+and cut into tiles by `tools/tilepack.mjs`; the tag `data-v2` contains only the result. MIT licensed. Unofficial fan project,
+not affiliated with Funcom.

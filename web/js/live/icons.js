@@ -7,10 +7,10 @@
 // Für Gefahren hat die Console keine Bilder; sie werden hier im gleichen Stil
 // (dunkle Scheibe, farbiger Ring, helles Zeichen) gezeichnet.
 import * as THREE from 'three';
-import { apiUrl } from '../config.js';
+import { iconSource } from '../iconsrc.js';
 
 // Marker images are public files of the console UI, the same ones its own live map uses.
-export const iconUrl = (file) => apiUrl(`/images/maps/${file}`);
+export const iconUrl = iconSource;
 
 // Untertyp (klein geschrieben) → Datei, wie im Stylesheet der Console
 // (.live-map-marker.subtype-<untertyp>)
