@@ -1,0 +1,20 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [mva-v2]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: node scripts/build.mjs && git diff --exit-code   # gebaute Dateien sind aktuell
+      - run: node addon/scripts/validate.mjs
+      - run: node --test addon/test/addon.test.mjs
+      - run: node --test companion/test/companion.test.mjs
+      - run: node companion/test/pentest.mjs
+      - run: bash addon/scripts/package.sh

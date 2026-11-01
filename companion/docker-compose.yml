@@ -1,0 +1,14 @@
+# Start:  cp .env.example .env  (Werte eintragen)  &&  docker compose up -d --build
+services:
+  mapviewer3d:
+    build: { context: .., dockerfile: companion/Dockerfile }
+    image: mapviewer3d-companion:2
+    env_file: .env
+    # Nur lokal erreichbar. Für den Zugriff von außen einen TLS-Reverse-Proxy davor setzen (siehe docs/SECURITY.md).
+    ports: ["127.0.0.1:8799:8799"]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 512m
