@@ -40,7 +40,7 @@ export function createApp(cfg, { log = () => {}, version = '0.0.0', publicDir } 
     res.writeHead(status, { 'Content-Type': type, 'Content-Length': buf.length, 'Cache-Control': 'no-store', ...HEADERS, ...extra });
     res.end(buf);
   }
-  const fail = (res, status, msg) => send(res, status, { error: msg });
+  const fail = (res, status, msg, code) => send(res, status, code ? { error: msg, code } : { error: msg });
 
   function hostOk(req) {
     const h = String(req.headers.host || '').toLowerCase();
@@ -68,16 +68,17 @@ export function createApp(cfg, { log = () => {}, version = '0.0.0', publicDir } 
 
   // Prüft Token und Realtime: Realtime verfügbar -> "realtime", sonst "fallback" über die regulären Karten-Routen.
   async function probe(token) {
-    let h; try { h = await consoleApi.get(token, '/api/realtime/healthz'); } catch { return { error: 502, msg: 'Console nicht erreichbar' }; }
-    if (h.status === 401) return { error: 401, msg: 'Token ungültig, deaktiviert oder abgelaufen' };
+    let h; try { h = await consoleApi.get(token, '/api/realtime/healthz'); } catch { return { error: 502, msg: 'Console nicht erreichbar', code: 'console_down' }; }
+    if (h.status === 401) return { error: 401, msg: 'Token ungültig, deaktiviert oder abgelaufen', code: 'token_invalid' };
     if (h.status === 200 && h.json && h.json.available) return { mode: 'realtime', sources: (h.json.sources || []).slice(0, 20).map((s) => ({ map: str(s.map), ready: !!s.ready, n: num(s.n) })) };
-    const reason = h.status === 403 ? 'Dem Token fehlt „Realtime Data: Read“' : h.status === 503 ? 'Der Position-Agent (mvagent) läuft nicht' : 'Realtime Data ist nicht verfügbar';
-    let p; try { p = await consoleApi.get(token, '/api/map/partitions'); } catch { return { error: 502, msg: 'Console nicht erreichbar' }; }
-    if (p.status === 401) return { error: 401, msg: 'Token ungültig, deaktiviert oder abgelaufen' };
-    if (p.status === 200) return { mode: 'fallback', reason, sources: [] };
-    return { error: 403, msg: 'Dem Token fehlt „Maps: Read“' };
+    const reasonCode = h.status === 403 ? 'no_scope' : h.status === 503 ? 'agent_off' : 'unavailable';
+    const reason = { no_scope: 'Dem Token fehlt „Realtime Data: Read“', agent_off: 'Der Position-Agent (mvagent) läuft nicht', unavailable: 'Realtime Data ist nicht verfügbar' }[reasonCode];
+    let p; try { p = await consoleApi.get(token, '/api/map/partitions'); } catch { return { error: 502, msg: 'Console nicht erreichbar', code: 'console_down' }; }
+    if (p.status === 401) return { error: 401, msg: 'Token ungültig, deaktiviert oder abgelaufen', code: 'token_invalid' };
+    if (p.status === 200) return { mode: 'fallback', reason, reasonCode, sources: [] };
+    return { error: 403, msg: 'Dem Token fehlt „Maps: Read“', code: 'no_maps' };
   }
-  const sessionView = (s) => ({ mode: s.mode, reason: s.reason || '', sources: s.sources || [] });
+  const sessionView = (s) => ({ mode: s.mode, reason: s.reason || '', reasonCode: s.reasonCode || '', sources: s.sources || [] });
 
   async function staticData(s) {
     const hit = s.cache.get('static'); if (hit && hit.t > Date.now() - 4000) return hit.v;
@@ -107,15 +108,15 @@ export function createApp(cfg, { log = () => {}, version = '0.0.0', publicDir } 
     if (p === '/api/login') {
       if (req.method !== 'POST') return fail(res, 405, 'POST erforderlich');
       if (!csrfOk(req)) return fail(res, 403, 'Anfrage abgelehnt');
-      if (guard.isBlocked(ip)) return fail(res, 429, 'Zu viele Fehlversuche. Später erneut versuchen.');
+      if (guard.isBlocked(ip)) return fail(res, 429, 'Zu viele Fehlversuche. Später erneut versuchen.', 'too_many');
       const body = await readJson(req);
       const token = body && typeof body.token === 'string' ? body.token.trim() : '';
-      if (!TOKEN_RE.test(token)) { guard.fail(ip); return fail(res, 400, 'Token-Format ungültig (erwartet dak_…)'); }
+      if (!TOKEN_RE.test(token)) { guard.fail(ip); return fail(res, 400, 'Token-Format ungültig (erwartet dak_…)', 'token_format'); }
       const r = await probe(token);
-      if (r.error) { if (r.error === 401) guard.fail(ip); return fail(res, r.error, r.msg); }
+      if (r.error) { if (r.error === 401) guard.fail(ip); return fail(res, r.error, r.msg, r.code); }
       guard.ok(ip);
       const sid = sessions.create(token, r.mode, ip); if (!sid) return fail(res, 503, 'Zu viele aktive Sitzungen');
-      const s = sessions.get(sid); s.reason = r.reason; s.sources = r.sources;
+      const s = sessions.get(sid); s.reason = r.reason; s.reasonCode = r.reasonCode; s.sources = r.sources;
       const cookie = `${COOKIE}=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(cfg.sessionTtlMs / 1000)}${isTls(req) ? '; Secure' : ''}`;
       return send(res, 200, sessionView(s), 'application/json', { 'Set-Cookie': cookie });
     }
@@ -135,8 +136,8 @@ export function createApp(cfg, { log = () => {}, version = '0.0.0', publicDir } 
       if (req.method !== 'POST') return fail(res, 405, 'POST erforderlich');
       if (!csrfOk(req)) return fail(res, 403, 'Anfrage abgelehnt');
       const r = await probe(s.token);
-      if (r.error) { if (r.error === 401) sessions.end(sid); return fail(res, r.error, r.msg); }
-      s.mode = r.mode; s.reason = r.reason; s.sources = r.sources;
+      if (r.error) { if (r.error === 401) sessions.end(sid); return fail(res, r.error, r.msg, r.code); }
+      s.mode = r.mode; s.reason = r.reason; s.reasonCode = r.reasonCode; s.sources = r.sources;
       return send(res, 200, sessionView(s));
     }
     if (req.method === 'POST') return fail(res, 405, 'Methode nicht erlaubt');

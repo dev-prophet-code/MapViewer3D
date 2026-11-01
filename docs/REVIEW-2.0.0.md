@@ -54,3 +54,21 @@ Zusätzlich in `companion.test.mjs` (20 Tests): Hash-Prüfung von Kacheln, Karte
 ## 3. Secret-Scan
 
 Vor dem Push durchsucht: gesamter Arbeitsbaum und alle zu pushenden Commits nach GitHub-Token-Mustern, `dak_…`-Schlüsseln, Server-IP-Adressen, `.env`-/Schlüsseldateien. Treffer: nur Test-Platzhalter (`dak_` + Wiederholzeichen) und Mustertexte der Prüfskripte. Keine echten Zugangsdaten, keine Server-Adressen. Die Dateien `.env` sind per `.gitignore` ausgeschlossen.
+
+## 4. Nachtrag: Umbau der Oberfläche (Aufbau nach dem MapViewer3D-Addon, Token-Abfrage zuerst)
+
+Zweites Code-Review (High) über `viewer/` und `scripts/`, danach erneuter Pentest (57 Angriffe, 0 durchgekommen) und 26 Tests (22 Companion, 4 Addon), alle grün.
+
+| # | Datei | Fund | Schwere | Status |
+|---|---|---|---|---|
+| 1 | `viewer/addon-app.js` | Start wartete bis zu 30 s auf `addon.storage.get` (leere Seite) | Mittel | behoben (nicht blockierend) |
+| 2 | `viewer/addon-app.js` | Startdialog nicht schließbar, wenn Speichern scheitert; Schreiben bei jedem Start | Mittel | behoben |
+| 3 | `viewer/shell.js` | Realtime-Ebenen blieben nach „Erneut prüfen“ ausgeblendet | Mittel | behoben (Zustand wird gemerkt) |
+| 4 | `viewer/addon-app.js`, `companion-app.js` | Abfragen überlappten bei langsamer Console (Limit 60/min der Brücke) | Mittel | behoben |
+| 5 | `companion/lib/server.mjs` | Fehlermeldungen nur deutsch | Niedrig | behoben (Codes, Übersetzung im Client) |
+| 6 | `viewer/*` | Cursor-Anzeige in jedem Frame, doppelt vorhanden | Niedrig | behoben (`UI.followCursor`) |
+| 7 | `viewer/addon-app.js` | eigener Schalter statt gemeinsamer Komponente, toter Text | Niedrig | behoben (`UI.toggle`) |
+| 8 | `scripts/build.mjs` | Platzhalter nacheinander im wachsenden Text ersetzt | Niedrig | behoben (ein Durchlauf) |
+| 9 | Tests | Reihenfolge „Token-Abfrage zuerst“ ungeprüft | Niedrig | behoben (Test) |
+
+**Hinweis zur Token-Abfrage:** Im Companion ist die Token-Abfrage der erste Bildschirm; vorher lädt weder Karte noch Kachel (der Server liefert ohne Sitzung 401). Im Addon kann ein Token nicht verwendet werden, weil die Console die Addon-Seite mit `connect-src 'none'` ausliefert; der erste Bildschirm fragt dort stattdessen die Adresse des Companion ab und erklärt das.

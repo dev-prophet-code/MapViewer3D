@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de" data-addon-id="mapviewer3d-v2">
+<html lang="en" data-addon-id="mapviewer3d-v2">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -7,29 +7,11 @@
 <style>__CSS__</style>
 </head>
 <body>
-<header>
-  <span>🏜️ <b class="acc">MapViewer 3D</b> <span class="badge">v__VERSION__</span> <span class="badge warn" id="modeBadge">Console-Modus</span></span>
-  <span class="grow"><select id="map" class="auto"><option value="hagga">Hagga Basin</option><option value="deep">Deep Desert</option></select></span>
-</header>
-<div class="wrap">
-<aside>
-  <h3>Status</h3><div id="checks"></div>
-  <h3>Ebenen</h3><div id="layers"></div>
-  <h3>Gelände</h3>
-  <label class="l"><input type="checkbox" id="hq"> Feineres Raster (langsamer)</label>
-  <label class="l"><input type="checkbox" id="contours"> Höhenlinien</label>
-  <label class="l"><input type="checkbox" id="grid"> 1-km-Raster</label>
-  <h3>Voller Viewer (Companion)</h3>
-  <div class="note">Echtzeit (Sandwürmer, Gegner), volles 1-m-Gelände und Token-Anmeldung laufen im Companion, weil die Console-Sandbox keine Netzwerkzugriffe erlaubt. Adresse einmalig eintragen:</div>
-  <input type="text" id="cUrl" placeholder="https://mapviewer.example.org" autocomplete="off" spellcheck="false">
-  <button class="btn" id="cSave">Speichern</button>
-  <div class="note" id="cMsg"></div>
-</aside>
-<div id="stage"><canvas id="c"></canvas><div id="tip">Maus: Drehen · Rechtsklick: Verschieben · Rad: Zoom</div><div id="hud"></div></div>
-</div>
+__BODY__
 <script>__THREE__</script>
 <script>__ORBIT__</script>
 <script>__CORE__</script>
+<script>__SHELL__</script>
 <script type="application/json" id="t-hagga">__TERRAIN_HAGGA__</script>
 <script type="application/json" id="t-deep">__TERRAIN_DEEP__</script>
 <script>

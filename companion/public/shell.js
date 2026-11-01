@@ -1,0 +1,138 @@
+// MapViewer 3D v2 - gemeinsame Oberfläche (Bedienfeld, Ebenenliste, Spielerliste, Dialoge, Sprache, Hell/Dunkel).
+// Klassisches Skript, ohne HTML-Einfügen aus Strings: alle Texte (auch Spielernamen) werden als Text eingefügt.
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const UI = (globalThis.UI = {});
+  const S = { en: {}, de: {} };
+  let lang = /^de/i.test(navigator.language || '') ? 'de' : 'en';
+  const hooks = [];
+
+  UI.add = (d) => { Object.assign(S.en, d.en || {}); Object.assign(S.de, d.de || {}); };
+  UI.t = (k, ...a) => { let s = S[lang][k] ?? S.en[k] ?? k; a.forEach((v, i) => { s = s.split('{' + i + '}').join(String(v)); }); return s; };
+  UI.onLang = (f) => hooks.push(f);
+
+  UI.add({
+    en: {
+      language: 'Language', map: 'Map', 'jump.title': 'Jump to', online: 'online', 'live.title': 'Live map', 'layers.all': 'Show all', 'layers.none': 'Hide all',
+      'conn.title': 'Connection', 'help.open': 'Camera controls & guide', 'help.title': 'Controls', close: 'Close', cancel: 'Cancel',
+      'hud.panel': 'Show or hide the panel', 'hud.fullscreen': 'Fullscreen', 'players.none': 'Nobody online',
+      'help.1': 'Left mouse: orbit. Right mouse or Shift + left mouse: pan. Mouse wheel: zoom. Touch: one finger orbits, two fingers pan and zoom.',
+      'help.2': 'The jump list flies the camera to a player. Layers can be switched on and off individually.',
+      'help.3': 'Everything is read-only: the viewer never changes anything on the server.',
+    },
+    de: {
+      language: 'Sprache', map: 'Karte', 'jump.title': 'Springen zu', online: 'online', 'live.title': 'Live-Karte', 'layers.all': 'Alle zeigen', 'layers.none': 'Alle ausblenden',
+      'conn.title': 'Verbindung', 'help.open': 'Kamerasteuerung & Anleitung', 'help.title': 'Steuerung', close: 'Schließen', cancel: 'Abbrechen',
+      'hud.panel': 'Bedienfeld ein- oder ausblenden', 'hud.fullscreen': 'Vollbild', 'players.none': 'Niemand online',
+      'help.1': 'Linke Maustaste: drehen. Rechte Maustaste oder Umschalt + linke Maustaste: verschieben. Mausrad: zoomen. Touch: ein Finger dreht, zwei Finger verschieben und zoomen.',
+      'help.2': 'Die Sprungliste fliegt die Kamera zu einem Spieler. Ebenen lassen sich einzeln ein- und ausschalten.',
+      'help.3': 'Alles ist nur lesend: Der Viewer verändert nichts auf dem Server.',
+    },
+  });
+
+  UI.applyI18n = function () {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-i18n]').forEach((e) => { e.textContent = UI.t(e.dataset.i18n); });
+    document.querySelectorAll('[data-i18n-title]').forEach((e) => { e.title = UI.t(e.dataset.i18nTitle); });
+    const body = $('helpBody'); body.textContent = '';
+    for (const k of ['help.1', 'help.2', 'help.3']) { const p = document.createElement('p'); p.textContent = UI.t(k); body.append(p); }
+    hooks.forEach((f) => f(lang));
+  };
+
+  UI.el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = String(text); return e; };
+
+  // ---- Ebenenliste in Gruppen. defs: [{key,label,color,group}], groups: [{id,label}]
+  UI.layers = function (groups, defs, onChange) {
+    const box = $('layers'); box.textContent = ''; const rows = {};
+    for (const g of groups) {
+      const wrap = UI.el('div', 'lgroup'), head = UI.el('div', 'lhead'); head.dataset.g = g.id; head.textContent = UI.t(g.label); wrap.append(head);
+      for (const d of defs.filter((x) => x.group === g.id)) {
+        const row = UI.el('label', 'toggle'), cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true;
+        const sw = UI.el('span', 'sw'); sw.style.background = d.color;
+        const name = UI.el('span', null, UI.t(d.label)), count = UI.el('span', 'count', '0');
+        cb.onchange = () => onChange(d.key, cb.checked);
+        row.append(cb, sw, name, count); wrap.append(row); rows[d.key] = { row, cb, name, count, d, group: head, g };
+      }
+      box.append(wrap);
+    }
+    const api = {
+      count(k, n) { rows[k].count.textContent = n; },
+      disabled(k, off) { // merkt sich den Zustand und stellt ihn beim Wieder-Aktivieren her
+        const r = rows[k]; if (!!off === r.cb.disabled) return;
+        if (off) { r.prev = r.cb.checked; r.cb.checked = false; } else r.cb.checked = r.prev !== false;
+        r.cb.disabled = !!off; r.row.classList.toggle('off', !!off); onChange(k, r.cb.checked);
+      },
+      setAll(on) { for (const k in rows) if (!rows[k].cb.disabled) { rows[k].cb.checked = on; onChange(k, on); } },
+    };
+    UI.onLang(() => { for (const k in rows) { rows[k].name.textContent = UI.t(rows[k].d.label); rows[k].group.textContent = UI.t(rows[k].g.label); } });
+    $('layersAll').onclick = () => api.setAll(true); $('layersNone').onclick = () => api.setAll(false);
+    return api;
+  };
+
+  // ---- Einzelner Schalter im Live-Abschnitt (z. B. feineres Gelände)
+  UI.toggle = function (labelKey, onChange) {
+    const row = UI.el('label', 'toggle'), cb = document.createElement('input'); cb.type = 'checkbox'; const txt = UI.el('span');
+    row.append(cb, txt); $('live').append(row);
+    const set = () => { txt.textContent = UI.t(labelKey); }; set(); UI.onLang(set); cb.onchange = () => onChange(cb.checked);
+  };
+
+  // ---- Koordinaten des Kamerazieles; nur schreiben, wenn sich der Text ändert
+  UI.followCursor = function (env) {
+    let last = '';
+    env.onFrame(() => { const t = env.ctl.target, s = 'X ' + Math.round(t.x) + '  Y ' + Math.round(t.z) + '  Z ' + Math.round(t.y) + ' m'; if (s !== last) { last = s; UI.cursor(s); } });
+  };
+
+  // ---- Sprungliste. items: [{label, sub, pick}]
+  UI.players = function (items) {
+    const box = $('playerList'); box.textContent = ''; $('playerCount').textContent = items.length;
+    if (!items.length) { box.append(UI.el('div', 'empty', UI.t('players.none'))); return; }
+    for (const it of items.slice(0, 200)) { const b = UI.el('button', null, it.label); b.type = 'button'; b.onclick = it.pick; box.append(b); }
+  };
+
+  UI.set = (id, text) => { $(id).textContent = text; };
+  UI.status = (t) => UI.set('liveStatus', t); UI.conn = (t) => UI.set('connInfo', t); UI.mapinfo = (t) => UI.set('mapinfo', t); UI.cursor = (t) => UI.set('cursor', t); UI.hud = (t) => UI.set('hudinfo', t);
+  UI.button = (text, onClick, cls) => { const b = UI.el('button', cls, text); b.type = 'button'; b.onclick = onClick; $('connButtons').append(b); return b; };
+  UI.clearButtons = () => { $('connButtons').textContent = ''; };
+
+  // ---- Dialog (Anmeldung, Einstellungen). opts: {title,intro,fields:[{name,label,type,placeholder}],submit,cancel,onSubmit(values)->Promise<string|null>}
+  UI.dialog = function (o) {
+    $('setupTitle').textContent = o.title; $('setupIntro').textContent = o.intro || '';
+    const f = $('setupFields'); f.textContent = '';
+    for (const x of o.fields || []) {
+      const l = UI.el('label'); l.append(document.createTextNode(x.label));
+      const i = document.createElement('input'); i.type = x.type || 'text'; i.name = x.name; i.placeholder = x.placeholder || ''; i.value = x.value || '';
+      i.setAttribute('autocomplete', 'off'); i.spellcheck = false; i.maxLength = x.max || 300; if (x.required) i.required = true;
+      l.append(i); f.append(l);
+    }
+    const cancel = $('setupCancel'); cancel.hidden = !o.cancel; cancel.textContent = o.cancel || '';
+    $('setupSubmit').textContent = o.submit;
+    const err = $('setupError'); err.hidden = true;
+    const close = () => { $('setup').hidden = true; f.textContent = ''; };
+    cancel.onclick = () => { close(); if (o.onCancel) o.onCancel(); };
+    $('setupForm').onsubmit = async (ev) => {
+      ev.preventDefault(); err.hidden = true; $('setupSubmit').disabled = true;
+      const values = {}; f.querySelectorAll('input').forEach((i) => { values[i.name] = i.value.trim(); });
+      let msg = null; try { msg = await o.onSubmit(values); } catch (e) { msg = String((e && e.message) || e).slice(0, 200); }
+      $('setupSubmit').disabled = false;
+      if (msg) { err.textContent = msg; err.hidden = false; return; }
+      f.querySelectorAll('input[type=password]').forEach((i) => { i.value = ''; });
+      close();
+    };
+    $('setup').hidden = false;
+    const first = f.querySelector('input'); if (first) first.focus();
+  };
+
+  // ---- Bedienelemente rechts, Sprache, Hell/Dunkel
+  const modal = (id, open) => { $(id).hidden = !open; };
+  $('helpOpen').onclick = $('helpBtn').onclick = () => modal('help', true);
+  $('helpClose').onclick = () => modal('help', false);
+  $('help').addEventListener('click', (e) => { if (e.target === $('help')) modal('help', false); });
+  $('panelToggle').onclick = () => { const hide = !document.body.classList.contains('panel-hidden'); document.body.classList.toggle('panel-hidden', hide); $('panelToggle').setAttribute('aria-pressed', String(!hide)); };
+  $('fsBtn').onclick = () => { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch (e) { /* in der Sandbox evtl. nicht erlaubt */ } };
+  document.querySelectorAll('[data-theme-set]').forEach((b) => { b.onclick = () => { document.documentElement.dataset.theme = b.dataset.themeSet; }; });
+  $('lang').value = lang;
+  $('lang').onchange = (e) => { lang = e.target.value === 'de' ? 'de' : 'en'; UI.applyI18n(); };
+  UI.lang = () => lang;
+  UI.applyI18n();
+})();

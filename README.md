@@ -8,7 +8,7 @@
 
 > Unofficial fan project, not affiliated with Funcom. Based on [MapViewer3D](https://github.com/dev-prophet-code/MapViewer3D) (MIT).
 
-**Version 2.0.1** · versioning: every change adds 0.0.1 · branch `mva-v2`
+**Version 2.0.0** · versioning: every change adds 0.0.1 · branch `mva-v2`
 
 ## Two parts
 
@@ -61,7 +61,7 @@ docs/        architecture, security concept, review report
 
 No token, password or IP address is ever stored in this repository. The token lives only in the companion's memory; the browser holds a random session ID (HttpOnly, SameSite=Strict). Every map file is verified by SHA-256. See [SECURITY.md](SECURITY.md), [docs/SECURITY-CONCEPT.md](docs/SECURITY-CONCEPT.md) and the code review and penetration test results in [docs/REVIEW-2.0.0.md](docs/REVIEW-2.0.0.md).
 
-## Not in 2.0.x
+## Not in 2.0.0
 
 3D buildings from building-piece meshes (bases appear as markers), sandstorm/Coriolis layouts of the Deep Desert, share links. Player positions from the realtime stream are not used; players come from the console API.
 
@@ -77,7 +77,7 @@ No token, password or IP address is ever stored in this repository. The token li
 
 > Inoffizielles Fan-Projekt, nicht mit Funcom verbunden. Basiert auf [MapViewer3D](https://github.com/dev-prophet-code/MapViewer3D) (MIT).
 
-**Version 2.0.1** · Versionierung: jede Anpassung +0.0.1 · Branch `mva-v2`
+**Version 2.0.0** · Versionierung: jede Anpassung +0.0.1 · Branch `mva-v2`
 
 ## Zwei Teile
 
@@ -123,6 +123,6 @@ Ordner: `addon/` (Console-Addon), `companion/` (Node-Server, Docker, Tests), `vi
 
 Es werden nie Token, Passwörter oder IP-Adressen in diesem Repository gespeichert. Der Token liegt nur im Arbeitsspeicher des Companion; der Browser hält nur eine zufällige Sitzungs-ID (HttpOnly, SameSite=Strict). Jede Kartendatei wird per SHA-256 geprüft. Siehe [SECURITY.md](SECURITY.md), [docs/SECURITY-CONCEPT.md](docs/SECURITY-CONCEPT.md) sowie Code-Review und Penetrationstest in [docs/REVIEW-2.0.0.md](docs/REVIEW-2.0.0.md).
 
-## Nicht in 2.0.x
+## Nicht in 2.0.0
 
 3D-Gebäude aus Bauteil-Meshes (Basen erscheinen als Marker), Sandstürme/Coriolis-Layouts der Deep Desert, Share-Links. Spieler-Positionen im Echtzeit-Strom werden nicht verwendet; Spieler kommen aus der Console-API.

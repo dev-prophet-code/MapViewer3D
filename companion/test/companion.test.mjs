@@ -170,3 +170,20 @@ test('Sitzungen: je Adresse begrenzt, volle Instanz verdrängt keine fremden Nut
   assert.equal((await fetch(t.base + '/api/session', { headers: { cookie: c.cookie } })).status, 200);
   assert.equal(t.app.sessions.size(), 2); t.close();
 });
+
+test('Companion-Oberfläche: Karte und Kacheln erst nach erfolgreicher Anmeldung (Token-Abfrage zuerst)', () => {
+  const src = fs.readFileSync(new URL('../../viewer/companion-app.js', import.meta.url), 'utf8');
+  const boot = src.slice(src.indexOf('async function boot()'), src.indexOf('const mapRows'));
+  assert.match(boot, /api\('\/api\/session'\); start\(\); } catch \(e\) \{ askToken\(\)/);       // ohne Sitzung: Token-Dialog
+  assert.ok(!/loadMap\(|\/cdn\//.test(boot));                                                  // boot lädt selbst nichts
+  assert.equal((src.match(/\bloadMap\('hagga'\)/g) || []).length, 1);                           // nur in start()
+  assert.match(src.slice(src.indexOf('function askToken'), src.indexOf('async function boot')), /start\(\); return null/);
+});
+
+test('Anmeldefehler liefern Codes für die Übersetzung in der Oberfläche', async () => {
+  const t = await startApp();
+  const bad = await t.login('dak_' + 'z'.repeat(40)); assert.equal(bad.json.code, 'token_invalid');
+  assert.equal((await t.login('nope')).json.code, 'token_format');
+  assert.equal((await t.login(NOMAPS)).json.code, 'no_maps');
+  assert.equal((await t.login(NOREALTIME)).json.reasonCode, 'no_scope'); t.close();
+});

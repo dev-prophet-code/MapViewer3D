@@ -1,46 +1,87 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>MapViewer 3D v2.0.1 – Companion</title>
+<title>MapViewer 3D v2.0.0 – Companion</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<div id="gate" class="gate hide">
-  <h2>🏜️ MapViewer 3D <span class="badge">v2.0.1</span></h2>
-  <p class="note">Gib einen API-Token der Dune-Docker-Console ein (<i>Settings → API Keys</i>: <b>Maps</b> und <b>Bases</b> lesen; für Echtzeit zusätzlich <b>Realtime Data</b>). Der Token bleibt nur im Arbeitsspeicher dieses Servers und gelangt nie wieder in den Browser.</p>
-  <form id="loginForm" autocomplete="off">
-    <input type="password" id="tok" placeholder="dak_…" autocomplete="off" spellcheck="false" maxlength="170" required>
-    <button class="btn pri" id="loginBtn" type="submit">Prüfen und verbinden</button>
-  </form>
-  <div class="err" id="err" role="alert"></div>
-</div>
-<div id="viewer" class="hide contents">
-<header>
-  <span>🏜️ <b class="acc">MapViewer 3D</b> <span class="badge">v2.0.1</span> <span class="badge" id="modeBadge">…</span></span>
-  <span class="grow"><select id="map" class="auto"><option value="hagga">Hagga Basin</option><option value="deep">Deep Desert</option></select>
-  <button class="btn" id="recheck">Erneut prüfen</button><button class="btn" id="logout">Abmelden</button></span>
-</header>
-<div class="wrap">
-<aside>
-  <h3>Systemprüfung</h3><div id="checks"></div>
-  <h3>Ebenen</h3><div id="layers"></div>
-  <h3>Gelände</h3>
-  <label class="l">Detailgrad <input type="range" id="detail" min="1" max="6" step="0.5" value="3"></label>
-  <label class="l"><input type="checkbox" id="contours"> Höhenlinien</label>
-  <label class="l"><input type="checkbox" id="grid"> 1-km-Raster</label>
-  <label class="l"><input type="checkbox" id="tint"> Detailstufen einfärben</label>
-  <h3>Springen</h3><div id="jump"></div>
-  <h3>Spieler</h3><div id="plist" class="list"></div>
+<canvas id="view"></canvas>
+
+<aside id="panel">
+  <div class="titlerow">
+    <h1>Dune Map Viewer <span id="version" class="version">v2.0.0</span></h1>
+    <label class="langsel"><span class="sr" data-i18n="language">Language</span>
+      <select id="lang" title="Language / Sprache"><option value="en">EN</option><option value="de">DE</option></select>
+    </label>
+  </div>
+  <label><span data-i18n="map">Map</span>
+    <select id="map"><option value="hagga">Hagga Basin</option><option value="deep">Deep Desert</option></select>
+  </label>
+  <div id="mapinfo" class="muted pre small"></div>
+
+  <section id="jump">
+    <h2><span data-i18n="jump.title">Jump to</span> <span class="muted">(<span id="playerCount">0</span> <span data-i18n="online">online</span>)</span></h2>
+    <div id="playerList" class="plist"></div>
+  </section>
+
+  <section id="live">
+    <h2 data-i18n="live.title">Live map</h2>
+    <div class="btnrow layerbtns">
+      <button id="layersAll" data-i18n="layers.all">Show all</button>
+      <button id="layersNone" data-i18n="layers.none">Hide all</button>
+    </div>
+    <div id="liveStatus" class="muted pre small">–</div>
+    <div id="layers" class="layers"></div>
+  </section>
+
+  <section id="conn">
+    <h2 data-i18n="conn.title">Connection</h2>
+    <div id="connInfo" class="muted small pre">–</div>
+    <div class="btnrow" id="connButtons"></div>
+  </section>
+
+  <div id="cursor" class="mono muted">–</div>
+  <button id="helpOpen" class="linkbtn" data-i18n="help.open">Camera controls &amp; guide</button>
 </aside>
-<div id="stage"><canvas id="c"></canvas><div id="tip">Maus: Drehen · Rechtsklick: Verschieben · Rad: Zoom</div><div id="hud"></div></div>
+
+<div id="hudinfo"></div>
+<div id="hud">
+  <button id="panelToggle" class="hud-btn" aria-pressed="true" data-i18n-title="hud.panel" title="Show or hide the panel">☰</button>
+  <button id="fsBtn" class="hud-btn" aria-pressed="false" data-i18n-title="hud.fullscreen" title="Fullscreen">⛶</button>
+  <button id="helpBtn" class="hud-btn" data-i18n-title="help.title" title="Controls">?</button>
+  <div class="theme-toggle" role="group" aria-label="Appearance">
+    <button data-theme-set="light" title="Light" aria-label="Light">☀</button>
+    <button data-theme-set="dark" title="Dark" aria-label="Dark">☾</button>
+  </div>
 </div>
+
+<div id="help" class="modal" hidden>
+  <div class="dialog guide" role="dialog" aria-labelledby="helpTitle">
+    <div class="li-head"><h1 id="helpTitle" data-i18n="help.title">Controls</h1><button id="helpClose" class="li-close" type="button" data-i18n-title="close" title="Close">×</button></div>
+    <div id="helpBody"></div>
+  </div>
 </div>
+
+<div id="setup" class="modal" hidden>
+  <form id="setupForm" class="dialog" autocomplete="off">
+    <h1 id="setupTitle"></h1>
+    <p id="setupIntro" class="muted small"></p>
+    <div id="setupFields"></div>
+    <div id="setupError" class="error small" hidden></div>
+    <div class="btnrow">
+      <button id="setupCancel" type="button" hidden></button>
+      <button id="setupSubmit" type="submit" class="primary"></button>
+    </div>
+  </form>
+</div>
+
 <script src="three.js"></script>
 <script src="orbit.js"></script>
 <script src="core.js"></script>
+<script src="shell.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

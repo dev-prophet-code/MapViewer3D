@@ -4,7 +4,7 @@
   "name": "MapViewer 3D v2",
   "description": "3D map of Hagga Basin and Deep Desert with players and bases inside the console (read-only, no network). Optional companion adds Realtime Data (sandworms, enemies), full 1 m terrain and API-token login.",
   "author": "dev-prophet-code",
-  "version": "2.0.1",
+  "version": "2.0.0",
   "type": "ui",
   "entry": {
     "navigation": "3D Map v2",
