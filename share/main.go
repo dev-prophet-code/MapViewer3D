@@ -2,7 +2,8 @@
 // server hand out links to the 3D map.
 //
 //	https://<host>/s/<token>/        the viewer, for everybody who has the link
-//	https://<host>/share-admin/...   create / list / revoke links (admin secret)
+//	https://<host>/admin/           the page where an administrator creates and revokes links
+//	https://<host>/share-admin/...   its API: create / list / revoke links (admin API key)
 //
 // Design (see SECURITY.md):
 //
@@ -31,6 +32,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
+	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -373,11 +375,39 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"mapviewer-share":%s}`, version)
 	case strings.HasPrefix(p, "/s/"):
 		g.share(w, r)
+	case p == "/admin" || p == "/admin/":
+		adminPage(w, r)
 	case strings.HasPrefix(p, "/share-admin/"):
 		g.admin(w, r)
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// ---------------------------------------------------------------- admin page
+
+//go:embed admin.html
+var adminHTML []byte
+
+// The page where an administrator creates and revokes links. It is part of the gateway binary, so it is
+// the same origin as /share-admin/ and needs no cross-origin permission. Its one inline script is allowed
+// by hash; the page can only talk to this gateway.
+func adminPage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	script := ""
+	for _, m := range inlineScript.FindAllSubmatch(adminHTML, -1) {
+		h := sha256.Sum256(m[2])
+		script += " 'sha256-" + base64.StdEncoding.EncodeToString(h[:]) + "'"
+	}
+	h := w.Header()
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("Content-Security-Policy", "default-src 'none'; script-src"+script+"; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+	h.Set("Cache-Control", "no-store")
+	w.Write(adminHTML)
 }
 
 // ---------------------------------------------------------------- visitors
@@ -818,6 +848,9 @@ func (g *gateway) corsAdmin(w http.ResponseWriter, r *http.Request) bool {
 	h.Add("Vary", "Origin")
 	if o == "" {
 		return true // not a browser (curl, script)
+	}
+	if o == "https://"+r.Host || o == "http://"+r.Host {
+		return true // the admin page of this gateway itself (/admin/)
 	}
 	for _, a := range g.cfg.AdminOrigins {
 		if a == o {

@@ -803,3 +803,39 @@ func TestAdoptionDoesNotHammerTheConsole(t *testing.T) {
 		t.Fatalf("%d console requests for 10 admin calls", n)
 	}
 }
+
+func TestAdminPage(t *testing.T) {
+	f := newFixture(t)
+	code, body, h := f.do("GET", "/admin/", nil, nil)
+	if code != 200 || !strings.Contains(body, "MapViewer3D share links") {
+		t.Fatalf("admin page: %d", code)
+	}
+	csp := h.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "connect-src 'self'") || !strings.Contains(csp, "frame-ancestors 'none'") || !strings.Contains(csp, "'sha256-") || strings.Contains(csp, "'unsafe-eval'") {
+		t.Fatalf("CSP: %s", csp)
+	}
+	if strings.Contains(body, "http://") || strings.Contains(body, "https://") || strings.Contains(body, "localStorage") || strings.Contains(body, "sessionStorage") {
+		t.Fatal("the admin page must not name an outside address or persist the key")
+	}
+	if h.Get("Cache-Control") != "no-store" {
+		t.Fatal("the admin page must not be cached")
+	}
+	if code, _, _ := f.do("POST", "/admin/", nil, nil); code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST: %d", code)
+	}
+}
+
+func TestAdminPageCallsItsOwnGateway(t *testing.T) {
+	f := newFixture(t)
+	own := f.srv.URL
+	host := strings.TrimPrefix(own, "http://")
+	// the page posts from its own origin: allowed without listing it
+	code, _, h := f.do("OPTIONS", "/share-admin/status", nil, map[string]string{"Origin": "http://" + host})
+	if code != http.StatusNoContent {
+		t.Fatalf("same origin: %d %v", code, h)
+	}
+	// a foreign page is still refused
+	if code, _, _ := f.do("OPTIONS", "/share-admin/status", nil, map[string]string{"Origin": "https://evil.example"}); code != http.StatusForbidden {
+		t.Fatalf("foreign origin: %d", code)
+	}
+}

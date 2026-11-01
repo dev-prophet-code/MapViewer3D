@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>MapViewer3D share links</title>
+<style>
+  :root { --bg: #fff; --fg: #1d1b16; --muted: #6a6558; --line: #d8d2c2; --accent: #a8561a; --err: #b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #14110c; --fg: #ece6d6; --muted: #a39b86; --line: #3a3326; --accent: #e08a45; --err: #ff8a80; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, sans-serif; }
+  main { max-width: 620px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 24px 0 8px; }
+  .muted { color: var(--muted); } .small { font-size: 13px; } .err { color: var(--err); }
+  label { display: block; margin: 10px 0 4px; } label.check { display: flex; gap: 8px; margin: 6px 0; }
+  input[type=text], input[type=password], input[type=number], select { width: 100%; box-sizing: border-box; padding: 8px; background: transparent; color: inherit; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+  button { padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { color: var(--err); } button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; } .row > input { flex: 1; min-width: 0; }
+  .link { display: flex; justify-content: space-between; gap: 12px; align-items: center; border-top: 1px solid var(--line); padding: 8px 0; }
+  pre { white-space: pre-wrap; margin: 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Share links for the 3D map</h1>
+  <p class="muted small" id="intro">Create private links to the MapViewer3D map for people without a console account. Sign in with an API key that has the permission Addons: Read. The key is sent only to this gateway, to ask the console whether it belongs to an administrator, and is kept in this page's memory only.</p>
+
+  <form id="login" autocomplete="off">
+    <label for="key" id="keyLabel">API key</label>
+    <input id="key" name="mapviewer3d-admin-key" type="password" placeholder="dak_…" required spellcheck="false" autocomplete="off">
+    <div class="row"><button class="primary" type="submit" id="loginBtn">Connect</button></div>
+  </form>
+  <p class="err small" id="error" hidden></p>
+
+  <div id="main" hidden>
+    <pre class="muted small" id="caps"></pre>
+    <h2 id="newTitle">New link</h2>
+    <form id="create">
+      <label for="label" id="labelLabel">Name (only for you)</label>
+      <input id="label" type="text" maxlength="60" placeholder="e.g. Guild event">
+      <label for="duration" id="durLabel">Valid for</label>
+      <select id="duration">
+        <option value="3600">1 h</option><option value="21600">6 h</option><option value="86400" selected>1 d</option>
+        <option value="604800">7 d</option><option value="2592000">30 d</option>
+      </select>
+      <label class="check"><input id="realtime" type="checkbox" checked><span id="oRealtime">Realtime Data (sandworms, enemies, vehicles, storms)</span></label>
+      <label class="check"><input id="bases" type="checkbox" checked><span id="oBases">Bases as 3D buildings</span></label>
+      <label class="check"><input id="players" type="checkbox"><span id="oPlayers">Player positions and names</span></label>
+      <div class="row"><button class="primary" type="submit" id="make">Create link</button><button type="button" id="forever">Create link without expiry</button></div>
+    </form>
+    <div id="result" hidden>
+      <p class="small" id="once">Copy the link now: it is shown only once.</p>
+      <div class="row"><input id="url" type="text" readonly aria-label="Link"><button type="button" id="copy">Copy</button></div>
+    </div>
+    <h2 id="listTitle">Links</h2>
+    <div id="list"></div>
+  </div>
+</main>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const de = (navigator.language || '').startsWith('de');
+  const T = de ? {
+    title: 'Share-Links für die 3D-Karte', intro: 'Private Links zur MapViewer3D-Karte für Leute ohne Console-Zugang. Mit einem API-Schlüssel anmelden, der Addons: Read hat. Der Schlüssel geht nur an dieses Gateway (zur Rückfrage bei der Console, ob er einem Administrator gehört) und bleibt nur im Speicher dieser Seite.',
+    keyLabel: 'API-Schlüssel', loginBtn: 'Verbinden', newTitle: 'Neuer Link', labelLabel: 'Name (nur für dich)', durLabel: 'Gültig für',
+    oRealtime: 'Echtzeitdaten (Sandwürmer, Gegner, Fahrzeuge, Stürme)', oBases: 'Basen als 3D-Gebäude', oPlayers: 'Spielerpositionen und -namen', make: 'Link erstellen', forever: 'Link ohne Ablauf erstellen',
+    once: 'Link jetzt kopieren: er wird nur dieses eine Mal angezeigt.', copy: 'Kopieren', copied: 'Kopiert', listTitle: 'Links', none: 'Keine aktiven Links.', revoke: 'Widerrufen',
+    revokeAsk: 'Diesen Link widerrufen? Er funktioniert danach nicht mehr.', foreverAsk: 'Einen Link ohne Ablauf erstellen? Er gilt, bis du ihn widerrufst.', playersAsk: 'Spielernamen und -positionen für jeden mit dem Link sichtbar machen?',
+    until: 'bis', never: 'ohne Ablauf', map: 'nur die Karte', lastUsed: 'zuletzt benutzt',
+    yes: 'ja', no: 'nein', maps: 'Karten', capBases: 'Basen', capPlayers: 'Spieler', capRt: 'Echtzeitdaten',
+    e401: 'Der Schlüssel wurde abgelehnt.', e403: 'Dem Schlüssel fehlt der Bereich Addons: Read (nur Administratoren dürfen Links verwalten).', e429: 'Zu viele Versuche. Bitte später erneut.', eNet: 'Das Gateway ist nicht erreichbar.', eOther: 'Fehler',
+  } : {
+    title: 'Share links for the 3D map', intro: 'Create private links to the MapViewer3D map for people without a console account. Sign in with an API key that has the permission Addons: Read. The key is sent only to this gateway, to ask the console whether it belongs to an administrator, and is kept in this page\'s memory only.',
+    keyLabel: 'API key', loginBtn: 'Connect', newTitle: 'New link', labelLabel: 'Name (only for you)', durLabel: 'Valid for',
+    oRealtime: 'Realtime Data (sandworms, enemies, vehicles, storms)', oBases: 'Bases as 3D buildings', oPlayers: 'Player positions and names', make: 'Create link', forever: 'Create link without expiry',
+    once: 'Copy the link now: it is shown only once.', copy: 'Copy', copied: 'Copied', listTitle: 'Links', none: 'No active links.', revoke: 'Revoke',
+    revokeAsk: 'Revoke this link? It stops working at once.', foreverAsk: 'Create a link without expiry? It stays valid until you revoke it.', playersAsk: 'Show player names and positions to everyone who has the link?',
+    until: 'until', never: 'no expiry', map: 'map only', lastUsed: 'last used',
+    yes: 'yes', no: 'no', maps: 'Maps', capBases: 'Bases', capPlayers: 'Players', capRt: 'Realtime Data',
+    e401: 'The key was refused.', e403: 'The key lacks the scope Addons: Read (only administrators may manage links).', e429: 'Too many attempts. Try again later.', eNet: 'The gateway cannot be reached.', eOther: 'Error',
+  };
+  for (const id of ['title', 'intro', 'keyLabel', 'loginBtn', 'newTitle', 'labelLabel', 'durLabel', 'oRealtime', 'oBases', 'oPlayers', 'make', 'forever', 'once', 'copy', 'listTitle']) $(id).textContent = T[id];
+  document.documentElement.lang = de ? 'de' : 'en';
+
+  let key = '';
+  class Fail extends Error {}
+  const when = (s) => new Date(s * 1000).toLocaleString(de ? 'de-DE' : undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const show = (m) => { $('error').textContent = m || ''; $('error').hidden = !m; };
+
+  async function gw(method, path, body) {
+    let r;
+    try {
+      r = await fetch(`/share-admin/${path}`, { method, credentials: 'omit', cache: 'no-store', headers: { Authorization: `Bearer ${key}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    } catch { throw new Fail(T.eNet); }
+    let doc = null;
+    try { doc = await r.json(); } catch { /* not JSON */ }
+    if (r.status === 401) throw new Fail(T.e401);
+    if (r.status === 403) throw new Fail(T.e403);
+    if (r.status === 429) throw new Fail(T.e429);
+    if (!r.ok) throw new Fail(`${T.eOther} ${r.status}${doc && doc.error ? `: ${doc.error}` : ''}`);
+    return doc;
+  }
+
+  function caps(st) {
+    const v = (x) => (x ? T.yes : T.no);
+    $('caps').textContent = [`${T.maps}: ${v(st.maps)}`, `${T.capBases}: ${v(st.bases)}`, `${T.capPlayers}: ${v(st.players)}`, `${T.capRt}: ${v(st.realtime)}`].join('\n');
+    for (const [id, ok] of [['realtime', st.realtime], ['bases', st.bases], ['players', st.players]]) { $(id).disabled = !ok; if (!ok) $(id).checked = false; }
+    $('make').disabled = $('forever').disabled = !st.maps;
+  }
+
+  async function refresh() {
+    const { links } = await gw('GET', 'links');
+    const rows = links.filter((l) => l.active);
+    const list = $('list');
+    list.replaceChildren();
+    if (!rows.length) { list.textContent = T.none; return; }
+    for (const l of rows) {
+      const row = document.createElement('div'); row.className = 'link';
+      const info = document.createElement('div');
+      const name = document.createElement('strong'); name.textContent = l.label || `#${l.id}`;
+      const meta = document.createElement('div'); meta.className = 'muted small';
+      const opts = [l.realtime && 'Realtime', l.bases && T.capBases, l.players && T.capPlayers].filter(Boolean).join(', ') || T.map;
+      meta.textContent = `${l.expires ? `${T.until} ${when(l.expires)}` : T.never} · ${opts}${l.lastUsed ? ` · ${T.lastUsed} ${when(l.lastUsed)}` : ''}`;
+      info.append(name, meta);
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'danger'; b.textContent = T.revoke;
+      b.onclick = async () => { if (!confirm(T.revokeAsk)) return; try { await gw('DELETE', `links/${l.id}`); await refresh(); } catch (e) { show(e.message); } };
+      row.append(info, b); list.append(row);
+    }
+  }
+
+  $('login').onsubmit = async (e) => {
+    e.preventDefault(); show('');
+    key = $('key').value.trim(); $('key').value = '';
+    $('loginBtn').disabled = true;
+    try {
+      caps(await gw('GET', 'status'));
+      $('login').hidden = true; $('main').hidden = false;
+      await refresh();
+    } catch (ex) { key = ''; show(ex.message); }
+    $('loginBtn').disabled = false;
+  };
+
+  let busy = false;
+  async function make(never) {
+    if (busy) return; show('');
+    const body = { label: $('label').value.trim(), realtime: $('realtime').checked, bases: $('bases').checked, players: $('players').checked };
+    if (never) { if (!confirm(T.foreverAsk)) return; body.never = true; } else body.seconds = Number($('duration').value);
+    if (body.players && !confirm(T.playersAsk)) return;
+    busy = true; $('make').disabled = $('forever').disabled = true;
+    try {
+      const doc = await gw('POST', 'links', body);
+      if (!/^\/s\/mvs_[A-Za-z0-9_-]{43}\/$/.test(doc.path || '')) throw new Fail(T.eOther);
+      $('url').value = location.origin + doc.path; $('result').hidden = false; $('url').select();
+      await refresh();
+    } catch (ex) { show(ex.message); }
+    busy = false; $('make').disabled = $('forever').disabled = false;
+  }
+  $('create').onsubmit = (e) => { e.preventDefault(); make(false); };
+  $('forever').onclick = () => make(true);
+  $('url').onfocus = () => $('url').select();
+  $('copy').onclick = async () => {
+    try { await navigator.clipboard.writeText($('url').value); $('copy').textContent = T.copied; } catch { $('url').select(); }
+    setTimeout(() => { $('copy').textContent = T.copy; }, 1500);
+  };
+})();
+</script>
+</body>
+</html>
