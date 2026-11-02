@@ -18,7 +18,7 @@
       'start.companion': 'Companion address (optional)', 'start.continue': 'Save', 'start.bad': 'Only https:// (or http://localhost) without credentials.',
       'conn.console': 'Dune Docker Console', 'conn.console.yes': 'detected', 'conn.console.no': 'not detected (preview outside the console)', 'conn.bridge': 'Console bridge', 'conn.db': 'Game data (database:read)', 'conn.rt': 'Realtime Data', 'conn.rt.off': 'only in the companion (sandbox without network)',
       'conn.ok': 'connected', 'conn.preview': 'preview outside the console', 'conn.companion': 'Companion', 'conn.change': 'Companion address …', 'conn.none': 'not set',
-      'live.status': '{0} players, {1} bases', 'terrain': 'Terrain (embedded): {0}×{0} points · {1} m grid', 'hq': 'Finer terrain (slower)', 'models': '3D models for markers (off: dots)', 'saved': 'Saved. Open this address in a new browser tab.',
+      'live.status': '{0} players, {1} bases', 'terrain': 'Terrain (embedded): {0}×{0} points · {1} m grid', 'hq': 'Finer terrain (slower)', 'models': '3D models for markers (off: icons only)', 'saved': 'Saved. Open this address in a new browser tab.',
     },
     de: {
       'g.world': 'Welt', 'l.online': 'Spieler online', 'l.offline': 'Spieler offline', 'l.bases': 'Basen',
@@ -26,16 +26,26 @@
       'start.companion': 'Adresse des Companion (optional)', 'start.continue': 'Speichern', 'start.bad': 'Nur https:// (oder http://localhost) ohne Zugangsdaten.',
       'conn.console': 'Dune Docker Console', 'conn.console.yes': 'erkannt', 'conn.console.no': 'nicht erkannt (Vorschau außerhalb der Console)', 'conn.bridge': 'Console-Brücke', 'conn.db': 'Spieldaten (database:read)', 'conn.rt': 'Realtime Data', 'conn.rt.off': 'nur im Companion (Sandbox ohne Netzwerk)',
       'conn.ok': 'verbunden', 'conn.preview': 'Vorschau außerhalb der Console', 'conn.companion': 'Companion', 'conn.change': 'Companion-Adresse …', 'conn.none': 'nicht gesetzt',
-      'live.status': '{0} Spieler, {1} Basen', 'terrain': 'Gelände (eingebettet): {0}×{0} Punkte · {1} m Raster', 'hq': 'Feineres Gelände (langsamer)', 'models': '3D-Modelle für Marker (aus: Punkte)', 'saved': 'Gespeichert. Öffne diese Adresse in einem neuen Browser-Tab.',
+      'live.status': '{0} Spieler, {1} Basen', 'terrain': 'Gelände (eingebettet): {0}×{0} Punkte · {1} m Raster', 'hq': 'Feineres Gelände (langsamer)', 'models': '3D-Modelle für Marker (aus: nur Symbole)', 'saved': 'Gespeichert. Öffne diese Adresse in einem neuen Browser-Tab.',
     },
   });
 
   const TERRAIN = { hagga: JSON.parse($('t-hagga').textContent), deep: JSON.parse($('t-deep').textContent) };
   const env = MV.createEnv($('view'), document.documentElement);
-  const pts = { online: MV.Layer(env, 'player', 0x2f9bff, 11), offline: MV.Layer(env, 'player', 0x3a6a8a, 6), bases: MV.Layer(env, 'base', 0xff8a1f, 9) };
+  (async () => { // eingebettete Körper von Wurm, Figur und Fahrzeugen (aus dem cdn-Branch, siehe tools/embed-creatures.mjs)
+    try {
+      const d = JSON.parse($('t-creatures').textContent);
+      if (d && d.index && d.meshes) await MV.Creatures.load({ index: d.index, bin: async (id) => { const s = atob(String(d.meshes[id] || '')), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; } });
+    } catch { /* Platzhalter-Modelle bleiben */ }
+  })();
+  const pts = { online: MV.Layer(env, 'player', 0x2f9bff, 11, { glyph: 'player', px: 34, overlay: true, lift: 6, fade: [40, 120] }), offline: MV.Layer(env, 'player', 0x3a6a8a, 6, { glyph: 'offline', px: 28, fade: [40, 120] }), bases: MV.Layer(env, 'base', 0xff8a1f, 9, { glyph: 'base', px: 34, fade: [350, 800] }) };
+  const labels = MV.Labels(env), beams = MV.Beams(env); // Namen und Leuchtsäulen wie im Dune Map Viewer
   const lay = UI.layers([{ id: 'w', label: 'g.world' }], [
-    { key: 'online', label: 'l.online', color: '#2f9bff', group: 'w' }, { key: 'offline', label: 'l.offline', color: '#3a6a8a', group: 'w' }, { key: 'bases', label: 'l.bases', color: '#ff8a1f', group: 'w' },
-  ], (k, on) => { pts[k].obj.visible = on; });
+    { key: 'online', label: 'l.online', color: '#2f9bff', group: 'w', cls: 'mv-glyph-player' }, { key: 'offline', label: 'l.offline', color: '#3a6a8a', group: 'w', cls: 'mv-glyph-offline' }, { key: 'bases', label: 'l.bases', color: '#ff8a1f', group: 'w', cls: 'mv-glyph-base' },
+    { key: 'labels', label: 'l.labels', color: '#bfe1ff', group: 'w', cls: 'mv-glyph-labels' }, { key: 'beams', label: 'l.beams', color: '#ff9d2e', group: 'w', cls: 'mv-glyph-beams' },
+  ], (k, on) => { if (k === 'labels') labels.setOn(on); else if (k === 'beams') beams.setOn(on); else { pts[k].obj.visible = on; labels.setKind(k, on); } });
+  // Standard wie im Dune Map Viewer: Spieler online, Basen und Namen an; offline und Leuchtsäulen aus
+  { const rows = document.querySelectorAll('#layers input'); const off = ['offline', 'beams']; const keys = ['online', 'offline', 'bases', 'labels', 'beams']; rows.forEach((cb, i) => { if (off.includes(keys[i])) { cb.checked = false; cb.onchange(); } }); }
 
   let current = 'hagga', showGen = 0, rows = { players: [], bases: [] }, hq = false, companion = '', bridgeState = ['', ''], terrainArgs = null;
   const mapKey = (m) => (/deep/i.test(m) ? 'deep' : /survival|hagga/i.test(m) ? 'hagga' : null);
@@ -75,7 +85,11 @@
       if (isOn) { const p = pt(r); list.push({ label: String(r.name || '?').slice(0, 40), pick: () => env.jump(p.x, p.y, p.z, 120) }); }
     }
     for (const r of rows.bases) if (mapKey(r.map) === current && Number.isFinite(+r.x)) bs.push(pt(r));
-    pts.online.set(on); pts.offline.set(off); pts.bases.set(bs);
+    pts.online.set(on); pts.offline.set(off); pts.bases.set(bs); beams.set(on);
+    const nm = (r) => String(r.name || '?').slice(0, 40), lb = (arr, f) => arr.map(f);
+    labels.set('online', lb(rows.players.filter((r) => mapKey(r.map) === current && Number.isFinite(+r.x) && /^online$/i.test(String(r.status).trim())), (r) => Object.assign(pt(r), { text: nm(r), range: 4000, px: 34, color: '#ffe9c7' })));
+    labels.set('offline', lb(rows.players.filter((r) => mapKey(r.map) === current && Number.isFinite(+r.x) && !/^online$/i.test(String(r.status).trim())), (r) => Object.assign(pt(r), { text: nm(r), range: 1000, px: 28, color: '#ffe9c7' })));
+    labels.set('bases', bs.map((p) => Object.assign({}, p, { text: UI.t('name.base'), range: 1200, px: 34, color: '#cfe3ff' })));
     lay.count('online', on.length); lay.count('offline', off.length); lay.count('bases', bs.length);
     UI.players(list); UI.status(UI.t('live.status', rows.players.filter((r) => mapKey(r.map) === current).length, bs.length));
   }
@@ -128,6 +142,10 @@
   UI.toggle('hq', (on) => { hq = on; showMap(current, true); });
   UI.toggle('models', (on) => MV.Layer.setModels(on), true);
   UI.followCursor(env);
+  UI.clickPick($('view'), (x, y) => {
+    for (const k in pts) { const h = pts[k].nearest(x, y, 12); if (h) return { title: UI.t('l.' + k), lines: [[UI.t('info.pos'), Math.round(h.x) + ' / ' + Math.round(h.y) + ' · ' + Math.round(h.z) + ' m']], pick: () => env.jump(h.x, h.y, h.z, 120) }; }
+    return null;
+  });
 
   renderConn();
   // Kein Startdialog: Die Console wird automatisch erkannt. Die Companion-Adresse ist optional (Knopf im Bereich Verbindung).

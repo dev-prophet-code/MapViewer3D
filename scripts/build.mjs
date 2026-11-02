@@ -32,7 +32,8 @@ function classicOrbit() {
 const safeInline = (t) => { if (/<\/script/i.test(t)) throw new Error('</script> in eingebettetem Text'); return t; };
 
 const three = classicThree(), orbit = classicOrbit();
-const core = rd('viewer/core.js'), meshes = rd('viewer/meshes.js'), css = rd('viewer/style.css'), shell = rd('viewer/shell.js'), body = rd('viewer/shell.html');
+const core = rd('viewer/core.js'), meshes = rd('viewer/meshes.js'), extra = rd('viewer/marker-extra.js'), extraCss = rd('viewer/marker-extra.css'), baseCss = rd('viewer/style.css'), css = baseCss + '\n' + extraCss, // Addon: Piktogramme in reinem CSS (ohne Bilder)
+   shell = rd('viewer/shell.js'), body = rd('viewer/shell.html');
 
 // --- Addon: alles in einer Datei
 const terrain = { hagga: rd('addon/data/terrain-survival_1.json').trim(), deep: rd('addon/data/terrain-deepdesert_1.json').trim() };
@@ -40,7 +41,7 @@ const terrain = { hagga: rd('addon/data/terrain-survival_1.json').trim(), deep: 
 const fill = (tpl, map) => tpl.replace(/__([A-Z_]+)__/g, (m, k) => (k in map ? map[k] : m));
 const bodyHtml = fill(body, { VERSION: version });
 const addonHtml = fill(rd('viewer/addon.template.html'), {
-  VERSION: version, CSS: css, BODY: bodyHtml, THREE: safeInline(three), ORBIT: safeInline(orbit), CORE: safeInline(core), MESHES: safeInline(meshes), SHELL: safeInline(shell),
+  VERSION: version, CSS: css, BODY: bodyHtml, THREE: safeInline(three), ORBIT: safeInline(orbit), CORE: safeInline(core), MESHES: safeInline(meshes), EXTRA: safeInline(extra), CREATURES: safeInline(rd('viewer/creatures.js')), T_CREATURES: safeInline(fs.existsSync(path.join(root, 'addon/data/creatures.json')) ? rd('addon/data/creatures.json').trim() : '{}'), SHELL: safeInline(shell),
   TERRAIN_HAGGA: safeInline(terrain.hagga), TERRAIN_DEEP: safeInline(terrain.deep), APP: safeInline(rd('viewer/addon-app.js')),
 });
 wr('addon/web/index.html', addonHtml);
@@ -50,11 +51,13 @@ wr('companion/public/three.js', three);
 wr('companion/public/orbit.js', orbit);
 wr('companion/public/core.js', core);
 wr('companion/public/meshes.js', meshes);
+wr('companion/public/marker-extra.js', extra);
 wr('companion/public/marker-defs.js', rd('viewer/marker-defs.js'));
 wr('companion/public/markers.js', rd('viewer/markers.js'));
+wr('companion/public/creatures.js', rd('viewer/creatures.js'));
 wr('companion/public/buildings.js', rd('viewer/buildings.js'));
 wr('companion/public/shell.js', shell);
 wr('companion/public/app.js', rd('viewer/companion-app.js'));
-wr('companion/public/app.css', css + '\n' + rd('viewer/markers.css')); // Marker-Klassen der Console (nur Companion: dort gibt es die Symbole)
+wr('companion/public/app.css', baseCss + '\n' + rd('viewer/markers.css') + '\n' + extraCss); // Marker-Klassen der Console (nur Companion: dort gibt es die Symbole)
 wr('companion/public/index.html', fill(rd('viewer/companion.index.html'), { VERSION: version, BODY: bodyHtml }));
 console.log(`gebaut: v${version} · Addon ${(addonHtml.length / 1024).toFixed(0)} KiB`);

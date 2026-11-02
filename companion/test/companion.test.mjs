@@ -208,6 +208,15 @@ test('Marker-Atlas: ungültige Karte 400, ohne Sitzung 401, ohne Maps-Recht 403'
   t.close();
 });
 
+test('Kartenbild: nur zwei feste Namen, Größe bis 4 MiB, Sitzung nötig', async () => {
+  const t = await startApp(); const { cookie } = await t.login(GOOD);
+  const ok = await fetch(t.base + '/mapimg/hagga-basin.png', { headers: { cookie } }); assert.equal(ok.status, 200); assert.equal(ok.headers.get('content-type'), 'image/png'); assert.equal((await ok.arrayBuffer()).byteLength, 900 * 1024);
+  assert.equal((await fetch(t.base + '/mapimg/deep-desert.png', { headers: { cookie } })).status, 502); // über 4 MiB
+  for (const bad of ['azuriteore.webp', 'x.png', '..%2Fapi%2Fmap%2Fplayers', 'hagga-basin.png%00', '']) assert.equal((await fetch(t.base + '/mapimg/' + bad, { headers: { cookie } })).status, 404, bad);
+  assert.equal((await fetch(t.base + '/mapimg/hagga-basin.png')).status, 401);
+  t.close();
+});
+
 test('Symbole: nur feste Dateinamen, nur Bilder, Größe begrenzt, kein Token an die Console, Sitzung nötig', async () => {
   const t = await startApp(); const { cookie } = await t.login(GOOD);
   const ok = await fetch(t.base + '/icons/azuriteore.webp', { headers: { cookie } });
@@ -218,6 +227,22 @@ test('Symbole: nur feste Dateinamen, nur Bilder, Größe begrenzt, kein Token an
   assert.equal((await fetch(t.base + '/icons/unbekannt.webp', { headers: { cookie } })).status, 404);
   assert.equal((await fetch(t.base + '/icons/azuriteore.webp')).status, 401);
   assert.ok(t.con.seen.filter((s) => s.url.startsWith('/images/maps/')).every((s) => s.auth === undefined), 'Token ging an einen öffentlichen Pfad');
+  t.close();
+});
+
+test('Körper (creatures/): Index und Mesh nur mit passendem Hash aus dem Katalog', async () => {
+  const cdn = buildCdn();
+  const good = await startApp({ cdn: await fakeCdn(cdn) }); const { cookie } = await good.login(GOOD);
+  const idx = await fetch(good.base + '/cdn/creatures/index.json', { headers: { cookie } }); assert.equal(idx.status, 200);
+  assert.equal(JSON.parse(await idx.text()).rows.sandworm_arrakis.kind, 'worm');
+  const m = await fetch(good.base + '/cdn/creatures/mesh/3.bin', { headers: { cookie } }); assert.equal(m.status, 200); assert.equal(Buffer.from(await m.arrayBuffer()).subarray(0, 4).toString('latin1'), 'DML1');
+  assert.equal((await fetch(good.base + '/cdn/creatures/mesh/4.bin', { headers: { cookie } })).status, 404); // nicht im Katalog
+  assert.notEqual((await fetch(good.base + '/cdn/creatures/other.json', { headers: { cookie } })).status, 200);
+  good.close();
+  const evil = Buffer.from(cdn.mesh); evil[40] ^= 1;
+  const t = await startApp({ cdn: await fakeCdn(cdn, { '/creatures/mesh/3.bin': evil, '/creatures/index.json': Buffer.from('{"rows":{}}') }) }); const c2 = await t.login(GOOD);
+  assert.equal((await fetch(t.base + '/cdn/creatures/mesh/3.bin', { headers: { cookie: c2.cookie } })).status, 502);
+  assert.equal((await fetch(t.base + '/cdn/creatures/index.json', { headers: { cookie: c2.cookie } })).status, 502);
   t.close();
 });
 

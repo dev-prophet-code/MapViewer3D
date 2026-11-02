@@ -20,6 +20,8 @@ export async function fakeConsole() {
       seen.push({ url: req.url, auth: req.headers.authorization });
       const name = req.url.slice(13);
       if (name === 'azuriteore.webp' || name === 'titaniumore.webp') { res.writeHead(200, { 'Content-Type': 'image/webp' }); return res.end(Buffer.from('UklGRhIAAABXRUJQVlA4TAYAAAAvAAAAAAfQ//73/wr/', 'base64')); }
+      if (name === 'hagga-basin.png') { res.writeHead(200, { 'Content-Type': 'image/png' }); return res.end(Buffer.alloc(900 * 1024)); } // über der Symbolgrenze, unter der Kartenbild-Grenze
+      if (name === 'deep-desert.png') { res.writeHead(200, { 'Content-Type': 'image/png' }); return res.end(Buffer.alloc(5 * 1024 * 1024)); } // zu groß
       if (name === 'html.png') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end('<script>alert(1)</script>'); }
       if (name === 'big.png') { res.writeHead(200, { 'Content-Type': 'image/png' }); return res.end(Buffer.alloc(600 * 1024)); }
       res.writeHead(404); return res.end();
@@ -60,8 +62,9 @@ export function buildCdn() {
   [0, 0, 0, 100, 100, 100].forEach((v, k) => mesh.writeFloatLE(v, 12 + 4 * k));
   [0, 0, 0, 65535, 0, 0, 0, 65535, 0].forEach((v, k) => mesh.writeUInt16LE(v, 36 + 2 * k)); [0, 1, 2].forEach((v, k) => mesh.writeUInt16LE(v, 56 + 2 * k));
   const bindex = Buffer.from(JSON.stringify({ rows: { Test_Wall: { mesh: 7, group: 'Atreides', offset: [0, 0, 0], rot: [0, 0, 0], scale: [1, 1, 1] } }, meshes: [] }));
-  const catalog = Buffer.from(JSON.stringify({ format: 1, maps: [{ file: 'm/testmap.json', sha256: sha(index) }], buildables: { index: sha(bindex), meshes: { 7: sha(mesh).slice(0, 16) } } }));
-  const files = { '/catalog.json': catalog, '/m/testmap.json': index, [`/p/${id.slice(0, 2)}/${id.slice(2)}.z`]: tile, '/buildables/index.json': bindex, '/buildables/mesh/7.bin': mesh };
+  const cindex = Buffer.from(JSON.stringify({ rows: { sandworm_arrakis: { mesh: 3, kind: 'worm', match: ['sandworm'] } }, meshes: [] }));
+  const catalog = Buffer.from(JSON.stringify({ format: 1, maps: [{ file: 'm/testmap.json', sha256: sha(index) }], buildables: { index: sha(bindex), meshes: { 7: sha(mesh).slice(0, 16) } }, creatures: { index: sha(cindex), meshes: { 3: sha(mesh).slice(0, 16) } } }));
+  const files = { '/catalog.json': catalog, '/m/testmap.json': index, [`/p/${id.slice(0, 2)}/${id.slice(2)}.z`]: tile, '/buildables/index.json': bindex, '/buildables/mesh/7.bin': mesh, '/creatures/index.json': cindex, '/creatures/mesh/3.bin': mesh };
   return { files, id, catalogSha: sha(catalog), tilePath: `p/${id.slice(0, 2)}/${id.slice(2)}.z`, mesh, bindex };
 }
 export async function fakeCdn(cdn = buildCdn(), tamper = {}) {

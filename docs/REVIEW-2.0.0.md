@@ -102,3 +102,45 @@ Code-Review (High) über die neuen und geänderten Dateien, 7 Funde:
 **Secret-Scan:** keine Token, Passwörter oder echten IP-Adressen in den geänderten Dateien (nur die für Beispiele reservierte Test-Adresse 203.0.113.5 und Test-Fälle). Keine Bilder und keine Spielmodelle im Repository (siehe `NOTICE`).
 
 **Einschränkungen:** Basen aus Bauteilen und der Atlas wurden gegen die Demo-Console geprüft (echte Typnamen und echte Meshes des `cdn`-Branchs), nicht gegen eine laufende Console mit echten Basen.
+
+## 7. Nachtrag: Symbole für Marker ohne eigenes Mesh (Console-Stil, CSS)
+
+Neu: `viewer/marker-extra.js` (Symbol-Beschreibung `MV.GLYPHS`, Canvas-Textur, `MV.IconPoints`), `viewer/marker-extra.css` (erzeugt von `tools/gen-marker-extra.mjs`, reines CSS ohne Bild), Umbau von `MV.Layer` (Symbole statt Quadrate, optional über dem Modell), Legende in Addon und Companion mit Piktogrammen. Wo die Console ein Symbol hat (Spieler, Basis, Fahrzeug), nutzt der Companion deren Bild und CSS.
+
+Code-Review (High) über die geänderten Dateien: 2 Funde, beide behoben.
+
+| # | Datei | Fund | Schwere | Status |
+|---|---|---|---|---|
+| 1 | `viewer/marker-extra.js`, `tools/gen-marker-extra.mjs` | Argumentreihenfolge der Primitive (Rechteck: Farbe an Stelle 5, Ring: Farbe an Stelle 4) falsch gelesen: Farben „undefined“ im CSS und in der Textur | Mittel | behoben (Test: kein „undefined“, Farben gültig) |
+| 2 | `viewer/marker-extra.js` | Zwei Kreise des Sandwurm-Symbols ragten über das 24er-Raster hinaus (abgeschnitten) | Niedrig | behoben (Raster-Test für alle Symbole) |
+
+**Tests:** Addon 14 (neu: Beschreibung gültig, Raster, Farben, erzeugtes CSS aktuell, CSS ohne `url()`), Companion 28, Pentest 93 Angriffe, 0 durchgekommen. Die Piktogramme enthalten keine Bilder und keine externen Ressourcen, die Prüfung des Addons (Sandbox) bleibt in Ordnung.
+
+**Einschränkung:** Die Optik (Größen, Höhe der Symbole über den Modellen) wurde in dieser Runde nicht im Browser angesehen (Zugriff auf das Browser-Fenster wurde nicht freigegeben); Skript-Syntax, Tests und Aufbau sind geprüft.
+
+## 7. Nachtrag: Körper von Sandwurm, Figur und Fahrzeugen (`creatures/`)
+
+Neu: `viewer/creatures.js` (Lader; der DML1-Dekodierer ist dorthin gezogen), CDN-Pfade `creatures/index.json` und `creatures/mesh/<n>.bin` im Companion (Hash aus Katalogabschnitt `creatures`), `tools/embed-creatures.mjs` für das Addon, Modellvarianten in `viewer/meshes.js` (`MV.Markers.register('vehicle:<Name>', …)`).
+
+| # | Stelle | Befund | Stufe | Stand |
+|---|---|---|---|---|
+| 1 | `creatures.js` | Netze aus dem CDN sind unvertraut: Größe/Index werden vom Dekodierer geprüft, zusätzlich Obergrenze 200 000 Eckpunkte, Zeilen mit unbekannter Art oder falschem `match` werden übersprungen | Info | geprüft (Test) |
+| 2 | Companion | Neue Pfade nur mit Katalog-Hash, höchstens 1 MiB, feste Muster | Info | 29 Tests, Pentest 99 Angriffe, 0 durchgekommen (6 neue Zeilen) |
+| 3 | Exporter | `yaw` fehlt in älteren Ausgaben; der Viewer nimmt dann 90° (Wurm/Figur) bzw. 0° (Fahrzeug) | Niedrig | Rückfall eingebaut |
+| 4 | Körper | Umrisse sind Physikkörper (Kapseln/Quader), keine sichtbaren Meshes | Info | in README vermerkt |
+
+## 8. Nachtrag: Anzeige wie der Dune Map Viewer, Kartenbild, Steuerung (Code-Review „High“ + Pentest)
+
+Geprüft: `viewer/marker-extra.js` (Namen, Leuchtsäulen, Symbol-Shader mit Überblendung), `viewer/shell.js` (Kompass, Infofeld, Suche, Gelände-Schalter), `viewer/core.js` (Steuerung, Himmel, Tag/Nacht, Kartenbild-Shader), `viewer/creatures.js`, `companion/lib/{console,server,cdn}.mjs` (`/mapimg/`, `creatures/`).
+
+| # | Stelle | Befund | Stufe | Stand |
+|---|---|---|---|---|
+| 1 | `marker-extra.js` Labels | Bei jeder Aktualisierung (mehrmals pro Sekunde) wurden alle Namens-Sprites neu angelegt (Speicher-/GPU-Last) | Mittel | behoben: Sprites werden wiederverwendet |
+| 2 | `marker-extra.js` Labels | `CanvasRenderingContext2D.roundRect` fehlt in älteren Browsern, die Namen blieben leer | Niedrig | behoben: Rückfall auf Rechteck |
+| 3 | `shell.js` Infofeld/Namen | Texte kommen aus Console-Daten (Spielernamen): überall `textContent` bzw. Canvas-Text, nie HTML | Info | geprüft |
+| 4 | Companion `/mapimg/` | Nur zwei feste Namen, höchstens 4 MiB, nur PNG, Sitzung nötig, Zwischenspeicher begrenzt | Info | Test + 7 Pentest-Zeilen |
+| 5 | `core.js` Kartenbild | Weltgrenzen der Bilder sind fest eingetragen (aus dem Console-Quelltext); ändert die Console sie, sitzt das Bild falsch | Info | offen, dokumentiert |
+| 6 | Addon | Basen haben dort keinen Namen (die SQL-Abfrage liefert keinen, bewusst nicht erweitert); Gegner, Zivilisten, Würmer, Fahrzeuge gibt es erst mit Realtime-Aktionen der Bridge | Info | offen |
+| 7 | `addon/data/creatures.json` | 340 KiB Netze aus den Physik-Assets der Spieldateien (wie die Bauteil-Netze im `cdn`-Branch) | Info | offen |
+
+**Penetrationstest:** 106 Angriffe (vorher 99), 0 durchgekommen. Neu: sechs Pfadtricks bei `/mapimg/` (anderer Dateityp, Traversal, Nullbyte, Groß-/Kleinschreibung) und der Zugriff ohne Sitzung. Secret-Scan: keine Token, Passwörter oder echten IP-Adressen (nur die für Beispiele reservierten Adressen in Tests).

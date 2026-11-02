@@ -16,12 +16,14 @@ const RE_INDEX = /^m\/([a-z0-9_]{1,40})\.json$/;
 const RE_TILE = /^p\/([0-9a-f]{2})\/([0-9a-f]{14})\.z$/;
 const RE_BINDEX = /^buildables\/index\.json$/;
 const RE_BMESH = /^buildables\/mesh\/(\d{1,5})\.bin$/;
+const RE_CINDEX = /^creatures\/index\.json$/;
+const RE_CMESH = /^creatures\/mesh\/(\d{1,5})\.bin$/;
 const TILE_RAW = 3 * 129 * 129;
 const MAX_MESH = 1048576;
 const MAX_BYTES = 16 * 1048576;
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 
-export function cdnPathOk(p) { return typeof p === 'string' && p.length < 80 && (RE_CATALOG.test(p) || RE_INDEX.test(p) || RE_TILE.test(p) || RE_BINDEX.test(p) || RE_BMESH.test(p)); }
+export function cdnPathOk(p) { return typeof p === 'string' && p.length < 80 && (RE_CATALOG.test(p) || RE_INDEX.test(p) || RE_TILE.test(p) || RE_BINDEX.test(p) || RE_BMESH.test(p) || RE_CINDEX.test(p) || RE_CMESH.test(p)); }
 
 export function makeCdn(cfg, log = () => {}) {
   const cache = new Map(); let bytes = 0; const inflight = new Map(); let catalog = null;
@@ -77,15 +79,15 @@ export function makeCdn(cfg, log = () => {}) {
       if (raw.length !== TILE_RAW || sha(raw).slice(0, 16) !== m[1] + m[2]) throw Object.assign(new Error('Kachel-Hash falsch'), { status: 502 });
       return { buf, type: 'application/octet-stream' };
     }
-    if (RE_BINDEX.test(p)) {
-      const want = ((await getCatalog()).json.buildables || {}).index;
+    if (RE_BINDEX.test(p) || RE_CINDEX.test(p)) {
+      const want = ((await getCatalog()).json[p.startsWith('creatures') ? 'creatures' : 'buildables'] || {}).index;
       if (!/^[0-9a-f]{64}$/.test(want || '')) throw Object.assign(new Error('Bauteil-Katalog unbekannt'), { status: 404 });
       const buf = await fetchRaw(p);
       if (sha(buf) !== want) throw Object.assign(new Error('Bauteil-Index passt nicht zum Katalog'), { status: 502 });
       return { buf, type: 'application/json' };
     }
-    if ((m = RE_BMESH.exec(p))) {
-      const want = (((await getCatalog()).json.buildables || {}).meshes || {})[m[1]];
+    if ((m = RE_BMESH.exec(p) || RE_CMESH.exec(p))) {
+      const want = (((await getCatalog()).json[p.startsWith('creatures') ? 'creatures' : 'buildables'] || {}).meshes || {})[m[1]];
       if (!/^[0-9a-f]{16,64}$/.test(want || '')) throw Object.assign(new Error('Bauteil unbekannt'), { status: 404 });
       const buf = await fetchRaw(p);
       if (buf.length > MAX_MESH || !sha(buf).startsWith(want)) throw Object.assign(new Error('Bauteil passt nicht zum Katalog'), { status: 502 });

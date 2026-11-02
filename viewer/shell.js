@@ -18,16 +18,20 @@
       language: 'Language', map: 'Map', 'jump.title': 'Jump to', online: 'online', 'live.title': 'Live map', 'layers.all': 'Show all', 'layers.none': 'Hide all',
       'conn.title': 'Connection', 'help.open': 'Camera controls & guide', 'help.title': 'Controls', close: 'Close', cancel: 'Cancel',
       'hud.panel': 'Show or hide the panel', 'hud.fullscreen': 'Fullscreen', 'players.none': 'Nobody online',
-      'help.1': 'Left mouse: orbit. Right mouse or Shift + left mouse: pan. Mouse wheel: zoom. Touch: one finger orbits, two fingers pan and zoom.',
-      'help.2': 'The jump list flies the camera to a player. Layers can be switched on and off individually.',
+      'jump.search': 'Search player, base or place …', 'jump.empty': 'No matches found', 'terrain.title': 'Terrain display', 'terrain.grid': '1 km coordinate grid', 'terrain.contours': 'Contour lines (10 m / 50 m)', 'terrain.wireframe': 'Wireframe mesh',
+      'compass.N': 'N', 'compass.E': 'E', 'compass.S': 'S', 'compass.W': 'W', 'compass.tip': 'Compass – click to face north', 'compass.facing': 'Facing', 'info.jump': 'Fly there', 'info.pos': 'Position', 'l.bases3d': 'Bases in 3D', 'l.labels': 'Names', 'l.beams': 'Light beams', 'name.worm': 'Sandworm', 'name.base': 'Base', 'name.storm': 'Sandstorm',
+      'help.1': 'Mouse wheel: rotate the camera around the view centre. Shift + wheel: tilt up / down. Ctrl / ⌘ + wheel (trackpad: pinch): zoom. Left drag: move the map. Right drag: rotate and tilt freely. Click: details of a marker. Touch: one finger moves, two fingers zoom and rotate.',
+      'help.2': 'Keyboard: W A S D or arrow keys fly forward / left / back / right, Q / E down / up, Shift faster, F fullscreen. The compass shows north; a click faces north.',
       'help.3': 'Everything is read-only: the viewer never changes anything on the server.',
     },
     de: {
       language: 'Sprache', map: 'Karte', 'jump.title': 'Springen zu', online: 'online', 'live.title': 'Live-Karte', 'layers.all': 'Alle zeigen', 'layers.none': 'Alle ausblenden',
       'conn.title': 'Verbindung', 'help.open': 'Kamerasteuerung & Anleitung', 'help.title': 'Steuerung', close: 'Schließen', cancel: 'Abbrechen',
       'hud.panel': 'Bedienfeld ein- oder ausblenden', 'hud.fullscreen': 'Vollbild', 'players.none': 'Niemand online',
-      'help.1': 'Linke Maustaste: drehen. Rechte Maustaste oder Umschalt + linke Maustaste: verschieben. Mausrad: zoomen. Touch: ein Finger dreht, zwei Finger verschieben und zoomen.',
-      'help.2': 'Die Sprungliste fliegt die Kamera zu einem Spieler. Ebenen lassen sich einzeln ein- und ausschalten.',
+      'jump.search': 'Spieler, Basis oder Ort suchen …', 'jump.empty': 'Keine Treffer gefunden', 'terrain.title': 'Geländedarstellung', 'terrain.grid': '1-km-Koordinatenraster', 'terrain.contours': 'Höhenlinien (10 m / 50 m)', 'terrain.wireframe': 'Drahtgitter',
+      'compass.N': 'N', 'compass.E': 'O', 'compass.S': 'S', 'compass.W': 'W', 'compass.tip': 'Kompass – Klick richtet nach Norden aus', 'compass.facing': 'Blickrichtung', 'info.jump': 'Hinfliegen', 'info.pos': 'Position', 'l.bases3d': 'Basen in 3D', 'l.labels': 'Namen', 'l.beams': 'Leuchtsäulen', 'name.worm': 'Sandwurm', 'name.base': 'Basis', 'name.storm': 'Sandsturm',
+      'help.1': 'Mausrad: Kamera um die Bildmitte drehen. Umschalt + Rad: nach oben / unten neigen. Strg / ⌘ + Rad (Trackpad: Pinch): zoomen. Links ziehen: Karte verschieben. Rechts ziehen: frei drehen und neigen. Klick: Details zu einem Marker. Touch: ein Finger verschiebt, zwei Finger zoomen und drehen.',
+      'help.2': 'Tastatur: W A S D oder Pfeile fliegen vorwärts / links / zurück / rechts, Q / E runter / hoch, Umschalt schneller, F Vollbild. Der Kompass zeigt Norden, ein Klick richtet nach Norden aus.',
       'help.3': 'Alles ist nur lesend: Der Viewer verändert nichts auf dem Server.',
     },
   });
@@ -36,6 +40,8 @@
     document.documentElement.lang = lang;
     document.querySelectorAll('[data-i18n]').forEach((e) => { e.textContent = UI.t(e.dataset.i18n); });
     document.querySelectorAll('[data-i18n-title]').forEach((e) => { e.title = UI.t(e.dataset.i18nTitle); });
+    document.querySelectorAll('[data-i18n-ph]').forEach((e) => { e.placeholder = UI.t(e.dataset.i18nPh); });
+    const cp = $('compass'); if (cp) cp.title = UI.t('compass.tip');
     const body = $('helpBody'); body.textContent = '';
     for (const k of ['help.1', 'help.2', 'help.3']) { const p = document.createElement('p'); p.textContent = UI.t(k); body.append(p); }
     hooks.forEach((f) => f(lang));
@@ -91,15 +97,20 @@
 
   // ---- Koordinaten des Kamerazieles; nur schreiben, wenn sich der Text ändert
   UI.followCursor = function (env) {
+    UI.terrain(env); UI.compass(env); env.setNight((document.documentElement.dataset.theme || 'dark') === 'dark');
     let last = '';
     env.onFrame(() => { const t = env.ctl.target, s = 'X ' + Math.round(t.x) + '  Y ' + Math.round(t.z) + '  Z ' + Math.round(t.y) + ' m'; if (s !== last) { last = s; UI.cursor(s); } });
   };
 
   // ---- Sprungliste. items: [{label, sub, pick}]
   UI.players = function (items) {
-    const box = $('playerList'); box.textContent = ''; $('playerCount').textContent = items.length;
-    if (!items.length) { box.append(UI.el('div', 'empty', UI.t('players.none'))); return; }
-    for (const it of items.slice(0, 200)) { const b = UI.el('button', null, it.label); b.type = 'button'; b.onclick = it.pick; box.append(b); }
+    UI._items = items; $('playerCount').textContent = items.length; UI.renderPlayers();
+  };
+  UI.renderPlayers = function () {
+    const box = $('playerList'), items = UI._items || [], q = $('searchInput').value.trim().toLowerCase(); box.textContent = '';
+    const list = q ? items.filter((it) => it.label.toLowerCase().includes(q)) : items;
+    if (!list.length) { box.append(UI.el('div', 'empty', UI.t(items.length ? 'jump.empty' : 'players.none'))); return; }
+    for (const it of list.slice(0, 200)) { const b = UI.el('button', null, it.label); b.type = 'button'; b.onclick = it.pick; box.append(b); }
   };
 
   UI.set = (id, text) => { $(id).textContent = text; };
@@ -135,14 +146,71 @@
     const first = f.querySelector('input'); if (first) first.focus();
   };
 
+  // ---- Geländedarstellung: Raster, Höhenlinien, Drahtgitter (wirken über die gemeinsamen Shader-Werte)
+  UI.terrain = function (env) {
+    if (UI._terrainDone) return; UI._terrainDone = true;
+    for (const [key, set] of [['terrain.grid', (on) => { env.uniforms.uGrid.value = on ? 1 : 0; }], ['terrain.contours', (on) => { env.uniforms.uContours.value = on ? 1 : 0; }], ['terrain.wireframe', (on) => env.setWire(on)]]) {
+      const row = UI.el('label', 'toggle'), cb = document.createElement('input'); cb.type = 'checkbox'; const txt = UI.el('span'); row.append(cb, txt); $('terrainToggles').append(row);
+      const upd = () => { txt.textContent = UI.t(key); }; upd(); UI.onLang(upd); cb.onchange = () => set(cb.checked);
+    }
+  };
+
+  // ---- Kompass: die Rose dreht sich gegen die Blickrichtung, ein Klick dreht die Kamera nach Norden (Norden = -Z)
+  UI.compass = function (env) {
+    const host = $('compass'); if (!host || UI._compass) return; UI._compass = true;
+    const NS = 'http://www.w3.org/2000/svg', mk = (n, a, t) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); if (t) e.textContent = t; return e; };
+    const svg = mk('svg', { viewBox: '0 0 84 84', 'aria-hidden': 'true' }), rose = mk('g', { class: 'compass-rose' }), letters = [];
+    svg.append(mk('circle', { class: 'compass-disc', cx: 42, cy: 42, r: 40 }));
+    rose.append(mk('circle', { class: 'compass-ring', cx: 42, cy: 42, r: 21 }), mk('path', { class: 'compass-ticks', d: 'M42 18v5M66 42h-5M42 66v-5M18 42h5M25 25l3 3M59 25l-3 3M59 59l-3-3M25 59l3-3' }));
+    ['N', 'E', 'S', 'W'].forEach((c, i) => {
+      const a = i * Math.PI / 2, x = 42 + 29 * Math.sin(a), y = 42 - 29 * Math.cos(a), tx = mk('text', { class: 'compass-card' + (c === 'N' ? ' north' : ''), x: x.toFixed(2), y: y.toFixed(2) }, UI.t('compass.' + c));
+      letters.push({ tx, x, y, c }); rose.append(tx);
+    });
+    UI.onLang(() => letters.forEach((l) => { l.tx.textContent = UI.t('compass.' + l.c); }));
+    svg.append(rose, mk('path', { class: 'compass-pointer', d: 'M42 26 51 52 42 47 33 52Z' }));
+    host.replaceChildren(svg); host.setAttribute('role', 'button'); host.tabIndex = 0;
+    const cam = env.cam, ctl = env.ctl, f = new THREE.Vector3(), off = new THREE.Vector3(), sph = new THREE.Spherical(); let shown = NaN, anim = null;
+    const faceNorth = () => { off.subVectors(cam.position, ctl.target); sph.setFromVector3(off); anim = { from: sph.theta, to: Math.round(sph.theta / (2 * Math.PI)) * 2 * Math.PI, p: 0 }; };
+    host.addEventListener('click', faceNorth); host.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); faceNorth(); } });
+    env.onFrame(() => {
+      if (anim) {
+        anim.p = Math.min(1, anim.p + 1 / 27); const e = 1 - Math.pow(1 - anim.p, 3);
+        off.subVectors(cam.position, ctl.target); sph.setFromVector3(off); sph.theta = anim.from + (anim.to - anim.from) * e; off.setFromSpherical(sph); cam.position.copy(ctl.target).add(off); cam.lookAt(ctl.target);
+        if (anim.p >= 1) anim = null;
+      }
+      cam.getWorldDirection(f); const b = (Math.atan2(f.x, -f.z) * 180 / Math.PI + 360) % 360; if (Math.abs(b - shown) < 0.1) return; shown = b;
+      rose.setAttribute('transform', 'rotate(' + (-b).toFixed(1) + ' 42 42)');
+      for (const l of letters) l.tx.setAttribute('transform', 'rotate(' + b.toFixed(1) + ' ' + l.x.toFixed(2) + ' ' + l.y.toFixed(2) + ')');
+      host.setAttribute('aria-label', UI.t('compass.facing') + ' ' + Math.round(b) + '°');
+    });
+  };
+
+  // ---- Infofeld rechts. o: {title, lines:[[Name, Wert]], pick}; Texte nur über textContent
+  UI.info = function (o) {
+    const box = $('liveinfo'); if (!o) { box.hidden = true; return; }
+    box.querySelector('.li-title').textContent = o.title; const dl = box.querySelector('.li-lines'); dl.textContent = '';
+    for (const [k, v] of o.lines || []) { dl.append(UI.el('dt', null, k), UI.el('dd', null, v)); }
+    box.querySelector('.li-jump').onclick = o.pick || null; box.querySelector('.li-jump').hidden = !o.pick; box.hidden = false;
+  };
+  // Klick (ohne Ziehen) auf die Karte: find(x, y) liefert das Infofeld oder null
+  UI.clickPick = function (canvas, find) {
+    let d = null;
+    canvas.addEventListener('pointerdown', (e) => { d = [e.clientX, e.clientY]; });
+    canvas.addEventListener('pointerup', (e) => { if (!d || Math.hypot(e.clientX - d[0], e.clientY - d[1]) > 5) { d = null; return; } d = null; UI.info(find(e.clientX, e.clientY) || null); });
+  };
+
   // ---- Bedienelemente rechts, Sprache, Hell/Dunkel
   const modal = (id, open) => { $(id).hidden = !open; };
   $('helpOpen').onclick = $('helpBtn').onclick = () => modal('help', true);
   $('helpClose').onclick = () => modal('help', false);
+  $('searchInput').oninput = () => UI.renderPlayers();
+  document.querySelector('#liveinfo .li-close').onclick = () => UI.info(null);
   $('help').addEventListener('click', (e) => { if (e.target === $('help')) modal('help', false); });
   $('panelToggle').onclick = () => { const hide = !document.body.classList.contains('panel-hidden'); document.body.classList.toggle('panel-hidden', hide); $('panelToggle').setAttribute('aria-pressed', String(!hide)); };
   $('fsBtn').onclick = () => { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch (e) { /* in der Sandbox evtl. nicht erlaubt */ } };
-  document.querySelectorAll('[data-theme-set]').forEach((b) => { b.onclick = () => { document.documentElement.dataset.theme = b.dataset.themeSet; }; });
+  document.querySelectorAll('[data-theme-set]').forEach((b) => { b.onclick = () => { document.documentElement.dataset.theme = b.dataset.themeSet; if (MV.env) MV.env.setNight(b.dataset.themeSet === 'dark'); document.querySelectorAll('[data-theme-set]').forEach((x) => x.classList.toggle('active', x === b)); }; });
+  if (!document.documentElement.dataset.theme) document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; // wie die Webseite: nach dem System
+  document.querySelectorAll('[data-theme-set]').forEach((x) => x.classList.toggle('active', x.dataset.themeSet === (document.documentElement.dataset.theme || 'dark')));
   $('lang').value = lang;
   $('lang').onchange = (e) => { lang = e.target.value === 'de' ? 'de' : 'en'; UI.applyI18n(); };
   UI.lang = () => lang;

@@ -2,7 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { makeConsole, TOKEN_RE, MAP_LIVE, ICON_RE } from './console.mjs';
+import { makeConsole, TOKEN_RE, MAP_LIVE, ICON_RE, MAPIMG } from './console.mjs';
 import { makeCdn } from './cdn.mjs';
 import { makeSessions, makeLimiter, makeLoginGuard, parseCookies } from './session.mjs';
 
@@ -125,7 +125,7 @@ export function createApp(cfg, { log = () => {}, version = '0.0.0', publicDir } 
     const file = files.get(p);
     if (file && req.method !== 'POST') { if (!ipLimit(ip)) return fail(res, 429, 'Zu viele Anfragen'); return send(res, 200, req.method === 'HEAD' ? '' : file.buf, file.type, { 'Cache-Control': 'no-cache' }); }
     if (p === '/healthz') return send(res, 200, { ok: true, version });
-    if (!p.startsWith('/api/') && !p.startsWith('/cdn/') && !p.startsWith('/icons/')) return fail(res, 404, 'nicht gefunden');
+    if (!p.startsWith('/api/') && !p.startsWith('/cdn/') && !p.startsWith('/icons/') && !p.startsWith('/mapimg/')) return fail(res, 404, 'nicht gefunden');
 
     if (p === '/api/login') {
       if (req.method !== 'POST') return fail(res, 405, 'POST erforderlich');
@@ -174,6 +174,12 @@ export function createApp(cfg, { log = () => {}, version = '0.0.0', publicDir } 
     if (p === '/api/base') { // Bauteile einer Basis (für die 3D-Basis aus echten Modellen)
       const id = url.searchParams.get('id'); if (!/^\d{1,12}$/.test(id || '')) return fail(res, 400, 'Basis ungültig');
       try { return send(res, 200, await baseData(s, id)); } catch (e) { return fail(res, e && e.status === 403 ? 403 : e && e.status === 404 ? 404 : 502, e && e.status === 403 ? 'Dem Token fehlt „Bases: Read“' : e && e.status === 404 ? 'Basis nicht gefunden' : 'Console nicht erreichbar'); }
+    }
+    if (p.startsWith('/mapimg/')) { // Kartenbild der Console (feste Namen), zwischengespeichert
+      const name = p.slice(8); if (!MAPIMG.has(name)) return fail(res, 404, 'nicht gefunden');
+      let hit = icons.get(name);
+      if (!hit) { try { hit = await consoleApi.icon(name); } catch { return fail(res, 502, 'Console nicht erreichbar'); } if (hit.status !== 200) return fail(res, hit.status === 404 ? 404 : 502, 'Kartenbild nicht verfügbar'); icons.set(name, hit); }
+      return send(res, 200, req.method === 'HEAD' ? '' : hit.buf, hit.type, { 'Cache-Control': 'private, max-age=3600' });
     }
     if (p.startsWith('/icons/')) { // Symbole der Live-Karte, von der Console geholt und zwischengespeichert
       let name; try { name = decodeURIComponent(p.slice(7)); } catch { return fail(res, 400, 'Name ungültig'); }

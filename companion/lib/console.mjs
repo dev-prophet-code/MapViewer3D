@@ -11,6 +11,9 @@ export const ALLOWED = new Set(['/api/realtime/healthz', '/api/realtime/objects'
 // Parametrisierte Pfade: feste Karten-Namen, Basis-IDs nur aus einem engen Zeichensatz.
 export const MAP_LIVE = { hagga: 'HaggaBasin', deep: 'DeepDesert' };
 export const ALLOWED_RE = [/^\/api\/map\/markers\?map=(HaggaBasin|DeepDesert)$/, /^\/api\/bases\/\d{1,12}\/export$/];
+// Kartenbilder der Console (öffentliche Dateien, feste Namen), größer als Symbole
+export const MAPIMG = new Set(['hagga-basin.png', 'deep-desert.png']);
+const MAX_MAPIMG = 4 * 1024 * 1024;
 export const ICON_RE = /^[A-Za-z0-9_-]{1,64}\.(webp|png)$/;
 const MAX_ICON = 512 * 1024;
 export const TOKEN_RE = /^dak_[A-Za-z0-9_-]{16,160}$/;
@@ -71,14 +74,15 @@ export function makeConsole(cfg) {
   }
   // Symbole der Live-Karte: öffentliche Dateien der Console (ohne Token), fester Ordner, nur Dateinamen aus engem Zeichensatz.
   function icon(name) {
-    if (typeof name !== 'string' || !ICON_RE.test(name)) throw new Error('Symbolname nicht erlaubt');
+    if (typeof name !== 'string' || !(ICON_RE.test(name) || MAPIMG.has(name))) throw new Error('Symbolname nicht erlaubt');
+    const max = MAPIMG.has(name) ? MAX_MAPIMG : MAX_ICON;
     return (pin ? pinnedSocket() : Promise.resolve(null)).then((sock) => new Promise((resolve, reject) => {
       const agent = sock ? Object.assign(new https.Agent(), { createConnection: () => sock }) : false;
       const req = mod.request({ ...base, agent, method: 'GET', path: '/images/maps/' + name, headers: { Accept: 'image/*', 'User-Agent': 'mapviewer3d-companion' } }, (res) => {
         const type = String(res.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
         if (res.statusCode !== 200 || !/^image\/(webp|png)$/.test(type)) { res.resume(); return resolve({ status: res.statusCode === 200 ? 502 : res.statusCode, type }); }
         const chunks = []; let n = 0;
-        res.on('data', (c) => { n += c.length; if (n > MAX_ICON) req.destroy(new Error('Symbol zu groß')); else chunks.push(c); });
+        res.on('data', (c) => { n += c.length; if (n > max) req.destroy(new Error('Symbol zu groß')); else chunks.push(c); });
         res.on('end', () => resolve({ status: 200, type, buf: Buffer.concat(chunks) }));
         res.on('error', reject);
       });

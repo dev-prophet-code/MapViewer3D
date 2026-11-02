@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const pub = (f) => fs.readFileSync(fileURLToPath(new URL('../../companion/public/' + f, import.meta.url)), 'utf8');
 const ctx = vm.createContext({ console, performance, setTimeout, clearTimeout, setInterval, clearInterval });
 ctx.globalThis = ctx;
-for (const f of ['three.js', 'orbit.js', 'core.js', 'meshes.js', 'marker-defs.js', 'markers.js', 'buildings.js']) vm.runInContext(pub(f), ctx);
+for (const f of ['three.js', 'orbit.js', 'core.js', 'meshes.js', 'marker-defs.js', 'markers.js', 'creatures.js', 'buildings.js']) vm.runInContext(pub(f), ctx);
 const { MV, THREE } = ctx;
 
 // Ein Netz im Format DML1: 3 Eckpunkte (uint16, zwischen lo und hi), ein Dreieck
@@ -70,4 +70,24 @@ test('Marker-Stile: feindliche Typen/Untertypen der Console (Prototyp-Namen, Son
     const st = MV.markerStyle('ore', bad); assert.ok(st.icon === null || typeof st.icon === 'string', bad); assert.equal(typeof st.size, 'number'); assert.ok(Number.isFinite(st.size), bad);
     const st2 = MV.markerStyle(bad, 'x'); assert.ok(st2.icon === null || typeof st2.icon === 'string', bad); assert.ok(Number.isFinite(st2.size), bad);
   }
+});
+
+test('Symbole ohne Console-Bild: Beschreibung gültig (Raster 24, Farben, Primitive) und das erzeugte CSS ist aktuell', async () => {
+  vm.runInContext(pub('marker-extra.js'), ctx);
+  const G = ctx.MV.GLYPHS; assert.deepEqual(Object.keys(G).sort(), ['base', 'bases3d', 'beams', 'civilian', 'coriolis', 'labels', 'npc', 'offline', 'player', 'storm', 'vehicle', 'worm']);
+  for (const [k, g] of Object.entries(G)) {
+    assert.match(g.c, /^#[0-9a-f]{6}$/i, k); assert.ok(g.p.length >= 2, k);
+    for (const q of g.p) {
+      assert.ok(['circle', 'rect', 'ring'].includes(q[0]), k + ' ' + q[0]);
+      const col = q[0] === 'rect' ? q[5] : q[4]; assert.match(col, /^#[0-9a-f]{6}$/i, k);
+      const nums = q[0] === 'rect' ? q.slice(1, 5) : q.slice(1, 4);
+      for (const n of nums) assert.ok(Number.isFinite(n) && n >= 0 && n <= 24, k + ' Zahl ' + n);
+      if (q[0] === 'rect') assert.ok(q[1] + q[3] <= 24.01 && q[2] + q[4] <= 24.01, k + ' rect ragt aus dem Raster');
+      else assert.ok(q[1] - q[3] >= -0.01 && q[1] + q[3] <= 24.01 && q[2] - q[3] >= -0.01 && q[2] + q[3] <= 24.01, k + ' Kreis ragt aus dem Raster');
+    }
+  }
+  const { spawnSync } = await import('node:child_process');
+  const r = spawnSync(process.execPath, [fileURLToPath(new URL('../../tools/gen-marker-extra.mjs', import.meta.url)), '--check'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!/url\(/.test(fs.readFileSync(fileURLToPath(new URL('../../viewer/marker-extra.css', import.meta.url)), 'utf8')), 'Piktogramme sind reines CSS ohne url()');
 });

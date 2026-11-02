@@ -14,6 +14,7 @@
 
   <section id="jump">
     <h2><span data-i18n="jump.title">Jump to</span> <span class="muted">(<span id="playerCount">0</span> <span data-i18n="online">online</span>)</span></h2>
+    <input id="searchInput" type="search" data-i18n-ph="jump.search" placeholder="Search player, base or place …" spellcheck="false" autocomplete="off" maxlength="60">
     <div id="playerList" class="plist"></div>
   </section>
 
@@ -25,6 +26,11 @@
     </div>
     <div id="liveStatus" class="muted pre small">–</div>
     <div id="layers" class="layers"></div>
+  </section>
+
+  <section id="terrainSec">
+    <h2 data-i18n="terrain.title">Terrain display</h2>
+    <div id="terrainToggles" class="toggles"></div>
   </section>
 
   <section id="conn">
@@ -39,14 +45,21 @@
 
 <div id="hudinfo"></div>
 <div id="hud">
-  <button id="panelToggle" class="hud-btn" aria-pressed="true" data-i18n-title="hud.panel" title="Show or hide the panel">☰</button>
-  <button id="fsBtn" class="hud-btn" aria-pressed="false" data-i18n-title="hud.fullscreen" title="Fullscreen">⛶</button>
-  <button id="helpBtn" class="hud-btn" data-i18n-title="help.title" title="Controls">?</button>
+  <button id="panelToggle" class="hud-btn" aria-pressed="true" data-i18n-title="hud.panel" title="Show or hide the panel"><span class="ico ico-layers"></span></button>
+  <button id="fsBtn" class="hud-btn" aria-pressed="false" data-i18n-title="hud.fullscreen" title="Fullscreen"><span class="ico ico-full"></span></button>
+  <button id="helpBtn" class="hud-btn" data-i18n-title="help.title" title="Controls"><span class="ico">?</span></button>
+  <div id="compass" class="compass"></div>
   <div class="theme-toggle" role="group" aria-label="Appearance">
     <button data-theme-set="light" title="Light" aria-label="Light">☀</button>
     <button data-theme-set="dark" title="Dark" aria-label="Dark">☾</button>
   </div>
 </div>
+
+<aside id="liveinfo" hidden>
+  <div class="li-head"><strong class="li-title"></strong><button class="li-close" type="button" data-i18n-title="close" title="Close">×</button></div>
+  <dl class="li-lines"></dl>
+  <div class="btnrow"><button class="li-jump primary" type="button" data-i18n="info.jump">Fly there</button></div>
+</aside>
 
 <div id="help" class="modal" hidden>
   <div class="dialog guide" role="dialog" aria-labelledby="helpTitle">

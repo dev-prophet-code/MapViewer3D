@@ -23,26 +23,7 @@
   const ueToThree = (m) => new THREE.Matrix4().multiplyMatrices(C, m).multiply(CInv);
   MV._ue = { ueMatrix, ueToThree }; // für Tests
 
-  // Netz im Format DML1 → Geometrie in Metern, Y oben (Dreiecksfolge umgedreht, weil Y/Z getauscht wird)
-  MV.decodeMesh = function (buf) {
-    const dv = new DataView(buf);
-    if (buf.byteLength < 36 || dv.getUint32(0, true) !== 0x314c4d44) throw new Error('kein DML1-Netz');
-    const nv = dv.getUint32(4, true), ni = dv.getUint32(8, true);
-    if (nv < 1 || nv > 200000 || ni > 600000 || ni % 3) throw new Error('DML1: Größe');
-    let off = 36 + nv * 6; if (off % 4) off += 2;
-    const wide = nv > 65535; if (off + ni * (wide ? 4 : 2) > buf.byteLength) throw new Error('DML1: abgeschnitten');
-    const lo = [0, 1, 2].map((k) => dv.getFloat32(12 + 4 * k, true)), hi = [0, 1, 2].map((k) => dv.getFloat32(24 + 4 * k, true));
-    const q = new Uint16Array(buf, 36, nv * 3), src = wide ? new Uint32Array(buf, off, ni) : new Uint16Array(buf, off, ni);
-    const sc = [0, 1, 2].map((k) => (hi[k] - lo[k]) / 65535), pos = new Float32Array(nv * 3);
-    for (let v = 0; v < nv; v++) { const x = lo[0] + q[3 * v] * sc[0], y = lo[1] + q[3 * v + 1] * sc[1], z = lo[2] + q[3 * v + 2] * sc[2]; pos[3 * v] = x / 100; pos[3 * v + 1] = z / 100; pos[3 * v + 2] = y / 100; }
-    const idx = new Uint32Array(ni);
-    for (let t = 0; t + 2 < ni; t += 3) { if (src[t] >= nv || src[t + 1] >= nv || src[t + 2] >= nv) throw new Error('DML1: Index'); idx[t] = src[t]; idx[t + 1] = src[t + 2]; idx[t + 2] = src[t + 1]; }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(new THREE.BufferAttribute(idx, 1));
-    g.setAttribute('tone', new THREE.BufferAttribute(new Float32Array(nv).fill(1), 1));
-    g.computeVertexNormals(); g.computeBoundingSphere();
-    return g;
-  };
+  // MV.decodeMesh (Netzformat DML1) steht in creatures.js
 
   // api(path) → JSON; bin(path) → ArrayBuffer. Beide liefert die App (mit Cookie, Fehler als Ausnahme mit .status).
   MV.Buildings = function (env, io, opts) {
