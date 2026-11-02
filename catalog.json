@@ -1614,5 +1614,15 @@
    "1177": "73f616bc2ca2d62d",
    "1178": "9ab9da8540c5ee8f"
   }
+ },
+ "creatures": {
+  "index": "67af46f5354890de2aa014ae526754e6c62327394faa7ad4cdadb5e4db8a1239",
+  "meshes": {
+   "0": "a4e5b032a52c8506",
+   "1": "c60eb74d9d70e03a",
+   "2": "a68c5aaed0b1b409",
+   "3": "9c6a0606b51e4fc1",
+   "4": "1a8289578c5886fc"
+  }
  }
 }
