@@ -8,6 +8,9 @@ Streaming data for the MapViewer3D addon (branch `DD-Addon`). This branch contai
 | `m/<map>.json` | tile index of one map: which tile sits at which level / column / row |
 | `p/<xx>/<id>.z` | terrain tiles (gzip). The file name is the first 16 hex digits of the SHA-256 of the tile content, so identical tiles are stored once across all maps and Coriolis layouts |
 | `buildables/` | building models (`index.json`, `mesh/<id>.bin`) |
+| `creatures/` | bodies of sandworm, player figure and Choam ornithopters (`index.json`, `mesh/<id>.bin`), from the physics assets; listed in `catalog.json` under `creatures` |
+| `preview/` | 10 example renders of the models (plain shading, no textures) |
+| `notes/` | encrypted working notes (not data for the addon) |
 
 The addon is pinned to a tag of this branch (`data-vN`) and verifies every file against the checksums above, starting from the
 SHA-256 of `catalog.json` that is built into the addon. Tags never change; new data means a new tag and a new addon release.
