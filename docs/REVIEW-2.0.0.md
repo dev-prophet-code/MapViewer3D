@@ -78,3 +78,27 @@ Zweites Code-Review (High) über `viewer/` und `scripts/`, danach erneuter Pente
 Das Addon fragt beim Start nicht mehr nach einer Adresse. Es erkennt die Dune Docker Console daran, dass die Console-Brücke antwortet. Geprüft im Console-Code (v1.4.59): Realtime Data steckt in der Console-API (`/api/realtime/*`, Scope `realtime:read`), die Addon-Brücke hat aber keine Realtime-Aktion, und die Addon-Seite hat `connect-src 'none'`. Realtime bleibt deshalb dem Companion vorbehalten; die Adresse des Companion ist eine optionale Einstellung im Bereich „Verbindung“.
 
 Code-Review (High) über `viewer/addon-app.js`: 4 Funde (Erkennung nur am Rahmen, Dialogtexte, doppelte Prüfung, doppelter Knopf), alle behoben. 26 Tests und 57 Angriffe: 0 durchgekommen.
+
+## 6. Nachtrag: 3D-Modelle für Marker, Marker-Atlas (Console-CSS) und Basen aus echten Bauteilen
+
+Neu: `viewer/meshes.js` (Marker als Meshes), `viewer/markers.js` + `viewer/marker-defs.js` + `viewer/markers.css` (Atlas, erzeugt aus dem CSS der Console), `viewer/buildings.js` (Basen aus Bauteilen), im Companion `/api/markers`, `/api/base`, `/icons/<Datei>` und die CDN-Pfade `buildables/…`.
+
+Code-Review (High) über die neuen und geänderten Dateien, 7 Funde:
+
+| # | Datei | Fund | Schwere | Status |
+|---|---|---|---|---|
+| 1 | `viewer/markers.js` | Typ/Untertyp der Console wurden direkt auf Objekten nachgeschlagen: `constructor`/`__proto__` lieferten Prototyp-Mitglieder als „Symbol“ und Größe | Mittel | behoben (nur eigene Eigenschaften, Test) |
+| 2 | `viewer/markers.js` | Marker-Typ der Console unbereinigt als Klassenname der Legende (zusätzliche Klassen/Leerzeichen einschleusbar; kein Skript, nur Gestaltung) | Niedrig | behoben (nur `[a-z0-9_]`, Test) |
+| 3 | `companion/lib/server.mjs` | Basis-Cache je Sitzung bis 80 Einträge à ~0,4 MB: Speicherdruck bei vielen verschiedenen Basis-IDs | Mittel | behoben (24 Einträge) |
+| 4 | `viewer/shell.js` | `UI.layers` meldete bei jedem Neuaufbau einen weiteren Sprach-Hook an, ohne den alten zu entfernen | Niedrig | behoben (`UI.offLang`) |
+| 5 | `companion/lib/server.mjs` | Fehlende Symbole (404) werden nicht zwischengespeichert, jede Anfrage geht an die Console | Niedrig | offen, bewusst: begrenzt durch das Limit je Sitzung, Erfolge cached der Browser |
+| 6 | `viewer/companion-app.js` | Fehlt „Maps: Read“ während einer Sitzung, bleibt der Atlas stumm leer (für „Bases: Read“ gibt es einen Hinweis) | Niedrig | offen, bewusst: Anmeldung verlangt „Maps: Read“ bereits |
+| 7 | `viewer/buildings.js` | Neigung/Rollen der Bauteile (Placeables) und der Versatz je Bauteil stammen aus dem Altprojekt, nicht gegen eine echte Basis geprüft | Info | offen: nur Gier, Ort und Katalogwerte mit Tests belegt |
+
+**Penetrationstest:** 93 Angriffe (vorher 57), 0 durchgekommen. Neu: Pfadtricks und SSRF-Namen bei `/icons/`, falsche Inhaltstypen und zu große Symbole, Token an öffentlichen Console-Pfaden, Parameter-Einschleusung bei `/api/markers?map=`, 9 Basis-IDs (`1;drop`, `../1`, `1e9` …), Pfade unter `buildables/`, manipulierte Meshes/Index (502 durch Katalog-Hash), feindliche Namen und Zusatzfelder der Console (gekürzt, nur 7 Felder).
+
+**Tests:** Addon 13, Companion 28, Validator in Ordnung. Dazu ein Dekodierer-Test für das Netzformat `DML1` (kaputte Kopfzeile, riesige Zahlen, abgeschnittene Datei, Index außerhalb) und Koordinatentests Unreal → three.js.
+
+**Secret-Scan:** keine Token, Passwörter oder echten IP-Adressen in den geänderten Dateien (nur die für Beispiele reservierte Test-Adresse 203.0.113.5 und Test-Fälle). Keine Bilder und keine Spielmodelle im Repository (siehe `NOTICE`).
+
+**Einschränkungen:** Basen aus Bauteilen und der Atlas wurden gegen die Demo-Console geprüft (echte Typnamen und echte Meshes des `cdn`-Branchs), nicht gegen eine laufende Console mit echten Basen.

@@ -2,6 +2,8 @@
 //  catalog.json  -> optional gegen CDN_CATALOG_SHA256 gepinnt
 //  m/<karte>.json -> SHA-256 steht im Katalog
 //  p/xx/yyyy.z    -> Dateiname = erste 16 Hex-Stellen des SHA-256 des entpackten Inhalts
+//  buildables/index.json   -> SHA-256 steht im Katalog (buildables.index)
+//  buildables/mesh/<n>.bin -> die ersten 16 Hex-Stellen des SHA-256 stehen im Katalog (buildables.meshes[n])
 import http from 'node:http';
 import https from 'node:https';
 import crypto from 'node:crypto';
@@ -12,11 +14,14 @@ import dns from 'node:dns';
 const RE_CATALOG = /^catalog\.json$/;
 const RE_INDEX = /^m\/([a-z0-9_]{1,40})\.json$/;
 const RE_TILE = /^p\/([0-9a-f]{2})\/([0-9a-f]{14})\.z$/;
+const RE_BINDEX = /^buildables\/index\.json$/;
+const RE_BMESH = /^buildables\/mesh\/(\d{1,5})\.bin$/;
 const TILE_RAW = 3 * 129 * 129;
+const MAX_MESH = 1048576;
 const MAX_BYTES = 16 * 1048576;
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 
-export function cdnPathOk(p) { return typeof p === 'string' && p.length < 80 && (RE_CATALOG.test(p) || RE_INDEX.test(p) || RE_TILE.test(p)); }
+export function cdnPathOk(p) { return typeof p === 'string' && p.length < 80 && (RE_CATALOG.test(p) || RE_INDEX.test(p) || RE_TILE.test(p) || RE_BINDEX.test(p) || RE_BMESH.test(p)); }
 
 export function makeCdn(cfg, log = () => {}) {
   const cache = new Map(); let bytes = 0; const inflight = new Map(); let catalog = null;
@@ -70,6 +75,20 @@ export function makeCdn(cfg, log = () => {}) {
       const buf = await fetchRaw(p);
       let raw; try { raw = zlib.gunzipSync(buf, { maxOutputLength: TILE_RAW + 1 }); } catch { throw Object.assign(new Error('Kachel nicht entpackbar'), { status: 502 }); }
       if (raw.length !== TILE_RAW || sha(raw).slice(0, 16) !== m[1] + m[2]) throw Object.assign(new Error('Kachel-Hash falsch'), { status: 502 });
+      return { buf, type: 'application/octet-stream' };
+    }
+    if (RE_BINDEX.test(p)) {
+      const want = ((await getCatalog()).json.buildables || {}).index;
+      if (!/^[0-9a-f]{64}$/.test(want || '')) throw Object.assign(new Error('Bauteil-Katalog unbekannt'), { status: 404 });
+      const buf = await fetchRaw(p);
+      if (sha(buf) !== want) throw Object.assign(new Error('Bauteil-Index passt nicht zum Katalog'), { status: 502 });
+      return { buf, type: 'application/json' };
+    }
+    if ((m = RE_BMESH.exec(p))) {
+      const want = (((await getCatalog()).json.buildables || {}).meshes || {})[m[1]];
+      if (!/^[0-9a-f]{16,64}$/.test(want || '')) throw Object.assign(new Error('Bauteil unbekannt'), { status: 404 });
+      const buf = await fetchRaw(p);
+      if (buf.length > MAX_MESH || !sha(buf).startsWith(want)) throw Object.assign(new Error('Bauteil passt nicht zum Katalog'), { status: 502 });
       return { buf, type: 'application/octet-stream' };
     }
     throw Object.assign(new Error('Pfad nicht erlaubt'), { status: 404 });

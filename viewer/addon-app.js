@@ -18,7 +18,7 @@
       'start.companion': 'Companion address (optional)', 'start.continue': 'Save', 'start.bad': 'Only https:// (or http://localhost) without credentials.',
       'conn.console': 'Dune Docker Console', 'conn.console.yes': 'detected', 'conn.console.no': 'not detected (preview outside the console)', 'conn.bridge': 'Console bridge', 'conn.db': 'Game data (database:read)', 'conn.rt': 'Realtime Data', 'conn.rt.off': 'only in the companion (sandbox without network)',
       'conn.ok': 'connected', 'conn.preview': 'preview outside the console', 'conn.companion': 'Companion', 'conn.change': 'Companion address …', 'conn.none': 'not set',
-      'live.status': '{0} players, {1} bases', 'terrain': 'Terrain (embedded): {0}×{0} points · {1} m grid', 'hq': 'Finer terrain (slower)', 'saved': 'Saved. Open this address in a new browser tab.',
+      'live.status': '{0} players, {1} bases', 'terrain': 'Terrain (embedded): {0}×{0} points · {1} m grid', 'hq': 'Finer terrain (slower)', 'models': '3D models for markers (off: dots)', 'saved': 'Saved. Open this address in a new browser tab.',
     },
     de: {
       'g.world': 'Welt', 'l.online': 'Spieler online', 'l.offline': 'Spieler offline', 'l.bases': 'Basen',
@@ -26,13 +26,13 @@
       'start.companion': 'Adresse des Companion (optional)', 'start.continue': 'Speichern', 'start.bad': 'Nur https:// (oder http://localhost) ohne Zugangsdaten.',
       'conn.console': 'Dune Docker Console', 'conn.console.yes': 'erkannt', 'conn.console.no': 'nicht erkannt (Vorschau außerhalb der Console)', 'conn.bridge': 'Console-Brücke', 'conn.db': 'Spieldaten (database:read)', 'conn.rt': 'Realtime Data', 'conn.rt.off': 'nur im Companion (Sandbox ohne Netzwerk)',
       'conn.ok': 'verbunden', 'conn.preview': 'Vorschau außerhalb der Console', 'conn.companion': 'Companion', 'conn.change': 'Companion-Adresse …', 'conn.none': 'nicht gesetzt',
-      'live.status': '{0} Spieler, {1} Basen', 'terrain': 'Gelände (eingebettet): {0}×{0} Punkte · {1} m Raster', 'hq': 'Feineres Gelände (langsamer)', 'saved': 'Gespeichert. Öffne diese Adresse in einem neuen Browser-Tab.',
+      'live.status': '{0} Spieler, {1} Basen', 'terrain': 'Gelände (eingebettet): {0}×{0} Punkte · {1} m Raster', 'hq': 'Feineres Gelände (langsamer)', 'models': '3D-Modelle für Marker (aus: Punkte)', 'saved': 'Gespeichert. Öffne diese Adresse in einem neuen Browser-Tab.',
     },
   });
 
   const TERRAIN = { hagga: JSON.parse($('t-hagga').textContent), deep: JSON.parse($('t-deep').textContent) };
   const env = MV.createEnv($('view'), document.documentElement);
-  const pts = { online: MV.Points(env, 0x2f9bff, 11), offline: MV.Points(env, 0x3a6a8a, 6), bases: MV.Points(env, 0xff8a1f, 9) };
+  const pts = { online: MV.Layer(env, 'player', 0x2f9bff, 11), offline: MV.Layer(env, 'player', 0x3a6a8a, 6), bases: MV.Layer(env, 'base', 0xff8a1f, 9) };
   const lay = UI.layers([{ id: 'w', label: 'g.world' }], [
     { key: 'online', label: 'l.online', color: '#2f9bff', group: 'w' }, { key: 'offline', label: 'l.offline', color: '#3a6a8a', group: 'w' }, { key: 'bases', label: 'l.bases', color: '#ff8a1f', group: 'w' },
   ], (k, on) => { pts[k].obj.visible = on; });
@@ -126,6 +126,7 @@
   const buttons = () => { UI.clearButtons(); UI.button(UI.t('conn.change'), startDialog); };
   buttons(); UI.onLang(buttons);
   UI.toggle('hq', (on) => { hq = on; showMap(current, true); });
+  UI.toggle('models', (on) => MV.Layer.setModels(on), true);
   UI.followCursor(env);
 
   renderConn();

@@ -1,0 +1,10 @@
+MapViewer 3D v2
+
+Teile des Viewers stammen aus anderen MIT-lizenzierten Projekten:
+- three.js (vendor/three), © three.js authors, MIT.
+- MapViewer3D (dev-prophet-code): Geländeverfahren, Shader, Dekodierer für das Netzformat "DML1" und die Umrechnung der Bauteile, MIT.
+- Dune Awakening Self-Host Docker Console (Red-Blink/dune-awakening-selfhost-docker, © RedBlink, MIT): Die Marker-Regeln in viewer/markers.css und die Tabelle in viewer/marker-defs.js sind aus deren styles.css übernommen (tools/extract-marker-css.mjs).
+
+Dune: Awakening, DUNE, Funcom und verwandte Namen und Marken gehören ihren Inhabern. Dies ist ein inoffizielles Community-Projekt ohne Verbindung zu Funcom.
+Dieses Repository enthält keine Spielbilder und keine Spielmodelle: Die Marker-Symbole holt der Companion zur Laufzeit von der Console des Betreibers,
+die Bauteil-Modelle aus dem separaten Daten-Branch `cdn` des Projekts MapViewer3D.

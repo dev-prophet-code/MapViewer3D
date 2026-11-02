@@ -80,7 +80,7 @@ void main(){
       },
       mats: [],
     };
-    sc.add(env.group);
+    sc.add(env.group); MV.env = env; // Zugriff für Tests und Fehlersuche in der Konsole
     env.setMeta = function (m) {
       env.meta = m;
       env.ox = m.originX / 100; env.oy = m.originY / 100; env.ext = ((m.width - 1) * m.spacing) / 100;

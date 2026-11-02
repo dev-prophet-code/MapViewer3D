@@ -11,6 +11,7 @@
   UI.add = (d) => { Object.assign(S.en, d.en || {}); Object.assign(S.de, d.de || {}); };
   UI.t = (k, ...a) => { let s = S[lang][k] ?? S.en[k] ?? k; a.forEach((v, i) => { s = s.split('{' + i + '}').join(String(v)); }); return s; };
   UI.onLang = (f) => hooks.push(f);
+  UI.offLang = (f) => { const i = hooks.indexOf(f); if (i >= 0) hooks.splice(i, 1); };
 
   UI.add({
     en: {
@@ -48,8 +49,9 @@
     for (const g of groups) {
       const wrap = UI.el('div', 'lgroup'), head = UI.el('div', 'lhead'); head.dataset.g = g.id; head.textContent = UI.t(g.label); wrap.append(head);
       for (const d of defs.filter((x) => x.group === g.id)) {
-        const row = UI.el('label', 'toggle'), cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true;
-        const sw = UI.el('span', 'sw'); sw.style.background = d.color;
+        const row = UI.el('label', 'toggle'), cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = d.on !== false;
+        // d.cls: Symbol aus dem CSS der Console (Klassen live-map-legend-dot marker-… subtype-…); sonst ein Farbfeld
+        const sw = d.cls ? UI.el('span', 'live-map-legend-dot ' + d.cls) : UI.el('span', 'sw'); if (!d.cls) sw.style.background = d.color;
         const name = UI.el('span', null, UI.t(d.label)), count = UI.el('span', 'count', '0');
         cb.onchange = () => onChange(d.key, cb.checked);
         row.append(cb, sw, name, count); wrap.append(row); rows[d.key] = { row, cb, name, count, d, group: head, g };
@@ -65,16 +67,26 @@
       },
       setAll(on) { for (const k in rows) if (!rows[k].cb.disabled) { rows[k].cb.checked = on; onChange(k, on); } },
     };
-    UI.onLang(() => { for (const k in rows) { rows[k].name.textContent = UI.t(rows[k].d.label); rows[k].group.textContent = UI.t(rows[k].g.label); } });
+    // Die Ebenenliste wird neu aufgebaut (Kartenwechsel, Atlas): den alten Sprach-Hook abmelden, sonst wächst die Liste ohne Ende
+    if (UI._layersHook) UI.offLang(UI._layersHook);
+    UI._layersHook = () => { for (const k in rows) { rows[k].name.textContent = UI.t(rows[k].d.label); rows[k].group.textContent = UI.t(rows[k].g.label); } };
+    UI.onLang(UI._layersHook);
     $('layersAll').onclick = () => api.setAll(true); $('layersNone').onclick = () => api.setAll(false);
     return api;
   };
 
   // ---- Einzelner Schalter im Live-Abschnitt (z. B. feineres Gelände)
-  UI.toggle = function (labelKey, onChange) {
-    const row = UI.el('label', 'toggle'), cb = document.createElement('input'); cb.type = 'checkbox'; const txt = UI.el('span');
+  UI.toggle = function (labelKey, onChange, initial) {
+    const row = UI.el('label', 'toggle'), cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!initial; const txt = UI.el('span');
     row.append(cb, txt); $('live').append(row);
     const set = () => { txt.textContent = UI.t(labelKey); }; set(); UI.onLang(set); cb.onchange = () => onChange(cb.checked);
+  };
+
+  // ---- Kleiner Hinweis neben dem Mauszeiger (Text über textContent, nie als HTML)
+  UI.tip = function (text, x, y) {
+    let t = $('tip'); if (!t) { t = UI.el('div', 'tip'); t.id = 'tip'; document.body.append(t); }
+    if (!text) { t.style.display = 'none'; return; }
+    t.textContent = text; t.style.left = x + 14 + 'px'; t.style.top = y + 14 + 'px'; t.style.display = 'block';
   };
 
   // ---- Koordinaten des Kamerazieles; nur schreiben, wenn sich der Text ändert

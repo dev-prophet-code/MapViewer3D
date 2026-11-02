@@ -13,22 +13,22 @@
   UI.add({
     en: {
       'g.world': 'Players & bases', 'g.rt': 'Realtime Data', 'l.online': 'Players online', 'l.offline': 'Players offline', 'l.bases': 'Bases', 'l.vehicle': 'Vehicles', 'l.worm': 'Sandworms',
-      'l.npc': 'Enemies / NPCs', 'l.civilian': 'Civilians / traders', 'l.storm': 'Sandstorms',
+      'l.npc': 'Enemies / NPCs', 'l.civilian': 'Civilians / traders', 'l.storm': 'Sandstorms', 'g.atlas': 'Map atlas', 't.spice': 'Spice fields', 't.spice_active': 'Spice fields (active)', 't.flour_sand': 'Flour sand', 't.ore': 'Ore deposits', 't.scrap': 'Scrap', 't.flora': 'Plants', 't.poi': 'Places', 't.house_representative': 'House representatives', 't.trainer': 'Trainers', 't.fortress': 'Fortresses', 't.hazard': 'Hazards', 't.enemy': 'Enemy camps', 't.storage': 'Storage', 't.vehicle': 'Vehicles (database)',
       'setup.title': 'Connect to your Dune Docker server', 'setup.intro': 'Enter an API token from the console (Settings → API Keys: Maps and Bases read; Realtime Data for live data). It stays only in this server’s memory and never returns to the browser.',
       'setup.token': 'API token', 'setup.connect': 'Check and connect',
       'c.mode.rt': 'Realtime active', 'c.mode.fb': 'Fallback (no realtime)', 'c.token': 'Token valid', 'c.rt': 'Realtime Data', 'c.rt.on': '{0} sources ready', 'c.tiles': 'Map data', 'c.tiles.v': 'tiles verified by SHA-256',
       'e.token_invalid': 'Token invalid, disabled or expired', 'e.token_format': 'Token format invalid (expected dak_…)', 'e.console_down': 'Console not reachable', 'e.no_maps': 'The token lacks “Maps: Read”', 'e.too_many': 'Too many failed attempts. Try again later.', 'r.no_scope': 'The token lacks “Realtime Data: Read”', 'r.agent_off': 'The position agent (mvagent) is not running', 'r.unavailable': 'Realtime Data is not available',
-      'c.recheck': 'Check again', 'c.logout': 'Sign out', 'live.rt': 'realtime ({0} objects)', 'live.fb': 'fallback: players and bases only', 'live.status': '{0} players, {1} bases', 'tile.errors': '{0} load errors',
+      'c.recheck': 'Check again', 'c.logout': 'Sign out', 'live.rt': 'realtime ({0} objects)', 'live.fb': 'fallback: players and bases only', 'live.status': '{0} players, {1} bases', 'tile.errors': '{0} load errors', 'models': '3D models for markers (off: dots)', 'c.bases.scope': 'Bases are shown simplified: the token lacks “Bases: Read”',
       'tiles': '{0} visible · {1} loaded · {2} loading', 'finest': 'finest level {0} ({1} m)',
     },
     de: {
       'g.world': 'Spieler & Basen', 'g.rt': 'Realtime Data', 'l.online': 'Spieler online', 'l.offline': 'Spieler offline', 'l.bases': 'Basen', 'l.vehicle': 'Fahrzeuge', 'l.worm': 'Sandwürmer',
-      'l.npc': 'Gegner / NPCs', 'l.civilian': 'Zivilisten / Händler', 'l.storm': 'Sandstürme',
+      'l.npc': 'Gegner / NPCs', 'l.civilian': 'Zivilisten / Händler', 'l.storm': 'Sandstürme', 'g.atlas': 'Karten-Atlas', 't.spice': 'Gewürzfelder', 't.spice_active': 'Gewürzfelder (aktiv)', 't.flour_sand': 'Mehlsand', 't.ore': 'Erzvorkommen', 't.scrap': 'Schrott', 't.flora': 'Pflanzen', 't.poi': 'Orte', 't.house_representative': 'Hausvertreter', 't.trainer': 'Trainer', 't.fortress': 'Festungen', 't.hazard': 'Gefahren', 't.enemy': 'Gegnerlager', 't.storage': 'Lager', 't.vehicle': 'Fahrzeuge (Datenbank)',
       'setup.title': 'Mit deinem Dune-Docker-Server verbinden', 'setup.intro': 'Gib einen API-Token der Console ein (Settings → API Keys: Maps und Bases lesen; für Live-Daten Realtime Data). Er bleibt nur im Arbeitsspeicher dieses Servers und kommt nie in den Browser zurück.',
       'setup.token': 'API-Token', 'setup.connect': 'Prüfen und verbinden',
       'c.mode.rt': 'Echtzeit aktiv', 'c.mode.fb': 'Fallback (ohne Echtzeit)', 'c.token': 'Token gültig', 'c.rt': 'Realtime Data', 'c.rt.on': '{0} Quellen bereit', 'c.tiles': 'Kartendaten', 'c.tiles.v': 'Kacheln per SHA-256 geprüft',
       'e.token_invalid': 'Token ungültig, deaktiviert oder abgelaufen', 'e.token_format': 'Token-Format ungültig (erwartet dak_…)', 'e.console_down': 'Console nicht erreichbar', 'e.no_maps': 'Dem Token fehlt „Maps: Read“', 'e.too_many': 'Zu viele Fehlversuche. Später erneut versuchen.', 'r.no_scope': 'Dem Token fehlt „Realtime Data: Read“', 'r.agent_off': 'Der Position-Agent (mvagent) läuft nicht', 'r.unavailable': 'Realtime Data ist nicht verfügbar',
-      'c.recheck': 'Erneut prüfen', 'c.logout': 'Abmelden', 'live.rt': 'Echtzeit ({0} Objekte)', 'live.fb': 'Fallback: nur Spieler und Basen', 'live.status': '{0} Spieler, {1} Basen', 'tile.errors': '{0} Ladefehler',
+      'c.recheck': 'Erneut prüfen', 'c.logout': 'Abmelden', 'live.rt': 'Echtzeit ({0} Objekte)', 'live.fb': 'Fallback: nur Spieler und Basen', 'live.status': '{0} Spieler, {1} Basen', 'tile.errors': '{0} Ladefehler', 'models': '3D-Modelle für Marker (aus: Punkte)', 'c.bases.scope': 'Basen vereinfacht: Dem Token fehlt „Bases: Read“',
       'tiles': '{0} sichtbar · {1} geladen · {2} in Arbeit', 'finest': 'feinste Stufe {0} ({1} m)',
     },
   });
@@ -39,7 +39,8 @@
     { key: 'civilian', label: 'l.civilian', color: '#9cff6a', group: 'r', size: 4, rt: 1 }, { key: 'storm', label: 'l.storm', color: '#c040ff', group: 'r', size: 14, rt: 1 },
   ];
   const KINDS = ['vehicle', 'worm', 'npc', 'civilian', 'storm'];
-  let env, terrain, pts = {}, lay, session = null, mapKey = 'hagga', stream = null, mapGen = 0, dirty = false;
+  const MODEL_OF = { online: 'player', offline: 'player' }; // Art des 3D-Modells je Schicht (Rest: gleicher Name)
+  let buildings = null, atlas = null, atlasOn = {}, want = {}, env, terrain, pts = {}, lay, session = null, mapKey = 'hagga', stream = null, mapGen = 0, dirty = false;
   let live = { objs: new Map(), sources: [] }, rows = { players: [], bases: [] };
 
   // ---- Zuerst die Token-Abfrage
@@ -63,14 +64,14 @@
   function groupObjs() { // ein Durchlauf für alle Arten
     const m = MV.MAPS[mapKey].source, ok = new Set(live.sources.map((s, i) => (s.map === m ? i : -1)).filter((i) => i >= 0)), out = {};
     for (const k of KINDS) out[k] = [];
-    for (const o of live.objs.values()) if (out[o.k] && ok.has(o.s)) out[o.k].push({ x: o.x / 100, y: o.y / 100, z: o.z / 100 });
+    for (const o of live.objs.values()) if (out[o.k] && ok.has(o.s)) out[o.k].push({ id: o.id, x: o.x / 100, y: o.y / 100, z: o.z / 100 });
     return out;
   }
   function applyMarkers() {
     const pl = mapRows(rows.players), cv = (r) => ({ x: MV.cm2m(r.x), y: MV.cm2m(r.y), z: MV.cm2m(r.z) });
-    pts.online.set(pl.filter((r) => r.on).map(cv)); pts.offline.set(pl.filter((r) => !r.on).map(cv)); pts.bases.set(mapRows(rows.bases).map(cv));
+    pts.online.set(pl.filter((r) => r.on).map(cv)); pts.offline.set(pl.filter((r) => !r.on).map(cv)); { const bs = mapRows(rows.bases); if (buildings) buildings.setBases(bs); const real = buildings ? buildings.realIds() : new Set(); pts.bases.set(bs.filter((r) => !real.has(r.i)).map(cv)); } // Basen mit echten Bauteilen brauchen kein Haus-Symbol
     const g = groupObjs(); for (const k of KINDS) pts[k].set(g[k]);
-    for (const d of DEFS) lay.count(d.key, pts[d.key].count);
+    for (const d of DEFS) lay.count(d.key, d.key === 'bases' ? mapRows(rows.bases).length : pts[d.key].count); // Basen mit echten Bauteilen zählen mit
     UI.status(session.mode === 'realtime' ? UI.t('live.rt', live.objs.size) : UI.t('live.fb'));
   }
   function renderPlayers() {
@@ -78,7 +79,7 @@
   }
   function renderConn() {
     const rt = session.mode === 'realtime';
-    UI.conn([UI.t(rt ? 'c.mode.rt' : 'c.mode.fb'), '', UI.t('c.token'), UI.t('c.rt') + ': ' + (rt ? UI.t('c.rt.on', session.sources.filter((s) => s.ready).length) : (session.reasonCode ? UI.t('r.' + session.reasonCode) : (session.reason || '–'))), UI.t('c.tiles') + ': ' + UI.t('c.tiles.v')].join('\n'));
+    UI.conn([UI.t(rt ? 'c.mode.rt' : 'c.mode.fb'), '', UI.t('c.token'), UI.t('c.rt') + ': ' + (rt ? UI.t('c.rt.on', session.sources.filter((s) => s.ready).length) : (session.reasonCode ? UI.t('r.' + session.reasonCode) : (session.reason || '–'))), UI.t('c.tiles') + ': ' + UI.t('c.tiles.v')].concat(buildings && buildings.disabled === 'scope' ? ['', UI.t('c.bases.scope')] : []).join('\n'));
     UI.clearButtons();
     if (!rt) UI.button(UI.t('c.recheck'), async () => { try { session = await api('/api/recheck', { method: 'POST', headers: HDR, body: '{}' }); setMode(); openStream(); } catch (e) { if (e.status === 401) location.reload(); } });
     UI.button(UI.t('c.logout'), async () => { try { await api('/api/logout', { method: 'POST', headers: HDR, body: '{}' }); } catch (e) { /* egal */ } location.reload(); }, 'danger');
@@ -89,18 +90,50 @@
     renderConn(); applyMarkers();
   }
 
+  // Ebenenliste: Welt + Echtzeit (wie bisher) und der Karten-Atlas der Console (Typen mit Symbol aus dem Console-CSS)
+  function buildLegend() {
+    const dict = { en: {}, de: {} };
+    for (const g of atlas ? atlas.groups : []) { const k = 't.' + g.type; if (UI.t(k) === k) { const nice = g.type.replace(/_/g, ' '); dict.en[k] = nice; dict.de[k] = nice; } }
+    UI.add(dict);
+    const defs = DEFS.map((d) => Object.assign({}, d, { on: want[d.key] !== false }));
+    const adefs = (atlas ? atlas.groups : []).map((g) => ({ key: 'a:' + g.type, label: 't.' + g.type, color: '#9ca3af', group: 'a', cls: g.cls, on: atlasOn[g.type] !== false }));
+    lay = UI.layers([{ id: 'w', label: 'g.world' }, { id: 'r', label: 'g.rt' }].concat(adefs.length ? [{ id: 'a', label: 'g.atlas' }] : []), defs.concat(adefs), (k, on) => {
+      if (k.startsWith('a:')) { atlasOn[k.slice(2)] = on; if (atlas) atlas.setVisible(k.slice(2), on); } else { want[k] = on; pts[k].obj.visible = on; if (k === 'bases' && buildings) buildings.setVisible(on); }
+    });
+    for (const g of atlas ? atlas.groups : []) { lay.count('a:' + g.type, g.count); atlas.setVisible(g.type, atlasOn[g.type] !== false); }
+    if (session) for (const d of DEFS) if (d.rt) lay.disabled(d.key, session.mode !== 'realtime');
+    for (const d of DEFS) lay.count(d.key, d.key === 'bases' ? mapRows(rows.bases).length : pts[d.key].count);
+  }
+  async function loadAtlas(key, gen) {
+    let rowsA = []; try { rowsA = (await api('/api/markers?map=' + key)).rows || []; } catch (e) { if (e.status === 401) location.reload(); }
+    if (gen !== mapGen) return;
+    if (atlas) atlas.dispose();
+    atlas = rowsA.length ? MV.MarkerSet(env, rowsA) : null;
+    buildLegend();
+  }
+
   async function start() {
-    for (const d of DEFS) pts[d.key] = MV.Points(env, parseInt(d.color.slice(1), 16), d.size);
-    lay = UI.layers([{ id: 'w', label: 'g.world' }, { id: 'r', label: 'g.rt' }], DEFS, (k, on) => { pts[k].obj.visible = on; });
+    for (const d of DEFS) pts[d.key] = MV.Layer(env, MODEL_OF[d.key] || d.key, parseInt(d.color.slice(1), 16), d.size);
+    buildings = MV.Buildings(env, { api, bin: async (p) => { const r = await fetch(p, { credentials: 'same-origin' }); if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status: r.status }); return r.arrayBuffer(); } }, { onChange: () => { dirty = true; } });
+    buildLegend();
     UI.onLang(renderConn); UI.onLang(renderPlayers);
     $('map').onchange = (e) => loadMap(e.target.value);
     setMode();
     await loadMap('hagga');
     pollStatic(); setInterval(pollStatic, 6000);
     openStream();
-    setInterval(() => { if (dirty) { dirty = false; applyMarkers(); } }, 150);
+    let noted = false;
+    setInterval(() => { if (dirty) { dirty = false; applyMarkers(); } if (buildings && buildings.disabled && !noted) { noted = true; renderConn(); } }, 150);
     setInterval(hudTick, 400);
     UI.followCursor(env);
+    UI.toggle('models', (on) => MV.Layer.setModels(on), true);
+    let tipRaf = 0;
+    $('view').addEventListener('pointermove', (e) => { // Name des Markers unter der Maus
+      if (tipRaf) return; tipRaf = requestAnimationFrame(() => { tipRaf = 0;
+        let hit = null; for (const k in pts) { hit = pts[k].nearest(e.clientX, e.clientY, 12); if (hit) { hit = { n: UI.t(DEFS.find((d) => d.key === k).label), x: hit.x, y: hit.y, z: hit.z }; break; } }
+        if (!hit && atlas) { const a = atlas.nearest(e.clientX, e.clientY, 14); if (a) hit = { n: (a.n || a.s || a.t) + ' · ' + a.t, x: a.x, y: a.y, z: a.z }; }
+        UI.tip(hit ? hit.n + ' · ' + Math.round(hit.x) + ' / ' + Math.round(hit.y) + ' · ' + Math.round(hit.z) + ' m' : '', e.clientX, e.clientY); });
+    });
   }
 
   async function loadMap(key) {
@@ -117,6 +150,7 @@
       return MV.decodeTile(new Uint8Array(await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer()), N);
     });
     terrain.detail = 3; applyMarkers(); renderPlayers();
+    loadAtlas(key, gen);
   }
   let polling = false;
   async function pollStatic() {
@@ -134,7 +168,7 @@
     stream.addEventListener('snap', (ev) => {
       let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
       live.sources = Array.isArray(d.sources) ? d.sources : []; live.objs = new Map();
-      for (const o of (Array.isArray(d.objects) ? d.objects : [])) if (o && Number.isFinite(o.i)) live.objs.set(o.i, { k: String(o.k), s: o.s | 0, x: +o.x || 0, y: +o.y || 0, z: +o.z || 0 });
+      for (const o of (Array.isArray(d.objects) ? d.objects : [])) if (o && Number.isFinite(o.i)) live.objs.set(o.i, { id: o.i, k: String(o.k), s: o.s | 0, x: +o.x || 0, y: +o.y || 0, z: +o.z || 0 });
       applyMarkers();
     });
     stream.addEventListener('pos', (ev) => {

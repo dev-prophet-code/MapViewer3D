@@ -1,0 +1,159 @@
+/* Marker der Live-Karte, übernommen aus dem CSS der Dune Docker Console (Red-Blink/dune-awakening-selfhost-docker, MIT, © RedBlink).
+   Erzeugt von tools/extract-marker-css.mjs, nicht von Hand ändern. Symbole: relative URL icons/<Datei>; der Companion holt sie
+   zur Laufzeit von der Console (keine Bilder im Repository, siehe NOTICE der Console). */
+.live-map-legend-dot { display: inline-block; width: 24px; min-width: 24px; max-width: 24px; height: 24px; min-height: 24px; max-height: 24px; aspect-ratio: 1; border: 2px solid #090b0d; border-radius: 999px; box-shadow: 0 0 4px rgba(0, 0, 0, .35); flex: 0 0 24px; }
+.live-map-legend-dot-spacer { flex: 0 0 auto; width: 28px; height: 24px; }
+.live-map-marker { position: absolute; width: 12px; min-width: 12px; height: 12px; min-height: 12px; aspect-ratio: 1; transform: translate(-50%, -50%); border: 2px solid #090b0d; border-radius: 999px; padding: 0; line-height: 0; box-shadow: 0 0 5px rgba(0, 0, 0, .45); cursor: pointer; overflow: visible; appearance: none; -webkit-appearance: none; }
+.live-map-marker:hover { width: 16px; height: 16px; z-index: 14; }
+.live-map-marker.marker-player, .live-map-legend-dot.marker-player { background: url("icons/Characters.webp") center / contain no-repeat; border: none; border-radius: 0; box-shadow: none; }
+.live-map-marker.marker-player { cursor: grab; width: 36px; height: 36px; z-index: 4; }
+.live-map-marker.marker-player:hover { width: 48px; height: 48px; }
+.live-map-marker.marker-player.offline { filter: grayscale(1) brightness(.65); }
+.live-map-legend-dot.marker-player.offline { filter: grayscale(1) brightness(.65); }
+.live-map-marker.marker-base, .live-map-legend-dot.marker-base { background: url("icons/Base.webp") center / contain no-repeat; border: none; border-radius: 0; box-shadow: none; }
+.live-map-marker.marker-base { width: 36px; height: 36px; z-index: 2; }
+.live-map-marker.marker-base:hover { width: 48px; height: 48px; }
+.live-map-marker.marker-storage, .live-map-legend-dot.marker-storage { background: url("icons/storage.png") center / contain no-repeat; border: none; border-radius: 0; box-shadow: none; }
+.live-map-marker.marker-storage { width: 20px; height: 20px; z-index: 1; }
+.live-map-marker.marker-storage:hover { width: 26px; height: 26px; }
+.live-map-marker.marker-spice, .live-map-marker.marker-spice_active { width: 48px; height: 48px; }
+.live-map-marker.marker-spice:hover, .live-map-marker.marker-spice_active:hover { width: 60px; height: 60px; }
+.live-map-marker.marker-spice { background: url("icons/spicefieldlarge.webp") center / contain no-repeat; border: none; border-radius: 0; box-shadow: none; }
+.live-map-marker.marker-spice_active { background: url("icons/spicefieldlarge.webp") center / contain no-repeat; border: none; border-radius: 0; box-shadow: none; filter: drop-shadow(0 0 7px rgba(232, 135, 30, .95)); }
+.live-map-marker.marker-spice::after, .live-map-marker.marker-spice_active::after { position: absolute; top: -8px; right: -12px; z-index: 2; min-width: 18px; height: 16px; padding: 0 4px; border: 1px solid #090b0d; border-radius: 999px; box-shadow: 0 1px 4px rgba(0, 0, 0, .7); color: #fff; font: 800 9px/14px "IBM Plex Mono", ui-monospace, monospace; text-align: center; pointer-events: none; }
+.live-map-marker.marker-spice::after { content: "?"; background: #59636d; }
+.live-map-marker.marker-spice_active::after { content: "LIVE"; background: #b85d0b; }
+.live-map-marker.marker-spice.spice-size-medium, .live-map-marker.marker-spice_active.spice-size-medium { width: 34px; height: 34px; }
+.live-map-marker.marker-spice.spice-size-medium:hover, .live-map-marker.marker-spice_active.spice-size-medium:hover { width: 44px; height: 44px; }
+.live-map-marker.marker-spice.spice-size-small, .live-map-marker.marker-spice_active.spice-size-small { width: 24px; height: 24px; }
+.live-map-marker.marker-spice.spice-size-small:hover, .live-map-marker.marker-spice_active.spice-size-small:hover { width: 32px; height: 32px; }
+.live-map-marker.marker-flour_sand, .live-map-legend-dot.marker-flour_sand { background: url("icons/floursand.webp") center / contain no-repeat; border: none; border-radius: 0; box-shadow: none; }
+.live-map-marker.marker-flour_sand { width: 24px; height: 24px; }
+.live-map-marker.marker-flour_sand:hover { width: 32px; height: 32px; }
+.live-map-marker.marker-ore { color: #9ca3af; background: #9ca3af; }
+.live-map-marker.marker-scrap { color: #b45309; background: #b45309; }
+.live-map-marker.marker-flora, .live-map-legend-dot.marker-flora { background: url("icons/plantfiber.webp") center / contain no-repeat; border: none; border-radius: 0; box-shadow: none; }
+.live-map-marker.subtype-saguaroseed, .live-map-legend-dot.subtype-saguaroseed { background: url("icons/resourcesaguarorawr.webp") center / contain no-repeat; }
+.live-map-marker.subtype-primrosefield, .live-map-legend-dot.subtype-primrosefield { background: url("icons/PrimroseField.png") center / contain no-repeat; }
+.live-map-marker.marker-poi { color: #60a5fa; background: #60a5fa; }
+.live-map-marker.marker-hazard { border: none; box-shadow: none; background: rgba(239, 68, 68, .5); width: 24px; height: 24px; }
+.live-map-marker.marker-hazard:hover { width: 32px; height: 32px; }
+.live-map-marker.marker-enemy { color: #f97316; background: #f97316; }
+.live-map-marker.marker-vehicle { color: #22c55e; background: #22c55e; z-index: 3; }
+.live-map-marker.marker-vehicle[class*="subtype-"]:not(.marker-spice):not(.marker-spice_active):not(.marker-hazard) { width: 32px; height: 32px; }
+.live-map-marker.marker-vehicle[class*="subtype-"]:not(.marker-spice):not(.marker-spice_active):not(.marker-hazard):hover { width: 40px; height: 40px; }
+.live-map-marker.marker-poi[class*="subtype-"]:not(.marker-spice):not(.marker-spice_active):not(.marker-hazard),
+.live-map-marker.marker-house_representative[class*="subtype-"]:not(.marker-spice):not(.marker-spice_active):not(.marker-hazard),
+.live-map-marker.marker-trainer[class*="subtype-"]:not(.marker-spice):not(.marker-spice_active):not(.marker-hazard) { width: 28px; height: 28px; }
+.live-map-marker.marker-poi[class*="subtype-"]:not(.marker-spice):not(.marker-spice_active):not(.marker-hazard):hover,
+.live-map-marker.marker-house_representative[class*="subtype-"]:not(.marker-spice):not(.marker-spice_active):not(.marker-hazard):hover,
+.live-map-marker.marker-trainer[class*="subtype-"]:not(.marker-spice):not(.marker-spice_active):not(.marker-hazard):hover { width: 36px; height: 36px; }
+.live-map-legend-dot.marker-vehicle { background: url("icons/sandbikevehicle.webp") center / contain no-repeat; border: none; border-radius: 0; box-shadow: none; }
+.live-map-marker.subtype-sandbike, .live-map-legend-dot.subtype-sandbike { background: url("icons/sandbikevehicle.webp") center / contain no-repeat; }
+.live-map-marker.subtype-buggy, .live-map-legend-dot.subtype-buggy { background: url("icons/buggyvehicle.webp") center / contain no-repeat; }
+.live-map-marker.subtype-tank, .live-map-legend-dot.subtype-tank { background: url("icons/regis_tank_icon.png") center / contain no-repeat; }
+.live-map-marker.subtype-sandcrawler, .live-map-legend-dot.subtype-sandcrawler { background: url("icons/sandcrawlervehicle.webp") center / contain no-repeat; }
+.live-map-marker.subtype-treadwheel, .live-map-legend-dot.subtype-treadwheel { background: url("icons/treadwheelvehicle.webp") center / contain no-repeat; }
+.live-map-marker.subtype-assaultornithopter, .live-map-legend-dot.subtype-assaultornithopter { background: url("icons/assaultornivehicle.webp") center / contain no-repeat; }
+.live-map-marker.subtype-ornithopter, .live-map-legend-dot.subtype-ornithopter { background: url("icons/ornithoptervehicle.webp") center / contain no-repeat; }
+.live-map-marker.subtype-lightornithopter, .live-map-legend-dot.subtype-lightornithopter { background: url("icons/ornithoptervehicle.webp") center / contain no-repeat; }
+.live-map-marker.subtype-mediumornithopter, .live-map-legend-dot.subtype-mediumornithopter { background: url("icons/ornithoptervehicle.webp") center / contain no-repeat; }
+.live-map-marker.subtype-transportornithopter, .live-map-legend-dot.subtype-transportornithopter { background: url("icons/ornithoptervehicle.webp") center / contain no-repeat; }
+.live-map-marker.subtype-containervehicle, .live-map-legend-dot.subtype-containervehicle { background: url("icons/cargocontainervehicle.webp") center / contain no-repeat; }
+.live-map-legend-dot.marker-spice, .live-map-legend-dot.marker-spice_active { position: relative; border: none; border-radius: 0; background: url("icons/spicefieldlarge.webp") center / contain no-repeat; }
+.live-map-legend-dot.marker-spice { box-shadow: none; }
+.live-map-legend-dot.marker-spice_active { box-shadow: none; filter: drop-shadow(0 0 4px rgba(232, 135, 30, .9)); }
+.live-map-legend-dot.marker-spice::after, .live-map-legend-dot.marker-spice_active::after { position: absolute; right: -9px; top: -7px; min-width: 13px; height: 12px; padding: 0 2px; border: 1px solid #090b0d; border-radius: 999px; color: #fff; font: 800 7px/10px "IBM Plex Mono", ui-monospace, monospace; text-align: center; }
+.live-map-legend-dot.marker-spice::after { content: "?"; background: #59636d; }
+.live-map-legend-dot.marker-spice_active::after { content: "LIVE"; background: #b85d0b; }
+.live-map-legend-dot.marker-ore { color: #9ca3af; background: #9ca3af; }
+.live-map-legend-dot.marker-scrap { color: #b45309; background: #b45309; }
+.live-map-legend-dot.marker-poi { color: #60a5fa; background: #60a5fa; }
+.live-map-legend-dot.marker-hazard { border: none; box-shadow: none; background: rgba(239, 68, 68, .5); }
+.live-map-legend-dot.marker-enemy { color: #f97316; background: #f97316; }
+.live-map-marker[class*="subtype-"]:not(.marker-spice):not(.marker-spice_active):not(.marker-hazard) { border: none; border-radius: 0; box-shadow: none; width: 20px; height: 20px; }
+.live-map-marker[class*="subtype-"]:not(.marker-spice):not(.marker-spice_active):not(.marker-hazard):hover { width: 26px; height: 26px; z-index: 14; }
+.live-map-legend-dot[class*="subtype-"]:not(.marker-spice):not(.marker-spice_active):not(.marker-hazard) { border: none; border-radius: 0; box-shadow: none; }
+.live-map-marker.subtype-azuriteore, .live-map-legend-dot.subtype-azuriteore { background: url("icons/azuriteore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-basaltore, .live-map-legend-dot.subtype-basaltore { background: url("icons/basaltore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-bauxiteore, .live-map-legend-dot.subtype-bauxiteore { background: url("icons/bauxiteore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-dolomiterock, .live-map-legend-dot.subtype-dolomiterock { background: url("icons/dolomiterock.webp") center / contain no-repeat; }
+.live-map-marker.subtype-erythriteore, .live-map-legend-dot.subtype-erythriteore { background: url("icons/erythriteore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-jasmiumore, .live-map-legend-dot.subtype-jasmiumore { background: url("icons/jasmiumore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-magnetiteore, .live-map-legend-dot.subtype-magnetiteore { background: url("icons/magnetiteore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-rhyoliteore, .live-map-legend-dot.subtype-rhyoliteore { background: url("icons/rhyoliteore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-stravidiumore, .live-map-legend-dot.subtype-stravidiumore { background: url("icons/stravidiumore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-titaniumore, .live-map-legend-dot.subtype-titaniumore { background: url("icons/titaniumore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-azuritepickup, .live-map-legend-dot.subtype-azuritepickup { background: url("icons/azuriteore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-basaltpickup, .live-map-legend-dot.subtype-basaltpickup { background: url("icons/basaltore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-bauxitepickup, .live-map-legend-dot.subtype-bauxitepickup { background: url("icons/bauxiteore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-dolomitepickup, .live-map-legend-dot.subtype-dolomitepickup { background: url("icons/dolomiterock.webp") center / contain no-repeat; }
+.live-map-marker.subtype-erythritepickup, .live-map-legend-dot.subtype-erythritepickup { background: url("icons/erythriteore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-jasmiumpickup, .live-map-legend-dot.subtype-jasmiumpickup { background: url("icons/jasmiumore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-magnetitepickup, .live-map-legend-dot.subtype-magnetitepickup { background: url("icons/magnetiteore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-rhyolitepickup, .live-map-legend-dot.subtype-rhyolitepickup { background: url("icons/rhyoliteore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-stravidiumpickup, .live-map-legend-dot.subtype-stravidiumpickup { background: url("icons/stravidiumore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-titaniumpickup, .live-map-legend-dot.subtype-titaniumpickup { background: url("icons/titaniumore.webp") center / contain no-repeat; }
+.live-map-marker.subtype-azuritepickup, .live-map-marker.subtype-basaltpickup, .live-map-marker.subtype-bauxitepickup, .live-map-marker.subtype-dolomitepickup, .live-map-marker.subtype-erythritepickup, .live-map-marker.subtype-jasmiumpickup, .live-map-marker.subtype-magnetitepickup, .live-map-marker.subtype-rhyolitepickup, .live-map-marker.subtype-stravidiumpickup, .live-map-marker.subtype-titaniumpickup { width: 14px; height: 14px; }
+.live-map-marker.subtype-azuritepickup:hover, .live-map-marker.subtype-basaltpickup:hover, .live-map-marker.subtype-bauxitepickup:hover, .live-map-marker.subtype-dolomitepickup:hover, .live-map-marker.subtype-erythritepickup:hover, .live-map-marker.subtype-jasmiumpickup:hover, .live-map-marker.subtype-magnetitepickup:hover, .live-map-marker.subtype-rhyolitepickup:hover, .live-map-marker.subtype-stravidiumpickup:hover, .live-map-marker.subtype-titaniumpickup:hover { width: 18px; height: 18px; }
+.live-map-marker.subtype-cave, .live-map-legend-dot.subtype-cave { background: url("icons/cave.webp") center / contain no-repeat; }
+.live-map-marker.subtype-sietch, .live-map-legend-dot.subtype-sietch { background: url("icons/sietch.webp") center / contain no-repeat; }
+.live-map-marker.subtype-ecolab, .live-map-legend-dot.subtype-ecolab { background: url("icons/ecolab.webp") center / contain no-repeat; }
+.live-map-marker.subtype-enemycamp, .live-map-legend-dot.subtype-enemycamp { background: url("icons/enemycamp.webp") center / contain no-repeat; }
+.live-map-marker.subtype-enemylaboroutpost, .live-map-legend-dot.subtype-enemylaboroutpost { background: url("icons/enemylaboroutpost.webp") center / contain no-repeat; }
+.live-map-marker.subtype-enemyoutpost, .live-map-legend-dot.subtype-enemyoutpost { background: url("icons/enemyoutpost.webp") center / contain no-repeat; }
+.live-map-marker.subtype-atreidesfortress, .live-map-legend-dot.subtype-atreidesfortress { background: url("icons/atreidesfortress.webp") center / contain no-repeat; }
+.live-map-marker.subtype-harkonnenfortress, .live-map-legend-dot.subtype-harkonnenfortress { background: url("icons/harkonnenfortress.webp") center / contain no-repeat; }
+.live-map-marker.subtype-tradingpost, .live-map-legend-dot.subtype-tradingpost { background: url("icons/tradingpost.webp") center / contain no-repeat; }
+.live-map-marker.subtype-tradingpost { width: 32px; height: 32px; }
+.live-map-marker.subtype-tradingpost:hover { width: 40px; height: 40px; }
+.live-map-marker.subtype-taxiservice, .live-map-legend-dot.subtype-taxiservice { background: url("icons/taxiservice.webp") center / contain no-repeat; }
+.live-map-marker.subtype-trainerbenegesserit, .live-map-legend-dot.subtype-trainerbenegesserit { background: url("icons/trainerbenegesserit.webp") center / contain no-repeat; }
+.live-map-marker.subtype-trainermentat, .live-map-legend-dot.subtype-trainermentat { background: url("icons/trainermentat.webp") center / contain no-repeat; }
+.live-map-marker.subtype-trainerplanetologist, .live-map-legend-dot.subtype-trainerplanetologist { background: url("icons/trainerplanetologist.webp") center / contain no-repeat; }
+.live-map-marker.subtype-trainerswordmaster, .live-map-legend-dot.subtype-trainerswordmaster { background: url("icons/trainerswordmaster.webp") center / contain no-repeat; }
+.live-map-marker.subtype-trainertrooper, .live-map-legend-dot.subtype-trainertrooper { background: url("icons/trainertrooper.webp") center / contain no-repeat; }
+.live-map-marker.subtype-shipwreck, .live-map-legend-dot.subtype-shipwreck { background: url("icons/shipwreck.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativeargosaz, .live-map-legend-dot.subtype-houserepresentativeargosaz { background: url("icons/houserepresentativeargosaz.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativedyvetz, .live-map-legend-dot.subtype-houserepresentativedyvetz { background: url("icons/houserepresentativedyvetz.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativeecaz, .live-map-legend-dot.subtype-houserepresentativeecaz { background: url("icons/houserepresentativeecaz.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativehagal, .live-map-legend-dot.subtype-houserepresentativehagal { background: url("icons/houserepresentativehagal.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativehurata, .live-map-legend-dot.subtype-houserepresentativehurata { background: url("icons/houserepresentativehurata.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativeimota, .live-map-legend-dot.subtype-houserepresentativeimota { background: url("icons/houserepresentativeimota.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativekenola, .live-map-legend-dot.subtype-houserepresentativekenola { background: url("icons/houserepresentativekenola.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativelindaren, .live-map-legend-dot.subtype-houserepresentativelindaren { background: url("icons/houserepresentativelindaren.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativemaros, .live-map-legend-dot.subtype-houserepresentativemaros { background: url("icons/houserepresentativemaros.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativemikarrol, .live-map-legend-dot.subtype-houserepresentativemikarrol { background: url("icons/houserepresentativemikarrol.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativemoritani, .live-map-legend-dot.subtype-houserepresentativemoritani { background: url("icons/houserepresentativemoritani.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativenovebruns, .live-map-legend-dot.subtype-houserepresentativenovebruns { background: url("icons/houserepresentativenovebruns.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativerichese, .live-map-legend-dot.subtype-houserepresentativerichese { background: url("icons/houserepresentativerichese.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativesor, .live-map-legend-dot.subtype-houserepresentativesor { background: url("icons/houserepresentativesor.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativetaligari, .live-map-legend-dot.subtype-houserepresentativetaligari { background: url("icons/houserepresentativetaligari.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativethorvald, .live-map-legend-dot.subtype-houserepresentativethorvald { background: url("icons/houserepresentativethorvald.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativevernius, .live-map-legend-dot.subtype-houserepresentativevernius { background: url("icons/houserepresentativevernius.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativewayku, .live-map-legend-dot.subtype-houserepresentativewayku { background: url("icons/houserepresentativewayku.webp") center / contain no-repeat; }
+.live-map-marker.subtype-houserepresentativewydras, .live-map-legend-dot.subtype-houserepresentativewydras { background: url("icons/houserepresentativewydras.webp") center / contain no-repeat; }
+.live-map-marker.subtype-fuelcellwreckage, .live-map-legend-dot.subtype-fuelcellwreckage { background: url("icons/fuelcellwreckage.webp") center / contain no-repeat; }
+.live-map-marker.subtype-scrapmetalwreckage, .live-map-legend-dot.subtype-scrapmetalwreckage { background: url("icons/scrapmetalwreckage.webp") center / contain no-repeat; }
+.live-map-marker.subtype-fuelcellpart, .live-map-legend-dot.subtype-fuelcellpart { background: url("icons/fuelcellwreckage.webp") center / contain no-repeat; }
+.live-map-marker.subtype-scrapmetalpart, .live-map-legend-dot.subtype-scrapmetalpart { background: url("icons/scrapmetalwreckage.webp") center / contain no-repeat; }
+.live-map-marker.subtype-fuelcellpart, .live-map-marker.subtype-scrapmetalpart { width: 14px; height: 14px; }
+.live-map-marker.subtype-fuelcellpart:hover, .live-map-marker.subtype-scrapmetalpart:hover { width: 18px; height: 18px; }
+.live-map-target > .live-map-marker-overlay { pointer-events: auto; }
+.live-map-marker-overlay { position: absolute; top: calc(100% + 10px); left: 50%; transform: translateX(-50%); z-index: 20; width: 230px; max-width: min(230px, calc(100vw - 32px)); max-height: 320px; overflow-y: auto; padding: 10px 12px; border: 1px solid #4d4032; border-radius: 8px; background: #0f1114; box-shadow: 0 10px 28px rgba(0, 0, 0, .45); color: #d9c8aa; text-align: left; white-space: normal; cursor: default; line-height: 1.4; }
+.live-map-marker-overlay.anchor-left { left: 0; transform: none; }
+.live-map-marker-overlay.anchor-right { left: auto; right: 0; transform: none; }
+.live-map-marker-overlay.anchor-above { top: auto; bottom: calc(100% + 10px); }
+.live-map-marker-overlay-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+.live-map-marker-overlay-header strong { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: #fff1d4; }
+.live-map-marker-overlay-close { width: 22px; height: 22px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; padding: 0; background: #252017; border: 1px solid #4d4032; border-radius: 6px; color: #ceb894; font-size: 14px; line-height: 1; cursor: pointer; }
+.live-map-marker-overlay-close:hover { color: #ffd08a; border-color: #6a5842; }
+.live-map-marker-overlay-subtitle { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #ad9f89; margin: 0 0 8px; }
+.live-map-marker-overlay-facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; font-size: 12px; margin-bottom: 8px; }
+.live-map-marker-overlay-facts span { color: #ad9f89; }
+.live-map-marker-overlay-facts strong { color: #fff1d4; text-align: right; overflow-wrap: anywhere; }
+.live-map-marker-overlay-actions { display: flex; gap: 6px; margin-bottom: 6px; }
+.live-map-marker-overlay-action { flex: 1 1 0; min-width: 0; padding: 6px 10px; font-size: 12px; }
+.live-map-marker-overlay-teleport { display: grid; gap: 6px; margin-bottom: 8px; }
+.live-map-marker-overlay-teleport select { width: 100%; padding: 6px 8px; font-size: 12px; }
+.live-map-legend-dot { display: inline-block; flex: 0 0 18px; width: 18px; height: 18px; border-radius: 50%; border: 0; }

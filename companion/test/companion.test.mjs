@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
 import { startApp, GOOD, NOREALTIME, NOMAPS, fakeCdn, buildCdn } from './helpers.mjs';
 import { loadConfig } from '../lib/config.mjs';
 import { blockedAddress } from '../lib/console.mjs';
@@ -186,4 +187,71 @@ test('Anmeldefehler liefern Codes für die Übersetzung in der Oberfläche', asy
   assert.equal((await t.login('nope')).json.code, 'token_format');
   assert.equal((await t.login(NOMAPS)).json.code, 'no_maps');
   assert.equal((await t.login(NOREALTIME)).json.reasonCode, 'no_scope'); t.close();
+});
+
+test('Marker-Atlas: nur Marker ohne Spieler/Basen, nur bekannte Felder, Längen begrenzt, Token nur zur Console', async () => {
+  const t = await startApp(); const { cookie } = await t.login(GOOD);
+  const r = await fetch(t.base + '/api/markers?map=hagga', { headers: { cookie } }); assert.equal(r.status, 200);
+  const j = await r.json();
+  assert.deepEqual(j.rows.map((x) => x.t), ['ore', 'vehicle', 'poi']);
+  assert.deepEqual(Object.keys(j.rows[0]).sort(), ['id', 'n', 's', 't', 'x', 'y', 'z']);
+  assert.ok(j.rows[0].n.length <= 60 && !JSON.stringify(j).includes('darf nicht durch'));
+  assert.equal(j.rows[2].x, 0); assert.equal(j.rows[2].y, 0); // keine Zahlen -> 0, nie NaN
+  assert.ok(t.con.seen.some((s) => s.url === '/api/map/markers?map=HaggaBasin' && s.auth === 'Bearer ' + GOOD));
+  t.close();
+});
+
+test('Marker-Atlas: ungültige Karte 400, ohne Sitzung 401, ohne Maps-Recht 403', async () => {
+  const t = await startApp(); const { cookie } = await t.login(GOOD);
+  for (const m of ['x', '', 'HaggaBasin', '../deep', 'hagga%26map=DeepDesert']) assert.equal((await fetch(t.base + '/api/markers?map=' + m, { headers: { cookie } })).status, 400, m);
+  assert.equal((await fetch(t.base + '/api/markers?map=hagga')).status, 401);
+  t.close();
+});
+
+test('Symbole: nur feste Dateinamen, nur Bilder, Größe begrenzt, kein Token an die Console, Sitzung nötig', async () => {
+  const t = await startApp(); const { cookie } = await t.login(GOOD);
+  const ok = await fetch(t.base + '/icons/azuriteore.webp', { headers: { cookie } });
+  assert.equal(ok.status, 200); assert.equal(ok.headers.get('content-type'), 'image/webp'); assert.ok((await ok.arrayBuffer()).byteLength > 0);
+  for (const bad of ['..%2Fapi%2Fmap%2Fplayers', 'a.svg', 'a.js', '.webp', 'a b.png', encodeURIComponent('../x.png'), 'x'.repeat(80) + '.png']) assert.equal((await fetch(t.base + '/icons/' + bad, { headers: { cookie } })).status, 400, bad);
+  assert.equal((await fetch(t.base + '/icons/html.png', { headers: { cookie } })).status, 502); // falscher Inhaltstyp
+  assert.equal((await fetch(t.base + '/icons/big.png', { headers: { cookie } })).status, 502);  // zu groß
+  assert.equal((await fetch(t.base + '/icons/unbekannt.webp', { headers: { cookie } })).status, 404);
+  assert.equal((await fetch(t.base + '/icons/azuriteore.webp')).status, 401);
+  assert.ok(t.con.seen.filter((s) => s.url.startsWith('/images/maps/')).every((s) => s.auth === undefined), 'Token ging an einen öffentlichen Pfad');
+  t.close();
+});
+
+test('Bauteil-Modelle: Index und Mesh kommen nur mit passendem Hash aus dem Katalog durch', async () => {
+  const cdn = buildCdn();
+  const good = await startApp({ cdn: await fakeCdn(cdn) }); const { cookie } = await good.login(GOOD);
+  const idx = await fetch(good.base + '/cdn/buildables/index.json', { headers: { cookie } }); assert.equal(idx.status, 200);
+  assert.equal(JSON.parse(await idx.text()).rows.Test_Wall.mesh, 7);
+  const m = await fetch(good.base + '/cdn/buildables/mesh/7.bin', { headers: { cookie } }); assert.equal(m.status, 200); assert.equal(Buffer.from(await m.arrayBuffer()).subarray(0, 4).toString('latin1'), 'DML1');
+  assert.equal((await fetch(good.base + '/cdn/buildables/mesh/8.bin', { headers: { cookie } })).status, 404); // nicht im Katalog
+  // roh gesendet; ".." als Pfadsegment glättet schon die URL-Verarbeitung (landet dann auf einem erlaubten oder unbekannten Pfad), kodierte Schrägstriche nicht
+  const rawStatus = (p) => new Promise((resolve, reject) => { const u = new URL(good.base); http.get({ host: u.hostname, port: u.port, path: p, headers: { cookie } }, (r) => { r.resume(); resolve(r.statusCode); }).on('error', reject); });
+  for (const bad of ['buildables/mesh/x.bin', 'buildables/mesh/123456.bin', 'buildables/mesh/..%2f..%2fcatalog.json', 'buildables/other.json', 'buildables/mesh/7.bin/']) assert.notEqual(await rawStatus('/cdn/' + bad), 200, bad);
+  good.close();
+  const evil = Buffer.from(cdn.mesh); evil[40] ^= 1; // ein Bit verändert
+  const t = await startApp({ cdn: await fakeCdn(cdn, { '/buildables/mesh/7.bin': evil, '/buildables/index.json': Buffer.from('{"rows":{}}') }) }); const c2 = await t.login(GOOD);
+  assert.equal((await fetch(t.base + '/cdn/buildables/mesh/7.bin', { headers: { cookie: c2.cookie } })).status, 502);
+  assert.equal((await fetch(t.base + '/cdn/buildables/index.json', { headers: { cookie: c2.cookie } })).status, 502);
+  t.close();
+});
+
+test('Basis: Bauteile auf Typ/Lage gekürzt, Basis-ID nur Ziffern, ohne Sitzung 401, Token nur an die Console', async () => {
+  const t = await startApp(); const { cookie } = await t.login(GOOD);
+  const r = await fetch(t.base + '/api/base?id=12', { headers: { cookie } }); assert.equal(r.status, 200);
+  const j = await r.json(); assert.deepEqual(Object.keys(j).sort(), ['i', 'p', 'x', 'y', 'z']);
+  assert.deepEqual(j.i[0], ['Atre_Wall', 1, 2, 3, 90]);
+  for (const bad of ['', 'abc', '1;2', '../1', '12345678901234', '-1', '1%2F..%2Fx']) assert.equal((await fetch(t.base + '/api/base?id=' + bad, { headers: { cookie } })).status, 400, bad);
+  assert.equal((await fetch(t.base + '/api/base?id=12')).status, 401);
+  assert.ok(t.con.seen.some((s) => s.url === '/api/bases/12/export' && s.auth === 'Bearer ' + GOOD));
+  t.close();
+});
+
+test('/api/static liefert die Basis-ID nur als Ziffern', async () => {
+  const t = await startApp(); const { cookie } = await t.login(GOOD);
+  const j = await (await fetch(t.base + '/api/static', { headers: { cookie } })).json();
+  assert.equal(j.bases[0].i, '12'); t.close();
 });

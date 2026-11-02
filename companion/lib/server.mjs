@@ -2,7 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { makeConsole, TOKEN_RE } from './console.mjs';
+import { makeConsole, TOKEN_RE, MAP_LIVE, ICON_RE } from './console.mjs';
 import { makeCdn } from './cdn.mjs';
 import { makeSessions, makeLimiter, makeLoginGuard, parseCookies } from './session.mjs';
 
@@ -80,13 +80,35 @@ export function createApp(cfg, { log = () => {}, version = '0.0.0', publicDir } 
   }
   const sessionView = (s) => ({ mode: s.mode, reason: s.reason || '', reasonCode: s.reasonCode || '', sources: s.sources || [] });
 
+  const icons = new Map(); // Dateiname -> {status,type,buf}, höchstens 400 Einträge
+  // Marker-Atlas (Erze, Orte, Fahrzeuge, Lager …). Die Console aktualisiert ihn einmal pro Minute.
+  async function markersData(s, live) {
+    const key = 'markers:' + live, hit = s.cache.get(key); if (hit && hit.t > Date.now() - 30000) return hit.v;
+    const r = await consoleApi.get(s.token, '/api/map/markers?map=' + live);
+    if (r.status !== 200 || !r.json || !Array.isArray(r.json.rows)) { const e = new Error('markers'); e.status = r.status; throw e; }
+    const rows = r.json.rows.filter((m) => m && m.type !== 'player' && m.type !== 'base').slice(0, 20000)
+      .map((m) => ({ t: str(m.type, 32), s: str(m.subtype, 48), n: str(m.name || m.subtypeLabel || '', 60), id: str(String(m.id == null ? '' : m.id), 40), x: num(m.x), y: num(m.y), z: num(m.z) }));
+    const v = { rows }; s.cache.set(key, { t: Date.now(), v }); return v;
+  }
+  // Eine Basis mit ihren Bauteilen (Console: GET /api/bases/<id>/export). Nur Typ und Lage, Längen und Mengen begrenzt.
+  async function baseData(s, id) {
+    const key = 'base:' + id, hit = s.cache.get(key); if (hit && hit.t > Date.now() - 120000) return hit.v;
+    if (s.cache.size > 24) s.cache.delete(s.cache.keys().next().value); // je Basis bis ~0,4 MB: Speicher je Sitzung begrenzen
+    const r = await consoleApi.get(s.token, '/api/bases/' + id + '/export');
+    if (r.status !== 200 || !r.json || typeof r.json !== 'object') { const e = new Error('base'); e.status = r.status; throw e; }
+    const j = r.json, arr = (a, n) => (Array.isArray(a) ? a.slice(0, n) : []);
+    const v = { x: num(j.x), y: num(j.y), z: num(j.z),
+      i: arr(j.instances, 6000).map((p) => [str(p && p.building_type, 80), num(p && p.x), num(p && p.y), num(p && p.z), num(p && p.rotation)]),
+      p: arr(j.placeables, 3000).map((p) => [str(p && p.building_type, 80), num(p && p.x), num(p && p.y), num(p && p.z), num(p && p.rx), num(p && p.ry), num(p && p.rz)]) };
+    s.cache.set(key, { t: Date.now(), v }); return v;
+  }
   async function staticData(s) {
     const hit = s.cache.get('static'); if (hit && hit.t > Date.now() - 4000) return hit.v;
     const [pl, ba] = await Promise.all([consoleApi.get(s.token, '/api/map/players').catch(() => null), consoleApi.get(s.token, '/api/map/bases').catch(() => null)]);
     const rows = (r) => (r && r.status === 200 && r.json && Array.isArray(r.json.rows) ? r.json.rows.slice(0, 5000) : []);
     const v = {
       players: rows(pl).map((r) => ({ n: str(r.name), on: r.online_status === 'Online', m: str(r.map, 32), p: num(r.partition_id), x: num(r.x), y: num(r.y), z: num(r.z) })),
-      bases: rows(ba).map((r) => ({ n: str(r.name), o: str(r.owner_name), t: str(r.base_type), m: str(r.map, 32), p: num(r.partition_id), x: num(r.x), y: num(r.y), z: num(r.z) })),
+      bases: rows(ba).map((r) => ({ i: str(String(r.base_id == null ? '' : r.base_id), 14).replace(/\D/g, ''), n: str(r.name), o: str(r.owner_name), t: str(r.base_type), m: str(r.map, 32), p: num(r.partition_id), x: num(r.x), y: num(r.y), z: num(r.z) })),
       notes: { players: pl && pl.status === 200 ? 'ok' : 'nicht verfügbar', bases: ba && ba.status === 200 ? 'ok' : 'nicht verfügbar' },
     };
     s.cache.set('static', { t: Date.now(), v }); return v;
@@ -103,7 +125,7 @@ export function createApp(cfg, { log = () => {}, version = '0.0.0', publicDir } 
     const file = files.get(p);
     if (file && req.method !== 'POST') { if (!ipLimit(ip)) return fail(res, 429, 'Zu viele Anfragen'); return send(res, 200, req.method === 'HEAD' ? '' : file.buf, file.type, { 'Cache-Control': 'no-cache' }); }
     if (p === '/healthz') return send(res, 200, { ok: true, version });
-    if (!p.startsWith('/api/') && !p.startsWith('/cdn/')) return fail(res, 404, 'nicht gefunden');
+    if (!p.startsWith('/api/') && !p.startsWith('/cdn/') && !p.startsWith('/icons/')) return fail(res, 404, 'nicht gefunden');
 
     if (p === '/api/login') {
       if (req.method !== 'POST') return fail(res, 405, 'POST erforderlich');
@@ -144,6 +166,21 @@ export function createApp(cfg, { log = () => {}, version = '0.0.0', publicDir } 
     if (p === '/api/session') return send(res, 200, sessionView(s));
     if (p === '/api/static') {
       try { return send(res, 200, await staticData(s)); } catch { return fail(res, 502, 'Console nicht erreichbar'); }
+    }
+    if (p === '/api/markers') { // alle Marker-Arten der Live-Karte außer Spielern und Basen (die kommen aus /api/static)
+      const live = MAP_LIVE[url.searchParams.get('map')]; if (!live) return fail(res, 400, 'Karte ungültig');
+      try { return send(res, 200, await markersData(s, live)); } catch (e) { return fail(res, e && e.status === 403 ? 403 : 502, e && e.status === 403 ? 'Dem Token fehlt „Maps: Read“' : 'Console nicht erreichbar'); }
+    }
+    if (p === '/api/base') { // Bauteile einer Basis (für die 3D-Basis aus echten Modellen)
+      const id = url.searchParams.get('id'); if (!/^\d{1,12}$/.test(id || '')) return fail(res, 400, 'Basis ungültig');
+      try { return send(res, 200, await baseData(s, id)); } catch (e) { return fail(res, e && e.status === 403 ? 403 : e && e.status === 404 ? 404 : 502, e && e.status === 403 ? 'Dem Token fehlt „Bases: Read“' : e && e.status === 404 ? 'Basis nicht gefunden' : 'Console nicht erreichbar'); }
+    }
+    if (p.startsWith('/icons/')) { // Symbole der Live-Karte, von der Console geholt und zwischengespeichert
+      let name; try { name = decodeURIComponent(p.slice(7)); } catch { return fail(res, 400, 'Name ungültig'); }
+      if (!ICON_RE.test(name)) return fail(res, 400, 'Name ungültig');
+      let hit = icons.get(name);
+      if (!hit) { try { hit = await consoleApi.icon(name); } catch { return fail(res, 502, 'Console nicht erreichbar'); } if (hit.status !== 200) return fail(res, hit.status === 404 ? 404 : 502, 'Symbol nicht verfügbar'); if (icons.size >= 400) icons.delete(icons.keys().next().value); icons.set(name, hit); }
+      return send(res, 200, req.method === 'HEAD' ? '' : hit.buf, hit.type, { 'Cache-Control': 'private, max-age=86400' });
     }
     if (p === '/api/realtime/stream') {
       if (s.mode !== 'realtime') return fail(res, 409, 'Realtime ist für diese Sitzung nicht aktiv');

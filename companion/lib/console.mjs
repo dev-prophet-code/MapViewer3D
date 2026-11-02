@@ -8,6 +8,11 @@ import tlsMod from 'node:tls';
 
 const MAX_BODY = 16 * 1048576;
 export const ALLOWED = new Set(['/api/realtime/healthz', '/api/realtime/objects', '/api/realtime/stream', '/api/map/partitions', '/api/map/players', '/api/map/bases']);
+// Parametrisierte Pfade: feste Karten-Namen, Basis-IDs nur aus einem engen Zeichensatz.
+export const MAP_LIVE = { hagga: 'HaggaBasin', deep: 'DeepDesert' };
+export const ALLOWED_RE = [/^\/api\/map\/markers\?map=(HaggaBasin|DeepDesert)$/, /^\/api\/bases\/\d{1,12}\/export$/];
+export const ICON_RE = /^[A-Za-z0-9_-]{1,64}\.(webp|png)$/;
+const MAX_ICON = 512 * 1024;
 export const TOKEN_RE = /^dak_[A-Za-z0-9_-]{16,160}$/;
 
 // Link-lokal, Cloud-Metadaten, Multicast und "unspecified" sind nie ein gültiges Ziel (SSRF / DNS-Rebinding).
@@ -48,7 +53,7 @@ export function makeConsole(cfg) {
     });
   }
   function open(token, path, stream) {
-    if (!ALLOWED.has(path)) throw new Error('Pfad nicht erlaubt');
+    if (!ALLOWED.has(path) && !ALLOWED_RE.some((r) => r.test(path))) throw new Error('Pfad nicht erlaubt');
     if (typeof token !== 'string' || !TOKEN_RE.test(token)) throw new Error('Token-Format');
     return (pin ? pinnedSocket() : Promise.resolve(null)).then((sock) => new Promise((resolve, reject) => {
       const agent = sock ? Object.assign(new https.Agent(), { createConnection: () => sock }) : false;
@@ -64,5 +69,23 @@ export function makeConsole(cfg) {
       req.end();
     }));
   }
-  return { get: (token, path) => open(token, path, false), stream: (token, path) => open(token, path, true) };
+  // Symbole der Live-Karte: öffentliche Dateien der Console (ohne Token), fester Ordner, nur Dateinamen aus engem Zeichensatz.
+  function icon(name) {
+    if (typeof name !== 'string' || !ICON_RE.test(name)) throw new Error('Symbolname nicht erlaubt');
+    return (pin ? pinnedSocket() : Promise.resolve(null)).then((sock) => new Promise((resolve, reject) => {
+      const agent = sock ? Object.assign(new https.Agent(), { createConnection: () => sock }) : false;
+      const req = mod.request({ ...base, agent, method: 'GET', path: '/images/maps/' + name, headers: { Accept: 'image/*', 'User-Agent': 'mapviewer3d-companion' } }, (res) => {
+        const type = String(res.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+        if (res.statusCode !== 200 || !/^image\/(webp|png)$/.test(type)) { res.resume(); return resolve({ status: res.statusCode === 200 ? 502 : res.statusCode, type }); }
+        const chunks = []; let n = 0;
+        res.on('data', (c) => { n += c.length; if (n > MAX_ICON) req.destroy(new Error('Symbol zu groß')); else chunks.push(c); });
+        res.on('end', () => resolve({ status: 200, type, buf: Buffer.concat(chunks) }));
+        res.on('error', reject);
+      });
+      req.on('timeout', () => req.destroy(new Error('Zeitüberschreitung')));
+      req.on('error', reject);
+      req.end();
+    }));
+  }
+  return { get: (token, path) => open(token, path, false), stream: (token, path) => open(token, path, true), icon };
 }
