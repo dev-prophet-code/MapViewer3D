@@ -23,6 +23,9 @@ Charakter-Kleidung hat keine Textur-Zuordnung. Mehrere Material-Abschnitte je Ne
 Blueprint-Akteure sind nicht enthalten. 187 Texturen sind nicht lesbar (111 × FloatRGBA, 76 Layout).
 
 ## Viewer lokal starten und aus dem CDN streamen
+**Am einfachsten (eine Datei, englisch):** [viewer/viewer.html](viewer/viewer.html) herunterladen und doppelklicken. Kein Node, kein Server nötig, nur Internet (three.js von cdn.jsdelivr.net, Daten von diesem Branch).
+
+Oder mit Node (deutsche Oberfläche):
 Node ≥ 18, kein Klon des Branchs nötig. Die drei Dateien aus `client/viewer/` (`index.html`, `server.mjs`, `setup.mjs`) in einen leeren Ordner laden:
 
 ```
