@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CDN-Streaming-Test</title>
+<style>
+  :root { color-scheme: dark; --bg:#121417; --panel:#1b1f24; --line:#2c333b; --fg:#e6e9ec; --dim:#8b95a1; --acc:#d9a441; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui,sans-serif; display:grid; grid-template-columns:340px 1fr; height:100vh; }
+  aside { background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+  header { padding:10px 12px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:14px; margin:0 0 6px; }
+  input,select { width:100%; background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin-top:6px; font:inherit; }
+  .tabs { display:flex; gap:6px; margin-top:8px; }
+  .tabs button { flex:1; background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:5px; cursor:pointer; font:inherit; }
+  .tabs button.on { border-color:var(--acc); color:var(--acc); }
+  label.chk { display:flex; align-items:center; gap:6px; margin-top:6px; color:var(--dim); }
+  label.chk input { width:auto; margin:0; }
+  #list { overflow:auto; flex:1; }
+  #list button { display:block; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid var(--line); color:var(--fg); padding:6px 12px; cursor:pointer; font:inherit; }
+  #list button:hover, #list button.on { background:#262c33; }
+  #list small { color:var(--dim); display:block; }
+  main { position:relative; min-width:0; min-height:0; overflow:hidden; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #hud { position:absolute; left:12px; bottom:12px; right:12px; background:#0009; border:1px solid var(--line); border-radius:8px; padding:8px 12px; pointer-events:none; font:12px/1.5 ui-monospace,monospace; white-space:pre-wrap; word-break:break-all; }
+  #hud b { color:var(--acc); }
+  #stat { color:var(--dim); font-size:12px; margin-top:6px; }
+</style>
+</head>
+<body>
+<aside>
+  <header>
+    <h1>Client-Daten vom CDN streamen</h1>
+    <input id="cdn" aria-label="CDN-Basis" spellcheck="false">
+    <div class="tabs"><button id="tabM" class="on">Netze</button><button id="tabK">Karten</button></div>
+    <input id="q" placeholder="Filter (Name)" aria-label="Filter">
+    <select id="src" aria-label="Quelle"><option value="">alle Quellen</option><option>render</option><option>collision</option></select>
+    <label class="chk"><input id="tex" type="checkbox" checked> mit Textur (UV + Albedo)</label>
+    <div id="stat">Katalog wird geladen …</div>
+  </header>
+  <div id="list"></div>
+</aside>
+<main>
+  <canvas id="c"></canvas>
+  <div id="hud">Links ein Netz oder eine Karte wählen. Alles wird erst beim Klick vom CDN geladen.</div>
+</main>
+<script type="importmap">{"imports":{"three":"./three/three.module.js","three/addons/":"./three/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/OrbitControls.js';
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+$('cdn').value = params.get('cdn') === 'local' ? location.origin + '/cdn/' : (params.get('cdn') || 'https://raw.githubusercontent.com/dev-prophet-code/MapViewer3D/cdn/');
+const base = () => { const v = $('cdn').value.trim(); return v.endsWith('/') ? v : v + '/'; };
+const enc = (p) => p.split('/').map(encodeURIComponent).join('/');
+const clientURL = (p) => base() + 'client/' + enc(p);
+
+const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true });
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x121417);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 2000000);
+const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(1, 2, 1.5); scene.add(sun);
+const grid = new THREE.GridHelper(1, 20, 0x3a424b, 0x252b32); scene.add(grid);
+let current = null;
+function resize() { const m = $('c').parentElement; renderer.setSize(m.clientWidth, m.clientHeight, false); camera.aspect = m.clientWidth / m.clientHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+(function loop() { controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+function clear() { if (current) { scene.remove(current); current.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); current = null; } }
+function frame(obj) {
+  const bb = new THREE.Box3().setFromObject(obj), c = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3()), r = Math.max(sz.x, sz.y, sz.z) || 1;
+  grid.scale.setScalar(r * 2); grid.position.set(c.x, bb.min.y, c.z); controls.target.copy(c);
+  camera.position.copy(c).add(new THREE.Vector3(r * 0.9, r * 0.7, r * 1.1)); camera.near = r / 1000; camera.far = r * 100; camera.updateProjectionMatrix();
+  return sz;
+}
+
+// DML1: "DML1", nv u32, ni u32, lo[3], hi[3] f32, nv*3 u16, Auffüllen auf 4 Byte, Indizes (u16 bei nv<=65535, sonst u32)
+function decodeDML(buf) {
+  const dv = new DataView(buf);
+  if (new TextDecoder().decode(new Uint8Array(buf, 0, 4)) !== 'DML1') throw new Error('kein DML1');
+  const nv = dv.getUint32(4, true), ni = dv.getUint32(8, true);
+  const lo = [0, 1, 2].map((k) => dv.getFloat32(12 + 4 * k, true)), hi = [0, 1, 2].map((k) => dv.getFloat32(24 + 4 * k, true));
+  let p = 36; const q = new Uint16Array(buf.slice(p, p + 6 * nv)); p += 6 * nv; if ((6 * nv) % 4) p += 2;
+  const idx = nv <= 65535 ? new Uint16Array(buf.slice(p, p + 2 * ni)) : new Uint32Array(buf.slice(p, p + 4 * ni));
+  const pos = new Float32Array(3 * nv);
+  for (let v = 0; v < nv; v++) {
+    const x = lo[0] + q[3 * v] / 65535 * (hi[0] - lo[0]), y = lo[1] + q[3 * v + 1] / 65535 * (hi[1] - lo[1]), z = lo[2] + q[3 * v + 2] / 65535 * (hi[2] - lo[2]);
+    pos[3 * v] = x * 0.01; pos[3 * v + 1] = z * 0.01; pos[3 * v + 2] = y * 0.01; // Unreal-cm (Z oben) -> three-Meter (Y oben)
+  }
+  const out = new (nv > 65535 ? Uint32Array : Uint16Array)(ni);
+  for (let t = 0; t + 2 < ni; t += 3) { out[t] = idx[t]; out[t + 1] = idx[t + 2]; out[t + 2] = idx[t + 1]; } // Dreiecksreihenfolge spiegeln
+  return { pos, idx: out, nv, ni };
+}
+const halfToF = (h) => { const s = (h & 0x8000) ? -1 : 1, e = (h >> 10) & 31, m = h & 1023; return e === 0 ? s * m * 2 ** -24 : e === 31 ? (m ? NaN : s * Infinity) : s * (1 + m / 1024) * 2 ** (e - 15); };
+function decodeUV(buf) { // "UVH1", nv u32, nv*2 Half
+  if (new TextDecoder().decode(new Uint8Array(buf, 0, 4)) !== 'UVH1') throw new Error('kein UVH1');
+  const nv = new DataView(buf).getUint32(4, true), h = new Uint16Array(buf.slice(8, 8 + 4 * nv)), uv = new Float32Array(2 * nv);
+  for (let i = 0; i < uv.length; i++) uv[i] = halfToF(h[i]);
+  return uv;
+}
+function geometry(m) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(m.pos, 3)); g.setIndex(new THREE.BufferAttribute(m.idx, 1)); g.computeVertexNormals(); return g; }
+
+// ---- Katalog, Materialien, Texturen (lazy) ----
+let catalog = [], byPkg = new Map(), mode = 'm';
+async function jsonl(url) { const r = await fetch(url); if (!r.ok) throw new Error(url + ' ' + r.status); return (await r.text()).split('\n').filter(Boolean).map((l) => JSON.parse(l)); }
+let matP = null, texP = null, mapsP = null;
+const materials = () => matP ||= jsonl(clientURL('materials.jsonl')).then((a) => new Map(a.map((x) => [x.pkg, x])));
+const textures = () => texP ||= jsonl(clientURL('textures.jsonl')).then((a) => new Map(a.map((x) => [x.tex, x])));
+const placementMaps = () => mapsP ||= jsonl(clientURL('placements.jsonl'));
+function albedo(m, tex) { // Albedo-Textur des ersten Materialslots mit passender Textur
+  for (const s of m?.slots || []) {
+    const t = Object.entries(s.textures || {});
+    const c = t.find(([k, v]) => /base ?color|albedo|diffuse/i.test(k) && !/wear|detail|mask|pattern|decal|edge/i.test(k) && tex.has(v)) || t.find(([, v]) => /_D$/.test(v) && tex.has(v));
+    if (c) return c[1];
+  }
+  return null;
+}
+const loader = new THREE.TextureLoader(); loader.setCrossOrigin('anonymous');
+
+async function loadCatalog() {
+  const url = clientURL('meshes.jsonl'); const t0 = performance.now();
+  $('stat').textContent = 'Katalog wird geladen …';
+  catalog = await jsonl(url); byPkg = new Map(catalog.map((e) => [e.pkg, e]));
+  matP = texP = mapsP = null;
+  $('stat').textContent = `${catalog.length.toLocaleString('de')} Netze (${catalog.filter((e) => e.uv).length.toLocaleString('de')} mit UV), Katalog in ${Math.round(performance.now() - t0)} ms von ${new URL(url).host}`;
+  render();
+}
+async function render() {
+  const q = $('q').value.toLowerCase(), s = $('src').value, list = $('list'); list.textContent = '';
+  let rows;
+  if (mode === 'm') rows = catalog.filter((e) => (!s || e.source === s) && (!q || e.pkg.toLowerCase().includes(q))).map((e) => ({ name: e.pkg.split('/').pop(), sub: `${e.source}${e.uv ? ' · UV' : ''} · ${e.lods[0].tris.toLocaleString('de')} Dreiecke`, go: () => showMesh(e) }));
+  else rows = (await placementMaps()).filter((m) => m.items >= 20 && (!q || m.map.toLowerCase().includes(q))).sort((a, b) => b.items - a.items).map((m) => ({ name: m.map.split('/').pop(), sub: `${m.items.toLocaleString('de')} Objekte, ${m.meshes} Netze`, go: () => showMap(m) }));
+  for (const r of rows.slice(0, 300)) {
+    const b = document.createElement('button'), n = document.createElement('span'), sm = document.createElement('small');
+    n.textContent = r.name; sm.textContent = r.sub; b.append(n, sm);
+    b.onclick = () => { document.querySelectorAll('#list .on').forEach((x) => x.classList.remove('on')); b.classList.add('on'); r.go(); };
+    list.append(b);
+  }
+  if (rows.length > 300) { const m = document.createElement('div'); m.style.cssText = 'padding:8px 12px;color:var(--dim)'; m.textContent = `… ${rows.length - 300} weitere, Filter nutzen`; list.append(m); }
+}
+
+async function showMesh(e) {
+  const url = clientURL(e.dml); const t0 = performance.now(); $('hud').textContent = 'lade ' + url;
+  try {
+    const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status);
+    const buf = await r.arrayBuffer(), ms = Math.round(performance.now() - t0), m = decodeDML(buf), g = geometry(m);
+    let mat = new THREE.MeshStandardMaterial({ color: 0xcfd4da, roughness: 0.85, metalness: 0.05, side: THREE.DoubleSide }), note = '';
+    if ($('tex').checked && e.uv) {
+      try {
+        const [mats, texs] = await Promise.all([materials(), textures()]), a = albedo(mats.get(e.pkg.replace(/^\/Game\//, '')), texs);
+        if (a) {
+          const uv = decodeUV(await (await fetch(clientURL(e.uv))).arrayBuffer());
+          if (uv.length === 2 * m.nv) {
+            g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+            const t = await loader.loadAsync(clientURL(texs.get(a).file)); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+            mat = new THREE.MeshStandardMaterial({ map: t, roughness: 0.85, metalness: 0.05, side: THREE.DoubleSide }); note = `\nTextur: ${a.split('/').pop()} (${texs.get(a).w}×${texs.get(a).h})`;
+          } else note = '\nUV-Anzahl passt nicht';
+        } else note = '\n(keine Albedo-Textur gefunden)';
+      } catch (err) { note = '\nTextur-Fehler: ' + err.message; }
+    }
+    clear(); current = new THREE.Mesh(g, mat); scene.add(current); const sz = frame(current);
+    $('hud').innerHTML = `<b>${e.pkg.split('/').pop()}</b>  (${e.source})\n${m.nv.toLocaleString('de')} Ecken, ${(m.ni / 3).toLocaleString('de')} Dreiecke, ${sz.x.toFixed(1)} × ${sz.z.toFixed(1)} × ${sz.y.toFixed(1)} m\ngestreamt: ${(buf.byteLength / 1024).toFixed(0)} KB Netz in ${ms} ms${note}`;
+    window.__last = { name: e.pkg, bytes: buf.byteLength, ms, tris: m.ni / 3, note };
+  } catch (err) { $('hud').textContent = 'Fehler: ' + err.message + '\n' + url; }
+}
+
+// UE-Rotator (Pitch, Yaw, Roll in Grad) -> Matrix in Unreal-Koordinaten (X vorn, Y rechts, Z oben), dann nach three (y/z getauscht)
+function ueMatrix(loc, rot, sc) {
+  const d = Math.PI / 180, [p, y, r] = rot.map((v) => v * d);
+  const Rz = new THREE.Matrix4().makeRotationZ(y), Ry = new THREE.Matrix4().makeRotationY(-p), Rx = new THREE.Matrix4().makeRotationX(r);
+  const M = new THREE.Matrix4().multiplyMatrices(Rz, new THREE.Matrix4().multiplyMatrices(Ry, Rx));
+  M.multiply(new THREE.Matrix4().makeScale(sc[0], sc[1], sc[2])); M.setPosition(loc[0], loc[1], loc[2]);
+  const C = new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1); // vertauscht y und z
+  const T = new THREE.Matrix4().multiplyMatrices(C, new THREE.Matrix4().multiplyMatrices(M, C));
+  const pos = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3(); T.decompose(pos, q, s);
+  return new THREE.Matrix4().compose(pos.multiplyScalar(0.01), q, s);
+}
+async function showMap(m) {
+  const t0 = performance.now(); $('hud').textContent = 'lade Karte ' + m.map;
+  try {
+    const doc = await (await fetch(clientURL(m.file))).json();
+    const groups = doc.meshes.map(() => []);
+    for (const it of doc.items) if (!it[10]) groups[it[0]].push(ueMatrix(it.slice(1, 4), it.slice(4, 7), it.slice(7, 10)));
+    const root = new THREE.Group(); let bytes = 0, got = 0, missing = 0, inst = 0;
+    const jobs = doc.meshes.map((name, i) => async () => {
+      const e = byPkg.get('/Game/' + name); if (!e || !groups[i].length) { if (groups[i].length) missing++; return; }
+      const r = await fetch(clientURL(e.dml)); if (!r.ok) { missing++; return; }
+      const buf = await r.arrayBuffer(); bytes += buf.byteLength; got++;
+      const im = new THREE.InstancedMesh(geometry(decodeDML(buf)), new THREE.MeshStandardMaterial({ color: 0xc9ced4, roughness: 0.9, side: THREE.DoubleSide }), groups[i].length);
+      groups[i].forEach((mx, k) => im.setMatrixAt(k, mx)); inst += groups[i].length; root.add(im);
+    });
+    for (let i = 0; i < jobs.length; i += 8) await Promise.all(jobs.slice(i, i + 8).map((j) => j()));
+    clear(); current = root; scene.add(root); frame(root);
+    $('hud').innerHTML = `<b>${m.map.split('/').pop()}</b>\n${inst.toLocaleString('de')} Objekte aus ${got} verschiedenen Netzen (${missing} Netze nicht im Katalog), ${(bytes / 1048576).toFixed(1)} MB gestreamt in ${Math.round(performance.now() - t0)} ms`;
+    window.__last = { map: m.map, inst, got, missing, bytes, ms: Math.round(performance.now() - t0) };
+  } catch (err) { $('hud').textContent = 'Fehler: ' + err.message; }
+}
+
+$('tabM').onclick = () => { mode = 'm'; $('tabM').classList.add('on'); $('tabK').classList.remove('on'); $('src').style.display = ''; render(); };
+$('tabK').onclick = () => { mode = 'k'; $('tabK').classList.add('on'); $('tabM').classList.remove('on'); $('src').style.display = 'none'; render(); };
+$('q').oninput = render; $('src').onchange = render; $('cdn').onchange = () => loadCatalog().catch((e) => { $('stat').textContent = 'Fehler: ' + e.message; });
+loadCatalog().catch((e) => { $('stat').textContent = 'Fehler: ' + e.message; });
+window.__showMesh = (needle) => { const e = catalog.find((x) => x.pkg.includes(needle)); if (e) return showMesh(e); };
+window.__showMap = async (needle) => { const m = (await placementMaps()).find((x) => x.map.includes(needle)); if (m) return showMap(m); };
+</script>
+</body>
+</html>
