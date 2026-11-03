@@ -11,7 +11,10 @@ gelesen aus den IoStore-Paks und im DML1-Format abgelegt. Rein additiv: bestehen
   Netze mit mehr als 65.535 Ecken haben u32-Indizes; die Viewer-Obergrenze von 200.000 Ecken und 1 MiB je Datei gilt hier nicht,
   manche Dateien sind größer.
 - `preview/<bereich>/1..3.png` – Beispielbilder (Graustufen, schräge Ansicht, je Bild sechs Netze; `modelle.txt` nennt die Namen).
-- `failed.txt` – Pakete, bei denen keine Geometrie erkannt wurde (ca. 20 %, vermutlich Nanite oder anderes Layout; nicht geprüft).
+- Feld `source` im Katalog: `render` = Render-Geometrie (LOD0); `collision` = Kollisionsnetz (Chaos-Trimesh aus dem BodySetup) bei reinen
+  `SM_Collision_*`-Netzen ohne Render-Daten (5.136 Stück, vor allem Biom-Gelände und Felsen unter `Dune/Maps/Biomes`; grob, mit scharfen Kanten).
+- `failed.txt` – 157 Pakete mit `SM_`/`SK_`-Namen ohne Geometrie. Es sind keine Netze, sondern FoliageType-, CtrlRig- und LODSettings-Assets
+  sowie einzelne Prefabs (Stichprobe, nicht jedes Paket einzeln geprüft).
 
 Nicht enthalten: UVs, Normalen, Materialien, Texturen, Platzierungen, Skinning/Animation. Die Ruhepose der Skelett-Netze ist unverändert.
 
